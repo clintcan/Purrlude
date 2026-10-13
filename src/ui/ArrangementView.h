@@ -41,6 +41,10 @@ private:
     void timerCallback() override;
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void syncHeaders();
+    double getPlayheadBeat() const;
+
+    class PlayheadOverlay;
+    std::unique_ptr<PlayheadOverlay> playheadOverlay;
 
     double getVisibleBeats() const;
     float beatToX (double beat) const;

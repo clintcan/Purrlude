@@ -11,6 +11,28 @@ namespace
     constexpr int minimumBars = 16;
 }
 
+/** Draws the playhead on top of everything in the lanes (child components paint over
+    the arrangement's own paint), and never over the track headers.
+*/
+class ArrangementView::PlayheadOverlay final : public juce::Component
+{
+public:
+    explicit PlayheadOverlay (ArrangementView& o) : owner (o)
+    {
+        setInterceptsMouseClicks (false, false);
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        auto x = owner.beatToX (owner.getPlayheadBeat()) - (float) getX();
+        g.setColour (playheadColour);
+        g.fillRect (juce::Rectangle<float> (x - 0.5f, 0.0f, 2.0f, (float) getHeight()));
+    }
+
+private:
+    ArrangementView& owner;
+};
+
 ArrangementView::ArrangementView (tracktion::Edit& e, LiveInstrument& l, MidiDeviceSettings& s)
     : edit (e), live (l), deviceSettings (s)
 {
@@ -24,6 +46,9 @@ ArrangementView::ArrangementView (tracktion::Edit& e, LiveInstrument& l, MidiDev
     };
     addAndMakeVisible (addTrackButton);
 
+    playheadOverlay = std::make_unique<PlayheadOverlay> (*this);
+    addAndMakeVisible (*playheadOverlay);
+
     edit.engine.getDeviceManager().addChangeListener (this);
     deviceSettings.addChangeListener (this);
     syncHeaders();
@@ -34,6 +59,7 @@ ArrangementView::ArrangementView (tracktion::Edit& e, LiveInstrument& l, MidiDev
 ArrangementView::~ArrangementView()
 {
     stopTimer();
+    playheadOverlay = nullptr;
     edit.engine.getDeviceManager().removeChangeListener (this);
     deviceSettings.removeChangeListener (this);
 }
@@ -147,7 +173,7 @@ void ArrangementView::paint (juce::Graphics& g)
         }
     }
 
-    auto playheadBeat = tempo.toBeats (edit.getTransport().getPosition()).inBeats();
+    auto playheadBeat = getPlayheadBeat();
 
     for (int i = 0; i < tracks.size(); ++i)
     {
@@ -230,13 +256,25 @@ void ArrangementView::paint (juce::Graphics& g)
         g.drawText ("No tracks", getLocalBounds(), juce::Justification::centred);
     }
 
-    // Playhead.
-    g.setColour (playheadColour);
-    g.drawVerticalLine ((int) beatToX (playheadBeat), 0.0f, (float) juce::jmax (lanesBottom, getHeight()));
+    // The playhead is drawn by playheadOverlay, above the track headers' row of children.
 }
+
+double ArrangementView::getPlayheadBeat() const
+{
+    // During the count-in the transport is before the song start; hold the playhead at the start.
+    return juce::jmax (0.0, edit.tempoSequence.toBeats (edit.getTransport().getPosition()).inBeats());
+}
+
+
 
 void ArrangementView::resized()
 {
+    if (playheadOverlay != nullptr)
+    {
+        playheadOverlay->setBounds (getLocalBounds().withTrimmedLeft (headerWidth));
+        playheadOverlay->toFront (false);
+    }
+
     for (size_t i = 0; i < headers.size(); ++i)
         headers[i]->setBounds (0, rulerHeight + (int) i * laneHeight, headerWidth, laneHeight);
 
@@ -281,7 +319,7 @@ void ArrangementView::timerCallback()
     if (transport.isRecording())
     {
         if (! recordStartBeat)
-            recordStartBeat = edit.tempoSequence.toBeats (transport.getPosition()).inBeats();
+            recordStartBeat = getPlayheadBeat();   // the count-in doesn't count
     }
     else
     {
@@ -295,6 +333,7 @@ void ArrangementView::timerCallback()
         header->refresh();
 
     repaint();
+    playheadOverlay->repaint();
 }
 
 } // namespace purrlude
