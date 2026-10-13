@@ -12,6 +12,39 @@ namespace
     const auto recordColour   = juce::Colour (0xffd55e00);   // vermillion
     const auto selectedColour = juce::Colour (0xff0072b2);   // blue
 
+    /** Draws a pan knob: the full range faintly, a fill from the centre to the current
+        position, and a pointer, so left/right reads at a glance.
+    */
+    struct PanKnobLook final : public juce::LookAndFeel_V4
+    {
+        void drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height, float position,
+                               float startAngle, float endAngle, juce::Slider&) override
+        {
+            auto bounds = juce::Rectangle<int> (x, y, width, height).toFloat().reduced (3.0f);
+            auto radius = juce::jmin (bounds.getWidth(), bounds.getHeight()) / 2.0f;
+            auto centre = bounds.getCentre();
+            auto arcRadius = radius - 3.0f;
+            auto angle = startAngle + position * (endAngle - startAngle);
+            auto middle = (startAngle + endAngle) / 2.0f;
+
+            juce::Path track;
+            track.addCentredArc (centre.x, centre.y, arcRadius, arcRadius, 0.0f, startAngle, endAngle, true);
+            g.setColour (juce::Colours::white.withAlpha (0.2f));
+            g.strokePath (track, juce::PathStrokeType (4.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+            if (std::abs (angle - middle) > 0.01f)
+            {
+                juce::Path fill;
+                fill.addCentredArc (centre.x, centre.y, arcRadius, arcRadius, 0.0f, middle, angle, true);
+                g.setColour (juce::Colour (0xff56b4e9));
+                g.strokePath (fill, juce::PathStrokeType (4.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+            }
+
+            g.setColour (juce::Colours::white);
+            g.drawLine (juce::Line<float> (centre, centre.getPointOnCircumference (arcRadius - 4.0f, angle)), 2.0f);
+        }
+    };
+
     // Instrument menu item IDs (ComboBox IDs must be non-zero).
     constexpr int currentToneId = 1;      // device mode: leave the device's tone alone
     constexpr int firstToneId = 2;        // device mode: tones
@@ -19,7 +52,7 @@ namespace
 }
 
 TrackHeader::TrackHeader (tracktion::Edit& e, LiveInstrument& l, MidiDeviceSettings& s, tracktion::EditItemID id)
-    : edit (e), live (l), deviceSettings (s), trackID (id)
+    : edit (e), live (l), deviceSettings (s), trackID (id), panKnobLook (std::make_unique<PanKnobLook>())
 {
     nameLabel.setFont (juce::FontOptions (15.0f, juce::Font::bold));
     nameLabel.setEditable (false, true);   // double-click to rename
@@ -96,6 +129,8 @@ TrackHeader::TrackHeader (tracktion::Edit& e, LiveInstrument& l, MidiDeviceSetti
     addAndMakeVisible (volumeSlider);
 
     panKnob.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
+    panKnob.setRotaryParameters (juce::MathConstants<float>::pi * 1.25f, juce::MathConstants<float>::pi * 2.75f, true);
+    panKnob.setLookAndFeel (panKnobLook.get());
     panKnob.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
     panKnob.setRange (-1.0, 1.0, 0.01);
     panKnob.setDoubleClickReturnValue (true, 0.0);
@@ -135,6 +170,11 @@ TrackHeader::TrackHeader (tracktion::Edit& e, LiveInstrument& l, MidiDeviceSetti
 
     updateChoices();
     refresh();
+}
+
+TrackHeader::~TrackHeader()
+{
+    panKnob.setLookAndFeel (nullptr);
 }
 
 void TrackHeader::refresh()
@@ -204,9 +244,9 @@ void TrackHeader::resized()
     r.removeFromTop (6);
     soundBox.setBounds (r.removeFromTop (24));
     r.removeFromTop (4);
-    auto mix = r.removeFromTop (26);
-    panKnob.setBounds (mix.removeFromRight (26));
-    volumeSlider.setBounds (mix.withTrimmedRight (4));
+    auto mix = r.removeFromTop (36);
+    panKnob.setBounds (mix.removeFromRight (36));
+    volumeSlider.setBounds (mix.withTrimmedRight (6));
 }
 
 void TrackHeader::mouseDown (const juce::MouseEvent& e)

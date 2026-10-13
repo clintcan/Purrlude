@@ -16,6 +16,7 @@ class TrackHeader final : public juce::Component
 {
 public:
     TrackHeader (tracktion::Edit&, LiveInstrument&, MidiDeviceSettings&, tracktion::EditItemID);
+    ~TrackHeader() override;
 
     tracktion::EditItemID getTrackID() const noexcept       { return trackID; }
 
@@ -49,6 +50,7 @@ private:
 
     juce::Label nameLabel;
     juce::TextButton armButton { "Arm" }, muteButton { "M" }, soloButton { "S" };
+    std::unique_ptr<juce::LookAndFeel> panKnobLook;   // declared before the knob that uses it
     juce::Slider volumeSlider, panKnob;
     float valueBeforeDrag = 0.0f;   ///< Volume or pan when a drag started (for its undo step)
     juce::ComboBox instrumentBox, soundBox;
