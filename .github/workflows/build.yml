@@ -1,8 +1,8 @@
 name: build
 
+# Manual only: run from the Actions tab or `gh workflow run build`.
 on:
-  push:
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   build:
