@@ -20,6 +20,18 @@ MainComponent::MainComponent (tracktion::Engine& e, BluetoothMidiManager& blueto
     devicesButton.setToggleState (true, juce::dontSendNotification);
     devicesButton.onClick = [this] { toggleDevicesPanel(); };
 
+    scoreButton.setClickingTogglesState (true);
+    scoreButton.setToggleState (true, juce::dontSendNotification);
+    scoreButton.setTooltip ("Show the Instrument track as sheet music");
+    scoreButton.onClick = [this]
+    {
+        if (scoreView != nullptr)
+            scoreView->setVisible (scoreButton.getToggleState());
+
+        resized();
+    };
+
+    addAndMakeVisible (scoreButton);
     addAndMakeVisible (audioSettingsButton);
     addAndMakeVisible (devicesButton);
     addAndMakeVisible (devicesPanel);
@@ -43,6 +55,7 @@ MainComponent::MainComponent (tracktion::Engine& e, BluetoothMidiManager& blueto
 MainComponent::~MainComponent()
 {
     stopTimer();
+    scoreView = nullptr;
     arrangement = nullptr;
     transportBar = nullptr;
     project = nullptr;
@@ -64,14 +77,18 @@ void MainComponent::setProject (std::unique_ptr<Project> newProject)
     jassert (newProject != nullptr);
 
     // UI that references the old Edit must go before it does.
+    scoreView = nullptr;
     arrangement = nullptr;
     transportBar = nullptr;
     project = std::move (newProject);
 
     transportBar = std::make_unique<TransportBar> (project->getEdit());
     arrangement = std::make_unique<ArrangementView> (project->getEdit(), project->getInstrument());
+    scoreView = std::make_unique<ScoreView> (project->getEdit(), project->getInstrument());
     addAndMakeVisible (*transportBar);
     addAndMakeVisible (*arrangement);
+    addChildComponent (*scoreView);
+    scoreView->setVisible (scoreButton.getToggleState());
 
     // Keep keyboard focus here so Space/R always reach the transport rather
     // than "clicking" whichever button was pressed last.
@@ -348,12 +365,17 @@ void MainComponent::resized()
 
     devicesButton.setBounds (toolbar.removeFromRight (136).reduced (6));
     audioSettingsButton.setBounds (toolbar.removeFromRight (186).reduced (6));
+    scoreButton.setBounds (toolbar.removeFromRight (86).reduced (6));
 
     if (transportBar != nullptr)
         transportBar->setBounds (toolbar);
 
     if (devicesPanel.isVisible())
         devicesPanel.setBounds (r.removeFromRight (MidiDevicesPanel::preferredWidth));
+
+    // The score takes the lower part of the window; the arrangement keeps at least a lane or two.
+    if (scoreView != nullptr && scoreView->isVisible())
+        scoreView->setBounds (r.removeFromBottom (juce::jmax (0, juce::jmin (r.getHeight() - 160, (int) (r.getHeight() * 0.6f)))));
 
     if (arrangement != nullptr)
         arrangement->setBounds (r);

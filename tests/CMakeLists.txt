@@ -8,6 +8,8 @@ target_sources(PurrludeTests PRIVATE
     BluetoothMidiManagerTests.cpp
     LiveInstrumentTests.cpp
     ProjectTests.cpp
+    NotationTests.cpp
+    ScoreRenderTests.cpp
     $<$<PLATFORM_ID:Windows>:BleMidiGattProbe_windows.cpp>
 )
 

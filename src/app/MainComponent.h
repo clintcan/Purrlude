@@ -4,6 +4,7 @@
 #include "model/Project.h"
 #include "ui/ArrangementView.h"
 #include "ui/MidiDevicesPanel.h"
+#include "ui/ScoreView.h"
 #include "ui/TransportBar.h"
 
 #include <tracktion_engine/tracktion_engine.h>
@@ -14,8 +15,8 @@ namespace purrlude
 /** Top-level content of the main window.
 
     Owns the open Project (and swaps it on New/Open/recovery), the transport
-    bar, the arrangement view and the MIDI devices panel, and provides the
-    menu bar.
+    bar, the arrangement view, the score view and the MIDI devices panel, and
+    provides the menu bar.
 
     Shortcuts: Space play/stop, R record, Home return to start,
     Cmd/Ctrl+Z undo, Cmd/Ctrl+Shift+Z redo, Cmd/Ctrl+N/O/S new/open/save,
@@ -68,10 +69,12 @@ private:
     std::unique_ptr<Project> project;
     std::unique_ptr<TransportBar> transportBar;
     std::unique_ptr<ArrangementView> arrangement;
+    std::unique_ptr<ScoreView> scoreView;
     std::unique_ptr<juce::FileChooser> fileChooser;
 
     juce::TextButton audioSettingsButton { "Audio/MIDI Settings" };
     juce::TextButton devicesButton { "MIDI Devices" };
+    juce::TextButton scoreButton { "Score" };
     MidiDevicesPanel devicesPanel;
 
     int ticksSinceAutosave = 0;

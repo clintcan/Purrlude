@@ -34,6 +34,8 @@ CPMAddPackage(
 )
 add_subdirectory(${tracktion_engine_SOURCE_DIR}/modules ${CMAKE_BINARY_DIR}/tracktion_engine)
 
+include(cmake/Verovio.cmake)
+
 # ------------------------------------------------------------------------------
 # Purrlude core: everything except the app shell, so tests can link it.
 # An INTERFACE library because JUCE modules are compiled into each final target;
@@ -52,8 +54,21 @@ target_sources(purrlude_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/LiveInstrument.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/Project.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/Project.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/notation/Score.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/notation/NotationBuilder.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/notation/NotationBuilder.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/notation/MusicXmlWriter.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/notation/MusicXmlWriter.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/notation/TrackNotation.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/notation/TrackNotation.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/notation/ScoreRenderer.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/notation/ScoreRenderer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/MidiDevicesPanel.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/MidiDevicesPanel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/ScoreSvg.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/ScoreSvg.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/ScoreView.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/ScoreView.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/TransportBar.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/TransportBar.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/ArrangementView.h
@@ -72,6 +87,8 @@ target_compile_definitions(purrlude_core INTERFACE
     JUCE_STRICT_REFCOUNTEDPOINTER=1
     JUCE_DISPLAY_SPLASH_SCREEN=0
     TRACKTION_ENABLE_TIMESTRETCH_SOUNDTOUCH=1
+    # Development fallback for Verovio's fonts; release builds use the copy next to the app.
+    PURRLUDE_VEROVIO_DATA="${PURRLUDE_VEROVIO_DATA}"
 )
 
 target_link_libraries(purrlude_core INTERFACE
@@ -81,6 +98,7 @@ target_link_libraries(purrlude_core INTERFACE
     juce::juce_audio_devices
     juce::juce_audio_processors
     juce::juce_audio_utils
+    purrlude_verovio
 )
 
 if(WIN32)
@@ -130,6 +148,19 @@ target_link_libraries(Purrlude PRIVATE
     juce::juce_recommended_config_flags
     juce::juce_recommended_lto_flags
     juce::juce_recommended_warning_flags
+)
+
+# Verovio's fonts and glyph files ship with the app (see ScoreRenderer::findResourceDirectory).
+if(APPLE)
+    set(PURRLUDE_VEROVIO_DEST "$<TARGET_BUNDLE_CONTENT_DIR:Purrlude>/Resources/verovio")
+else()
+    set(PURRLUDE_VEROVIO_DEST "$<TARGET_FILE_DIR:Purrlude>/verovio")
+endif()
+
+add_custom_command(TARGET Purrlude POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${PURRLUDE_VEROVIO_DATA}" "${PURRLUDE_VEROVIO_DEST}"
+    COMMENT "Copying Verovio resources"
+    VERBATIM
 )
 
 # ------------------------------------------------------------------------------

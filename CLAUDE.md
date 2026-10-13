@@ -81,9 +81,9 @@ These are what set Purrlude apart. Treat them as first-class, not add-ons.
 | Framework | JUCE 8 (pinned to the commit Tracktion Engine v3.2.0 ships with) | AGPLv3 / commercial |
 | DAW engine | Tracktion Engine v3.2.0 (Edit model, tracks, clips, automation, recording, plugin hosting) | GPLv3 / commercial |
 | UI | JUCE components with a custom LookAndFeel | — |
-| Score rendering | Verovio (MusicXML/MEI → SVG) _(planned)_ | LGPLv3 |
+| Score rendering | Verovio 6.3.0 (MusicXML → SVG), built statically by `cmake/Verovio.cmake` | LGPLv3 |
 | PDF export | Verovio SVG → PDF via Skia PDF backend or cairo + librsvg _(planned)_ | BSD / LGPL |
-| Notation cleanup | In-house (quantize, voice separation, spelling, ties) _(planned)_ | — |
+| Notation cleanup | In-house (`src/notation/`): quantize, key estimate, spelling, staves, ties; MusicXML export | — |
 | Audio → MIDI (polyphonic) | Spotify basic-pitch model on ONNX Runtime _(planned)_ | Apache 2.0 / MIT |
 | Audio → MIDI (monophonic) | In-house pYIN _(planned)_ | — |
 | Audio → MIDI (drums) | Onset detection + small ONNX classifier _(planned)_ | — |
@@ -124,12 +124,13 @@ cmake/CPM.cmake         Vendored CPM.cmake v0.40.2
 src/app/                Application shell (JUCEApplication, main window)
 src/devices/            Audio/MIDI/Bluetooth device layer
 src/model/              Project model on top of tracktion::Edit (Project, LiveInstrument)
+src/notation/           Notation layer: performed notes -> Score -> MusicXML (no UI)
 src/ui/                 UI components (TransportBar, ArrangementView, MidiDevicesPanel)
 tests/                  Catch2 test runner (PurrludeTests)
 .github/workflows/      CI for Windows, macOS, Linux
 ```
 
-Planned directories as the architecture layers land: `src/notation/`, `src/analysis/`, `content/`.
+Planned directories as the architecture layers land: `src/analysis/`, `content/`.
 
 ### Projects
 
@@ -140,6 +141,40 @@ Planned directories as the architecture layers land: `src/notation/`, `src/analy
 - **Recovery:** a clean close deletes the autosave. Anything left over at launch is offered for recovery.
 - **Unsaved changes:** these come from `Edit::hasChangedSinceSaved()`. Tracktion starts tracking changes only after the message loop runs, so tests must pump it before editing.
 - **New projects:** setup (inserting the synth, metronome and count-in defaults) doesn't count as a change.
+
+### Notation
+
+`src/notation/` turns a track's notes into a `notation::Score` and writes it as MusicXML. `NotationBuilder` has no Tracktion dependency; `TrackNotation` reads the notes from an `AudioTrack`.
+
+**Pipeline:**
+1. Snap note timing to a grid. `chooseGrid` picks 8ths unless at least a quarter of the onsets sit on off-beat 16ths, because a 16th grid turns loose playing into ties.
+2. Merge repeated same-pitch notes.
+3. Estimate the key (Krumhansl-Schmuckler).
+4. Choose the staves: a single staff if every note is within two ledger lines of it, otherwise a grand staff split at middle C.
+5. Lay out one voice per staff: each chord lasts until the next onset, and gaps become rests.
+6. Split notes at barlines into readable values with ties. Dotted values start only on strong subdivisions.
+7. Spell pitches for the key.
+
+MusicXML uses 48 divisions per quarter and writes accidentals explicitly, once per measure and staff.
+
+**Not handled yet:** triplets, multiple voices per staff, tempo or time-signature changes, and transposing instruments.
+
+**On-screen score:** `ScoreView` (`src/ui/`) rebuilds the MusicXML twice a second on the message thread, skipping while recording. When it changes, a background thread engraves it with `notation::ScoreRenderer` (Verovio). Verovio has global state, so it is only ever used from that one thread.
+
+JUCE's SVG parser can't draw Verovio's output directly. `prepareVerovioSvg` fixes it:
+- Glyph `<use>` references become inline copies of their definitions.
+- `currentColor` becomes the ink colour.
+- `<style>` is replaced by a stroke attribute on the root.
+
+The drawing is scaled to the SVG's declared pixel size (`getSvgDisplaySize`), because its coordinates are in Verovio's internal units.
+
+The on-screen score leaves out the metronome mark, whose note symbol needs a SMuFL text font.
+
+Verovio's `data/` folder (fonts and glyph files) is copied into the app (`Contents/Resources/verovio` on macOS, `verovio/` next to the exe elsewhere). Dev builds and tests fall back to the source tree via `PURRLUDE_VEROVIO_DATA`.
+
+Verovio 6.3.0's `NO_EDIT_SUPPORT` doesn't compile, so leave it off.
+
+**Checking real recordings:** `PURRLUDE_PROJECT=/path/song.purrlude PurrludeTests "[takes]" -s` writes `song.musicxml` and prints each measure.
 
 `purrlude_core` is a CMake **INTERFACE** library: JUCE modules are compiled into each final target, so core sources are compiled into both the app and the test runner. Add new non-UI-shell sources to `purrlude_core`, not to the `Purrlude` target.
 
