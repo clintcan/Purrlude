@@ -5,6 +5,8 @@ namespace purrlude
 
 #if JUCE_WINDOWS
 std::unique_ptr<BleMidiService> createWindowsBleMidiService();
+#elif JUCE_MAC
+std::unique_ptr<BleMidiService> createMacBleMidiService();
 #endif
 
 namespace
@@ -28,8 +30,10 @@ std::unique_ptr<BleMidiService> BleMidiService::createForPlatform()
 {
    #if JUCE_WINDOWS
     return createWindowsBleMidiService();
+   #elif JUCE_MAC
+    return createMacBleMidiService();
    #else
-    // TODO: macOS/iOS, Linux and Android backends (see CLAUDE.md, "Bluetooth MIDI backends").
+    // TODO: iOS, Linux and Android backends (see CLAUDE.md, "Bluetooth MIDI backends").
     return std::make_unique<UnavailableBleMidiService>();
    #endif
 }

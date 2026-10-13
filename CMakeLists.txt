@@ -45,6 +45,7 @@ target_sources(purrlude_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/devices/BleMidiService.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/devices/BleMidiService.cpp
     $<$<PLATFORM_ID:Windows>:${CMAKE_CURRENT_SOURCE_DIR}/src/devices/BleMidiService_windows.cpp>
+    $<$<PLATFORM_ID:Darwin>:${CMAKE_CURRENT_SOURCE_DIR}/src/devices/BleMidiService_mac.mm>
 )
 
 target_include_directories(purrlude_core INTERFACE src)
@@ -83,6 +84,8 @@ endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     target_compile_options(purrlude_core INTERFACE "-fno-aligned-allocation")
+    # CoreBluetooth discovers BLE MIDI devices; CoreMIDI's Bluetooth driver then owns the link.
+    target_link_libraries(purrlude_core INTERFACE "-framework CoreBluetooth" "-framework CoreMIDI")
 endif()
 
 # ------------------------------------------------------------------------------

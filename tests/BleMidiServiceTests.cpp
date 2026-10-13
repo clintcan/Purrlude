@@ -33,7 +33,7 @@ TEST_CASE ("Operations on unknown devices are reported, not fatal", "[devices][b
 
     REQUIRE (service->getDevices().empty());
 
-   #if JUCE_WINDOWS
+   #if JUCE_WINDOWS || JUCE_MAC
     REQUIRE (errors.size() == 1);
    #endif
 }
@@ -82,17 +82,21 @@ namespace
         void handleIncomingMidiMessage (juce::MidiInput*, const juce::MidiMessage& m) override
         {
             if (m.isNoteOn())
+            {
                 ++noteOns;
+                noteOnChannels.fetch_or (1 << (m.getChannel() - 1));
+            }
 
             ++messages;
         }
 
-        std::atomic<int> messages { 0 }, noteOns { 0 };
+        std::atomic<int> messages { 0 }, noteOns { 0 }, noteOnChannels { 0 };
     };
 }
 
 // Manual hardware check: connects to the first BLE MIDI device found (or the one whose
-// name contains PURRLUDE_BLE_DEVICE), plays a short arpeggio and listens for input.
+// name contains PURRLUDE_BLE_DEVICE), plays a short arpeggio on channel PURRLUDE_BLE_CHANNEL
+// (default 1; Roland GO:KEYS plays its keyboard part on channel 4) and listens for input.
 //   PurrludeTests "Connect and exchange MIDI" -s
 TEST_CASE ("Connect and exchange MIDI with a Bluetooth device", "[.][hardware][ble]")
 {
@@ -103,6 +107,7 @@ TEST_CASE ("Connect and exchange MIDI with a Bluetooth device", "[.][hardware][b
     service->onError = [&] (const juce::String&, const juce::String& message) { lastError = message; };
 
     auto wanted = juce::SystemStats::getEnvironmentVariable ("PURRLUDE_BLE_DEVICE", {});
+    auto channel = juce::jlimit (1, 16, juce::SystemStats::getEnvironmentVariable ("PURRLUDE_BLE_CHANNEL", "1").getIntValue());
 
     auto findDevice = [&]() -> std::optional<purrlude::BleMidiDevice>
     {
@@ -134,7 +139,7 @@ TEST_CASE ("Connect and exchange MIDI with a Bluetooth device", "[.][hardware][b
     REQUIRE (lastError.isEmpty());
     WARN ("Bluetooth link connected");
 
-    // Wait for JUCE (WinRT MIDI) to expose the device's ports.
+    // Wait for JUCE (WinRT MIDI on Windows, CoreMIDI on macOS) to expose the device's ports.
     auto findPort = [&] (const juce::Array<juce::MidiDeviceInfo>& ports) -> std::optional<juce::MidiDeviceInfo>
     {
         auto prefix = device.name.upToFirstOccurrenceOf (" ", false, false);
@@ -183,9 +188,9 @@ TEST_CASE ("Connect and exchange MIDI with a Bluetooth device", "[.][hardware][b
 
     for (int note : { 60, 64, 67, 72 })
     {
-        output->sendMessageNow (juce::MidiMessage::noteOn (1, note, (juce::uint8) 100));
+        output->sendMessageNow (juce::MidiMessage::noteOn (channel, note, (juce::uint8) 100));
         runLoopUntil ([] { return false; }, 300);
-        output->sendMessageNow (juce::MidiMessage::noteOff (1, note));
+        output->sendMessageNow (juce::MidiMessage::noteOff (channel, note));
         logState ("sent note " + juce::String (note));
     }
 
@@ -195,7 +200,29 @@ TEST_CASE ("Connect and exchange MIDI with a Bluetooth device", "[.][hardware][b
     WARN ("Timeline:\n" << timeline.joinIntoString ("\n"));
     WARN ("Last error: " << (lastError.isEmpty() ? juce::String ("none") : lastError));
 
+    WARN ("Sent arpeggio on channel " << channel);
     WARN ("Received " << counter.messages.load() << " MIDI messages (" << counter.noteOns.load() << " note-ons)");
 
+    juce::StringArray inputChannels;
+    for (int ch = 1; ch <= 16; ++ch)
+        if ((counter.noteOnChannels.load() & (1 << (ch - 1))) != 0)
+            inputChannels.add (juce::String (ch));
+
+    WARN ("Note-ons arrived on channel(s): " << (inputChannels.isEmpty() ? juce::String ("none") : inputChannels.joinIntoString (", ")));
+
     service->disconnect (device.id);
+
+    bool disconnected = runLoopUntil ([&]
+    {
+        auto d = findDevice();
+        return d && ! d->connected;
+    }, 10000);
+
+    // Stay a little longer to catch the OS reconnecting the device on its own.
+    runLoopUntil ([] { return false; }, 5000);
+    auto after = findDevice();
+    WARN ("After disconnect: " << (after && after->connected ? "connected" : "disconnected"));
+
+    REQUIRE (disconnected);
+    REQUIRE_FALSE ((after && after->connected));
 }

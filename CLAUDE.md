@@ -98,7 +98,8 @@ These are what set Purrlude apart. Treat them as first-class, not add-ons.
 
 All behind `purrlude::BleMidiService` (`src/devices/BleMidiService.h`). A connected device appears as an ordinary MIDI port to the rest of the app.
 
-- macOS / iOS: CoreMIDI BLE (JUCE's `BluetoothMidiDevicePairingDialogue` on iOS)
+- macOS (`src/devices/BleMidiService_mac.mm`, implemented, macOS 13+): CoreBluetooth scans and connects, subscribes to the MIDI I/O characteristic, then calls `MIDIBluetoothDriverActivateAllConnections()` (on the message thread; it fails with -304 from a background queue) so Apple's Bluetooth MIDI driver takes over the link and publishes a CoreMIDI device. CoreMIDI devices are matched to peripherals by advertised name. No public API removes a pairing, so `forget()` only disconnects. The test runner embeds `tests/PurrludeTests-Info.plist` for Bluetooth permission. Tested with a Roland GO:KEYS 5: it sends on channel 1 but only plays incoming notes on channel 4 (run the hardware test with `PURRLUDE_BLE_CHANNEL=4`), and it can wedge (CoreMIDI shows it online with no ports, no advertising) after a quick disconnect/reconnect; power-cycling the keyboard recovers it.
+- iOS: JUCE's `BluetoothMidiDevicePairingDialogue` / the same CoreBluetooth + CoreMIDI flow
 - Android: JUCE's pairing dialogue / Android MidiManager
 - Windows (`src/devices/BleMidiService_windows.cpp`, implemented): C++/WinRT `BluetoothLEAdvertisementWatcher` for discovery, custom pairing (just-works/confirm-only; PIN devices must be paired in Windows Settings), and a `GattSession` with `MaintainConnection` to hold the link. MIDI I/O goes through JUCE with `JUCE_USE_WINRT_MIDI=1`, which exposes connected BLE devices as normal MIDI ports. Windows MIDI Services can replace this later.
 - Linux: BlueZ over D-Bus for discovery/pairing; BlueZ's MIDI profile exposes connected devices as ALSA sequencer ports
