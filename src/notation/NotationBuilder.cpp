@@ -265,6 +265,39 @@ Pitch spell (int midiNote, KeySignature key)
     return make (0, 0);   // unreachable: every pitch class is a letter or a letter +/- 1
 }
 
+Pitch drumPitch (int gmNote)
+{
+    struct Position { char step; int octave; const char* notehead; bool open = false; };
+
+    auto position = [gmNote]() -> Position
+    {
+        switch (gmNote)
+        {
+            case 35: case 36:                       return { 'F', 4, "" };           // kick
+            case 38: case 40:                       return { 'C', 5, "" };           // snare
+            case 37: case 39:                       return { 'C', 5, "x" };          // side stick, clap
+            case 48: case 50:                       return { 'E', 5, "" };           // high toms
+            case 45: case 47:                       return { 'D', 5, "" };           // mid toms
+            case 41: case 43:                       return { 'A', 4, "" };           // floor toms
+            case 42:                                return { 'G', 5, "x" };          // closed hi-hat
+            case 46:                                return { 'G', 5, "x", true };    // open hi-hat
+            case 44:                                return { 'D', 4, "x" };          // pedal hi-hat
+            case 49: case 52: case 55: case 57:     return { 'A', 5, "x" };          // crash, china, splash
+            case 51: case 59:                       return { 'F', 5, "x" };          // ride
+            case 53:                                return { 'F', 5, "diamond" };    // ride bell
+            default:                                return { 'D', 5, "x" };          // other percussion
+        }
+    }();
+
+    Pitch p;
+    p.step = position.step;
+    p.octave = position.octave;
+    p.midi = gmNote;
+    p.notehead = position.notehead;
+    p.open = position.open;
+    return p;
+}
+
 std::vector<NoteValue> splitIntoNoteValues (int startInMeasure, int length)
 {
     // Each value may only start where its alignment divides the position. Plain values align
@@ -323,16 +356,17 @@ Score buildMultiPartScore (const std::vector<PartNotes>& parts, TimeSignature ti
     score.time = time;
     score.tempoBpm = tempoBpm;
 
-    // One key for the whole score, from every part's notes.
+    // One key for the whole score, from every pitched part's notes.
     std::vector<NoteEvent> allNotes;
 
     for (const auto& p : parts)
-        allNotes.insert (allNotes.end(), p.notes.begin(), p.notes.end());
+        if (! p.percussion)
+            allNotes.insert (allNotes.end(), p.notes.begin(), p.notes.end());
 
     score.key = options.key ? *options.key : estimateKey (allNotes);
 
     for (const auto& p : parts)
-        score.parts.push_back (buildPart (p.notes, time, score.key, options, p.name, 1));
+        score.parts.push_back (buildPart (p.notes, time, score.key, options, p.name, 1, p.percussion));
 
     // Every part has the same number of measures: pad the shorter ones with rests.
     size_t numMeasures = 0;
@@ -342,20 +376,62 @@ Score buildMultiPartScore (const std::vector<PartNotes>& parts, TimeSignature ti
 
     for (size_t i = 0; i < score.parts.size(); ++i)
         if (score.parts[i].measures.size() < numMeasures)
-            score.parts[i] = buildPart (parts[i].notes, time, score.key, options, parts[i].name, (int) numMeasures);
+            score.parts[i] = buildPart (parts[i].notes, time, score.key, options, parts[i].name,
+                                        (int) numMeasures, parts[i].percussion);
 
     return score;
 }
 
 Part buildPart (const std::vector<NoteEvent>& performed, TimeSignature time, KeySignature key,
-                const BuildOptions& options, const std::string& partName, int minMeasures)
+                const BuildOptions& options, const std::string& partName, int minMeasures, bool percussion)
 {
     auto grid = options.gridTicks > 0 ? options.gridTicks : chooseGrid (performed);
-    auto notes = removeSamePitchOverlaps (quantize (performed, grid));
+    auto notes = quantize (performed, grid);
+    auto measureTicks = time.getMeasureTicks();
 
-    // Choose one staff when the music fits a clef comfortably, otherwise a grand staff.
+    // A note played just before the music ends stays inside it, rather than rounding up
+    // into a bar of its own.
+    double performedEnd = 0.0;
+
+    for (const auto& n : performed)
+        performedEnd = std::max (performedEnd, n.start + n.length);
+
+    auto endTicks = (int) std::ceil (performedEnd * ticksPerQuarter - 1e-6);
+
+    for (auto& n : notes)
+    {
+        if (n.start >= endTicks && endTicks > 0)
+        {
+            n.start = std::max (0, (endTicks - 1) / grid * grid);
+            n.length = grid;
+        }
+    }
+
+    notes = removeSamePitchOverlaps (std::move (notes));
+
     Part part;
     part.name = partName;
+    part.percussion = percussion;
+
+    if (percussion)
+    {
+        // Drum hits are short; written, each lasts until the next hit (or the barline).
+        std::vector<int> onsets;
+
+        for (const auto& n : notes)
+            onsets.push_back (n.start);
+
+        std::sort (onsets.begin(), onsets.end());
+
+        for (auto& n : notes)
+        {
+            auto barline = (n.start / measureTicks + 1) * measureTicks;
+            auto next = std::upper_bound (onsets.begin(), onsets.end(), n.start);
+            n.length = std::min (barline, next != onsets.end() ? *next : barline) - n.start;
+        }
+    }
+
+    // Choose one staff when the music fits a clef comfortably, otherwise a grand staff.
 
     int lowest = 127, highest = 0;
     double sum = 0.0;
@@ -374,7 +450,9 @@ Part buildPart (const std::vector<NoteEvent>& performed, TimeSignature time, Key
     bool fitsTreble = notes.empty() || lowest >= trebleLowest;
     bool fitsBass = ! notes.empty() && highest <= bassHighest;
 
-    if (fitsTreble && (! fitsBass || average >= 60.0))
+    if (percussion)
+        part.clefs = { Clef::percussion };
+    else if (fitsTreble && (! fitsBass || average >= 60.0))
         part.clefs = { Clef::treble };
     else if (fitsBass)
         part.clefs = { Clef::bass };
@@ -387,7 +465,6 @@ Part buildPart (const std::vector<NoteEvent>& performed, TimeSignature time, Key
     for (const auto& n : notes)
         staffNotes[numStaves == 1 || n.pitch >= options.splitPitch ? 0 : 1].push_back (n);
 
-    auto measureTicks = time.getMeasureTicks();
     int end = 0;
 
     for (const auto& n : notes)
@@ -406,7 +483,19 @@ Part buildPart (const std::vector<NoteEvent>& performed, TimeSignature time, Key
             std::vector<Pitch> pitches;
 
             for (auto midi : segment.pitches)
-                pitches.push_back (spell (midi, key));
+            {
+                if (! percussion)
+                {
+                    pitches.push_back (spell (midi, key));
+                    continue;
+                }
+
+                // Drums that share a position (e.g. open and closed hi-hat) are written once.
+                auto drum = drumPitch (midi);
+
+                if (std::none_of (pitches.begin(), pitches.end(), [&] (const Pitch& p) { return p.step == drum.step && p.octave == drum.octave; }))
+                    pitches.push_back (drum);
+            }
 
             bool firstPiece = true;
 
@@ -436,9 +525,11 @@ Part buildPart (const std::vector<NoteEvent>& performed, TimeSignature time, Key
                     e.duration = value.ticks;
                     e.type = value.type;
                     e.dots = value.dots;
-                    e.pitches = pitches;
+                    // A drum hit isn't held: whatever its value doesn't cover becomes rests.
+                    if (! percussion || firstPiece)
+                        e.pitches = pitches;
 
-                    if (! pitches.empty())
+                    if (! pitches.empty() && ! percussion)
                     {
                         e.tieStop = ! firstPiece;
                         e.tieStart = position + measureStart + value.ticks < segment.end;

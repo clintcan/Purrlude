@@ -253,6 +253,133 @@ TEST_CASE ("A multi-part score shares one key and length", "[notation]")
     REQUIRE (partCount == 2);
 }
 
+TEST_CASE ("Drum parts are written as drum notation", "[notation]")
+{
+    // Kick, snare and closed hi-hats on 8ths, with an open hi-hat on the last 8th.
+    std::vector<NoteEvent> drums;
+
+    for (int i = 0; i < 8; ++i)
+        drums.push_back ({ i * 0.5, 0.1, i == 7 ? 46 : 42, 90 });
+
+    drums.push_back ({ 0.0, 0.1, 36, 100 });
+    drums.push_back ({ 1.0, 0.1, 38, 100 });
+    drums.push_back ({ 2.0, 0.1, 36, 100 });
+    drums.push_back ({ 3.0, 0.1, 38, 100 });
+    drums.push_back ({ 3.5, 0.1, 42, 60 });   // shares the open hi-hat's position: written once
+
+    auto melody = scale ({ 62, 64, 66, 67 });   // D major
+    auto score = buildMultiPartScore ({ { "Melody", melody }, { "Drums", drums, true } }, {});
+
+    REQUIRE (score.key.fifths == 2);   // from the melody only
+    const auto& part = score.parts[1];
+    REQUIRE (part.percussion);
+    REQUIRE (part.clefs == std::vector<Clef> { Clef::percussion });
+    REQUIRE (part.measures.size() == 1);
+
+    // Eight 8th-note hits, no rests or ties: each lasts until the next.
+    const auto& events = part.measures[0].staves[0];
+    REQUIRE (events.size() == 8);
+
+    for (const auto& e : events)
+    {
+        REQUIRE (e.type == "eighth");
+        REQUIRE_FALSE (e.tieStart);
+        REQUIRE_FALSE (e.isRest());
+    }
+
+    REQUIRE (events[0].pitches.size() == 2);                      // kick + hi-hat
+    REQUIRE (events[0].pitches[0].step == 'F');                  // kick on F4
+    REQUIRE (events[0].pitches[1].step == 'G');                  // hi-hat on G5
+    REQUIRE (events[0].pitches[1].notehead == "x");
+    REQUIRE (events[2].pitches[0].step == 'C');                  // snare on C5
+    REQUIRE (events[7].pitches.size() == 1);
+    REQUIRE (events[7].pitches[0].notehead == "x");              // closed, sorted first
+
+    auto doc = juce::parseXML (toMusicXml (score));
+    REQUIRE (doc != nullptr);
+    auto* drumPart = doc->getChildByName ("part")->getNextElementWithTagName ("part");
+    auto* measure = drumPart->getChildByName ("measure");
+    auto* attributes = measure->getChildByName ("attributes");
+
+    REQUIRE (attributes->getChildByName ("key")->getChildByName ("fifths")->getAllSubText() == "0");
+    REQUIRE (attributes->getChildByName ("clef")->getChildByName ("sign")->getAllSubText() == "percussion");
+
+    auto* note = measure->getChildByName ("note");
+    REQUIRE (note->getChildByName ("pitch") == nullptr);
+    REQUIRE (note->getChildByName ("unpitched")->getChildByName ("display-step")->getAllSubText() == "F");
+    REQUIRE (note->getChildByName ("unpitched")->getChildByName ("display-octave")->getAllSubText() == "4");
+    REQUIRE (note->getChildByName ("accidental") == nullptr);
+    REQUIRE (note->getChildByName ("stem")->getAllSubText() == "up");
+    REQUIRE (note->getNextElementWithTagName ("note")->getChildByName ("notehead")->getAllSubText() == "x");
+
+    // 8ths beamed in pairs (beams on each chord's first note).
+    REQUIRE (note->getChildByName ("beam")->getAllSubText() == "begin");
+    REQUIRE (note->getNextElementWithTagName ("note")->getChildByName ("beam") == nullptr);
+
+    // The open hi-hat is an x with an "o".
+    auto* lastNote = measure->getChildByName ("note");
+
+    for (auto* n = lastNote; n != nullptr; n = n->getNextElementWithTagName ("note"))
+        lastNote = n;
+
+    REQUIRE (lastNote->getChildByName ("beam")->getAllSubText() == "end");
+    REQUIRE (lastNote->getChildByName ("notations") == nullptr);   // the closed hi-hat won
+}
+
+TEST_CASE ("Short notes are beamed within each beat", "[notation]")
+{
+    // An 8th, two 16ths, then a dotted 8th + 16th, then a lone 8th and an 8th rest.
+    std::vector<NoteEvent> notes { { 0.0, 0.5, 72, 100 }, { 0.5, 0.25, 74, 100 }, { 0.75, 0.25, 76, 100 },
+                                   { 1.0, 0.75, 77, 100 }, { 1.75, 0.25, 79, 100 }, { 2.0, 0.5, 81, 100 },
+                                   { 3.0, 1.0, 83, 100 } };
+
+    auto doc = juce::parseXML (toMusicXml (buildScore (notes, {}, { .gridTicks = q / 4 })));
+    std::vector<juce::StringArray> beams;
+
+    for (auto* note : doc->getChildByName ("part")->getChildByName ("measure")->getChildWithTagNameIterator ("note"))
+    {
+        juce::StringArray levels;
+
+        for (auto* beam : note->getChildWithTagNameIterator ("beam"))
+            levels.add (beam->getAllSubText());
+
+        beams.push_back (levels);
+    }
+
+    REQUIRE (beams.size() == 8);
+    REQUIRE (beams[0] == juce::StringArray { "begin" });
+    REQUIRE (beams[1] == juce::StringArray { "continue", "begin" });
+    REQUIRE (beams[2] == juce::StringArray { "end", "end" });
+    REQUIRE (beams[3] == juce::StringArray { "begin" });
+    REQUIRE (beams[4] == juce::StringArray { "end", "backward hook" });
+    REQUIRE (beams[5].isEmpty());   // alone in its beat
+    REQUIRE (beams[6].isEmpty());   // rest
+    REQUIRE (beams[7].isEmpty());   // quarter
+}
+
+TEST_CASE ("A lone drum hit is followed by rests, not held", "[notation]")
+{
+    // A crash on beat 1 and nothing else.
+    auto part = buildPart ({ { 0.0, 0.1, 49, 100 } }, {}, {}, {}, "Drums", 1, true);
+    const auto& events = part.measures[0].staves[0];
+
+    REQUIRE (events.size() == 1);
+    REQUIRE (events[0].type == "whole");
+    REQUIRE (events[0].pitches[0].step == 'A');
+    REQUIRE (events[0].pitches[0].octave == 5);
+    REQUIRE (events[0].pitches[0].notehead == "x");
+
+    // From beat 2 the rest of the measure is a quarter + half: the hit is the quarter.
+    part = buildPart ({ { 1.0, 0.1, 36, 100 } }, {}, {}, {}, "Drums", 1, true);
+    const auto& later = part.measures[0].staves[0];
+    REQUIRE (later.size() == 3);
+    REQUIRE (later[0].isRest());
+    REQUIRE_FALSE (later[1].isRest());
+    REQUIRE (later[1].type == "quarter");
+    REQUIRE (later[2].isRest());
+    REQUIRE_FALSE (later[1].tieStart);
+}
+
 //==============================================================================
 #include "model/Project.h"
 #include "notation/ScorePdf.h"

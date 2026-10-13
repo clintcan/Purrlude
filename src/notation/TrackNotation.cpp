@@ -1,5 +1,7 @@
 #include "TrackNotation.h"
 
+#include "model/TrackInstrument.h"
+
 namespace purrlude::notation
 {
 
@@ -47,7 +49,7 @@ Score buildEditScore (tracktion::Edit& edit, const std::string& title, const Bui
 
     for (auto* track : tracks)
         if (auto notes = getTrackNotes (*track); ! notes.empty())
-            parts.push_back ({ track->getName().toStdString(), std::move (notes) });
+            parts.push_back ({ track->getName().toStdString(), std::move (notes), TrackInstrument (edit, *track).playsDrumKit() });
 
     if (parts.empty() && ! tracks.isEmpty())
         parts.push_back ({ tracks[0]->getName().toStdString(), {} });
@@ -61,8 +63,8 @@ Score buildTrackScore (tracktion::AudioTrack& track, const std::string& title, c
     auto& edit = track.edit;
     auto bpm = edit.tempoSequence.getTempo (0) != nullptr ? edit.tempoSequence.getTempo (0)->getBpm() : 120.0;
 
-    return buildScore (getTrackNotes (track), getTimeSignature (edit), options,
-                       title, track.getName().toStdString(), bpm);
+    return buildMultiPartScore ({ { track.getName().toStdString(), getTrackNotes (track), TrackInstrument (edit, track).playsDrumKit() } },
+                                getTimeSignature (edit), options, title, bpm);
 }
 
 } // namespace purrlude::notation

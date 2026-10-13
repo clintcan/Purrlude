@@ -18,6 +18,15 @@ namespace
 LiveInstrument::LiveInstrument (tracktion::Edit& e)
     : edit (e)
 {
+    // Tracktion creates the scene list undoably the first time a track is added, which
+    // puts it in that edit's undo step and confuses undoing it. Create it now, as setup.
+    edit.getSceneList();
+
+    // Tracktion keeps the Edit's children sorted by type, re-sorting asynchronously after
+    // tracks change; each re-sort is an undo step of its own, which Cmd+Z would undo
+    // (invisibly) and Tracktion would redo. Start sorted, and sort as part of each edit.
+    tracktion::TrackList::sortTracksByType (edit.state, nullptr);
+
     edit.ensureNumberOfAudioTracks (1);
     auto tracks = tracktion::getAudioTracks (edit);
 
@@ -80,7 +89,7 @@ void LiveInstrument::selectTrack (tracktion::EditItemID id)
     updateMonitoring();
 }
 
-tracktion::AudioTrack* LiveInstrument::addTrack()
+tracktion::AudioTrack* LiveInstrument::addTrack (bool select)
 {
     auto track = edit.insertNewAudioTrack (tracktion::TrackInsertPoint::getEndOfTracks (edit), nullptr, false);
 
@@ -89,7 +98,11 @@ tracktion::AudioTrack* LiveInstrument::addTrack()
 
     track->setName ("Instrument " + juce::String (tracktion::getAudioTracks (edit).size()));
     TrackInstrument::setUp (edit, *track);
-    selectTrack (track->itemID);
+    tracktion::TrackList::sortTracksByType (edit.state, &edit.getUndoManager());
+
+    if (select)
+        selectTrack (track->itemID);
+
     return track.get();
 }
 

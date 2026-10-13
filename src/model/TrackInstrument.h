@@ -1,6 +1,7 @@
 #pragma once
 
 #include "devices/MidiDeviceSettings.h"
+#include "instruments/GeneralMidi.h"
 
 #include <tracktion_engine/tracktion_engine.h>
 
@@ -50,6 +51,9 @@ public:
     /** The built-in instrument: a General MIDI program (0-127) or gm::drumKit. */
     void setProgram (int);
     int getProgram() const;
+
+    /** True when the built-in instrument plays the GM drum kit, so the notes are drums. */
+    bool playsDrumKit() const                       { return getSoundSourceID().isEmpty() && getProgram() == gm::drumKit; }
 
     /** The tone an external sound source plays (its own bank + program), or none to leave
         the device on whatever tone it's set to. Sent when chosen and by sendToneToDevice().

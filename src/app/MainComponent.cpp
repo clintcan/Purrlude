@@ -35,7 +35,11 @@ MainComponent::MainComponent (tracktion::Engine& e, BluetoothMidiManager& blueto
     audioSettingsButton.onClick = [this] { engine.getUIBehaviour().showSettingsScreen(); };
     devicesButton.setClickingTogglesState (true);
     devicesButton.setToggleState (true, juce::dontSendNotification);
-    devicesButton.onClick = [this] { toggleDevicesPanel(); };
+    devicesButton.onClick = [this] { showSidePanel (devicesButton.getToggleState() ? &devicesPanel : nullptr); };
+
+    loopsButton.setClickingTogglesState (true);
+    loopsButton.setTooltip ("Drum loops to add to the song");
+    loopsButton.onClick = [this] { showSidePanel (loopsButton.getToggleState() ? loopsPanel.get() : nullptr); };
 
     editorsButton.setClickingTogglesState (true);
     editorsButton.setToggleState (true, juce::dontSendNotification);
@@ -53,6 +57,7 @@ MainComponent::MainComponent (tracktion::Engine& e, BluetoothMidiManager& blueto
     addAndMakeVisible (editorTabs);
     addAndMakeVisible (audioSettingsButton);
     addAndMakeVisible (devicesButton);
+    addAndMakeVisible (loopsButton);
     addAndMakeVisible (devicesPanel);
 
     setWantsKeyboardFocus (true);
@@ -77,6 +82,7 @@ MainComponent::~MainComponent()
     engine.getDeviceManager().removeChangeListener (this);
     stopTimer();
     editorTabs.clearTabs();
+    loopsPanel = nullptr;
     pianoRoll = nullptr;
     scoreView = nullptr;
     arrangement = nullptr;
@@ -102,6 +108,7 @@ void MainComponent::setProject (std::unique_ptr<Project> newProject)
     // UI that references the old Edit must go before it does.
     auto currentTab = editorTabs.getCurrentTabIndex();
     editorTabs.clearTabs();
+    loopsPanel = nullptr;
     pianoRoll = nullptr;
     scoreView = nullptr;
     arrangement = nullptr;
@@ -112,6 +119,9 @@ void MainComponent::setProject (std::unique_ptr<Project> newProject)
     arrangement = std::make_unique<ArrangementView> (project->getEdit(), project->getInstrument(), deviceSettings);
     scoreView = std::make_unique<ScoreView> (project->getEdit(), project->getInstrument());
     pianoRoll = std::make_unique<PianoRoll> (project->getEdit(), project->getInstrument());
+    loopsPanel = std::make_unique<LoopsPanel> (project->getEdit(), project->getInstrument());
+    addChildComponent (*loopsPanel);
+    loopsPanel->setVisible (loopsButton.getToggleState());
     addAndMakeVisible (*transportBar);
     arrangementViewport.setViewedComponent (arrangement.get(), false);
     arrangementViewport.setScrollBarsShown (true, false);
@@ -523,6 +533,7 @@ void MainComponent::resized()
     auto toolbar = r.removeFromTop (44);
 
     devicesButton.setBounds (toolbar.removeFromRight (136).reduced (6));
+    loopsButton.setBounds (toolbar.removeFromRight (80).reduced (6));
     audioSettingsButton.setBounds (toolbar.removeFromRight (186).reduced (6));
     editorsButton.setBounds (toolbar.removeFromRight (90).reduced (6));
 
@@ -531,6 +542,9 @@ void MainComponent::resized()
 
     if (devicesPanel.isVisible())
         devicesPanel.setBounds (r.removeFromRight (MidiDevicesPanel::preferredWidth));
+
+    if (loopsPanel != nullptr && loopsPanel->isVisible())
+        loopsPanel->setBounds (r.removeFromRight (LoopsPanel::preferredWidth));
 
     // The editors take the lower part of the window; the arrangement keeps at least a lane or two.
     if (editorTabs.isVisible())
@@ -544,9 +558,15 @@ void MainComponent::resized()
                               juce::jmax (arrangement->getContentHeight(), arrangementViewport.getMaximumVisibleHeight()));
 }
 
-void MainComponent::toggleDevicesPanel()
+void MainComponent::showSidePanel (juce::Component* panel)
 {
-    devicesPanel.setVisible (devicesButton.getToggleState());
+    devicesPanel.setVisible (panel == &devicesPanel);
+    devicesButton.setToggleState (panel == &devicesPanel, juce::dontSendNotification);
+
+    if (loopsPanel != nullptr)
+        loopsPanel->setVisible (panel != nullptr && panel == loopsPanel.get());
+
+    loopsButton.setToggleState (panel != nullptr && panel == loopsPanel.get(), juce::dontSendNotification);
     resized();
 }
 

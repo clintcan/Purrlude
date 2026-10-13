@@ -5,6 +5,7 @@
 #include "devices/ToneListener.h"
 #include "model/Project.h"
 #include "ui/ArrangementView.h"
+#include "ui/LoopsPanel.h"
 #include "ui/MidiDevicesPanel.h"
 #include "ui/PianoRoll.h"
 #include "ui/ScoreView.h"
@@ -18,7 +19,7 @@ namespace purrlude
 /** Top-level content of the main window.
 
     Owns the open Project (and swaps it on New/Open/recovery), the transport
-    bar, the arrangement view, the score view and the MIDI devices panel, and
+    bar, the arrangement view, the score view, the MIDI devices and loops panels, and
     provides the menu bar.
 
     Shortcuts: Space play/stop, R record, Home return to start,
@@ -65,7 +66,8 @@ private:
 
     void showError (const juce::String& title, const juce::String& message);
     void updateTitle();
-    void toggleDevicesPanel();
+    /** Shows one side panel (or none): the MIDI devices or the loops. */
+    void showSidePanel (juce::Component*);
     void timerCallback() override;
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
 
@@ -82,11 +84,13 @@ private:
     juce::Viewport arrangementViewport;
     std::unique_ptr<ScoreView> scoreView;
     std::unique_ptr<PianoRoll> pianoRoll;
+    std::unique_ptr<LoopsPanel> loopsPanel;
     juce::TabbedComponent editorTabs { juce::TabbedButtonBar::TabsAtTop };
     std::unique_ptr<juce::FileChooser> fileChooser;
 
     juce::TextButton audioSettingsButton { "Audio/MIDI Settings" };
     juce::TextButton devicesButton { "MIDI Devices" };
+    juce::TextButton loopsButton { "Loops" };
     juce::TextButton editorsButton { "Editors" };
     MidiDevicesPanel devicesPanel;
     ToneListener toneListener { deviceSettings };

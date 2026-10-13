@@ -35,8 +35,8 @@ public:
     /** Moves the live input (and record arm) to another track. */
     void selectTrack (tracktion::EditItemID);
 
-    /** Adds an instrument track after the last one, selects it and returns it. Undoable. */
-    tracktion::AudioTrack* addTrack();
+    /** Adds an instrument track after the last one (and selects it, unless asked not to). Undoable. */
+    tracktion::AudioTrack* addTrack (bool select = true);
 
     /** Deletes a track (never the last one); the first track is selected if it was selected. Undoable. */
     void deleteTrack (tracktion::EditItemID);

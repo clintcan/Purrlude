@@ -23,17 +23,23 @@ struct PartNotes
 {
     std::string name;
     std::vector<NoteEvent> notes;
+    bool percussion = false;   ///< General MIDI drum notes, written as drum notation
 };
 
-/** Builds a score with one part per entry. The key is estimated from all parts together,
-    and every part gets the same number of measures (shorter ones end in rests).
+/** Builds a score with one part per entry. The key is estimated from all pitched parts
+    together, and every part gets the same number of measures (shorter ones end in rests).
 */
 Score buildMultiPartScore (const std::vector<PartNotes>&, TimeSignature, const BuildOptions& = {},
                            const std::string& title = {}, double tempoBpm = 120.0);
 
-/** One part, in a given key, at least minMeasures long. */
+/** One part, in a given key, at least minMeasures long.
+
+    A percussion part reads its notes as General MIDI drums: one staff with a percussion
+    clef, each instrument on its own line or space (see drumPitch), and each hit lasting
+    until the next one in its measure, without ties.
+*/
 Part buildPart (const std::vector<NoteEvent>&, TimeSignature, KeySignature, const BuildOptions&,
-                const std::string& partName, int minMeasures);
+                const std::string& partName, int minMeasures, bool percussion = false);
 
 //==============================================================================
 // The individual steps, exposed for testing.
@@ -56,6 +62,11 @@ KeySignature estimateKey (const std::vector<NoteEvent>&);
 
 /** Spells a MIDI note for a key: diatonic notes by the scale, others with the key's accidental direction. */
 Pitch spell (int midiNote, KeySignature);
+
+/** Where a General MIDI drum note sits on a percussion staff, and its notehead:
+    kick F4, snare C5, toms E5/D5/A4, hi-hat G5 (x, open with an "o"), crash A5 (x), ride F5 (x).
+*/
+Pitch drumPitch (int gmNote);
 
 struct NoteValue
 {

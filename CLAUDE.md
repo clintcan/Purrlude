@@ -125,6 +125,14 @@ The app talks to `purrlude::BluetoothMidiManager` (`src/devices/BluetoothMidiMan
   - **Undo:** mixer changes go through `TrackMix` (`src/model/TrackMix.h`). Tracktion keeps mute/solo out of undo, and the plugin's setters would record every fader move. `TrackInstrument` therefore writes volume/pan to the plugin state without the UndoManager (and reads them back from the state, since the parameter updates asynchronously). `TrackMix::change` records one undo step per click or drag.
 - **UI:** the arrangement has one `TrackHeader` per track and scrolls vertically in a Viewport.
 - **Score:** the Score view and PDF/MusicXML export use `notation::buildEditScore` (a part per track with notes, one shared key, equal length). File > Export Parts as PDF writes one PDF per track.
+- **Scene list:** `LiveInstrument` creates the Edit's scene list at setup. Tracktion otherwise creates it undoably inside the first track insertion, which breaks undoing that insertion.
+
+**Drum loops:**
+- **Content:** `content/loops/groove.json` holds 37 4-bar loops in 14 styles from the Groove MIDI Dataset (CC BY 4.0). They're MIDI on the GM drum map, timed in quarter notes.
+  - `tools/content/build_groove_loops.py <download-dir>` regenerates the file: it downloads the dataset (SHA-256 checked), picks the steadiest 4 bars of up to 3 beats per style, and maps the TD-11 kit to GM.
+  - Hits just before a downbeat count as on it. Loops with a triplet feel are labelled "shuffle" and listed last, since triplets can't be notated yet.
+- **Model:** `LoopLibrary` (`src/model/`) loads the compiled-in loops. `insertLoop` puts one on the Drums track (a built-in drum-kit track, created if needed, without moving the keyboard's track), repeated to fill the bars, as one clip and one undo step. An empty song takes the loop's tempo.
+- **UI:** `LoopsPanel` (`src/ui/`), the Loops toolbar button, shares the side with MIDI Devices. It adds at the playhead's bar and shows the required credit.
 
 **Piano roll:**
 - **Editor:** `PianoRoll` (`src/ui/`) edits one MIDI clip of the instrument track. It's the Piano Roll tab of the lower panel; double-click a clip in the arrangement to open it there.
@@ -156,10 +164,11 @@ cmake/CPM.cmake         Vendored CPM.cmake v0.40.2
 src/app/                Application shell (JUCEApplication, main window)
 src/devices/            Audio/MIDI/Bluetooth device layer, device settings, tone learning, device library
 src/instruments/        Built-in instruments (SoundFont GM synth)
-content/                Bundled content: LICENSES.md manifest, devices/*.json definitions
+content/                Bundled content: LICENSES.md manifest, devices/*.json definitions, loops/*.json drum loops
 src/model/              Project model on top of tracktion::Edit (Project, LiveInstrument)
 src/notation/           Notation layer: performed notes -> Score -> MusicXML (no UI)
-src/ui/                 UI components (TransportBar, ArrangementView, ScoreView, PianoRoll, MidiDevicesPanel)
+src/ui/                 UI components (TransportBar, ArrangementView, ScoreView, PianoRoll, MidiDevicesPanel, LoopsPanel)
+tools/content/          Scripts that generate bundled content (run by hand; output is committed)
 tests/                  Catch2 test runner (PurrludeTests)
 .github/workflows/      CI for Windows, macOS, Linux
 ```
@@ -190,6 +199,16 @@ Planned directories as the architecture layers land: `src/analysis/`.
 7. Spell pitches for the key.
 
 MusicXML uses 48 divisions per quarter and writes accidentals explicitly, once per measure and staff.
+
+**Drums:** a built-in drum-kit track (`TrackInstrument::playsDrumKit`) becomes a percussion part.
+- It has one staff with a percussion clef and no key signature, and is left out of key estimation.
+- `drumPitch` places each GM drum (kick F4, snare C5, hi-hat G5 x, ride F5 x, crash A5 x), and drums sharing a position are written once.
+- Each hit lasts until the next one in its measure, with no ties.
+- MusicXML uses `<unpitched>`, `<notehead>` and stems up. An open hi-hat is an x with `<technical><open-string/>`, because Verovio draws `circle-x` as a slash.
+
+**Beams:** notes shorter than a quarter are beamed within each beat (each dotted quarter in compound time), with hooks for lone 16ths. Rests break beams.
+
+A note quantized past the end of the performance moves back onto the last grid step, so it can't create a bar of its own.
 
 **Not handled yet:** triplets, multiple voices per staff, tempo or time-signature changes, and transposing instruments.
 

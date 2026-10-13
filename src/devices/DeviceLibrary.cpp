@@ -102,7 +102,12 @@ const std::vector<DeviceDefinition>& DeviceLibrary::getAll()
             int size = 0;
             auto* data = PurrludeContent::getNamedResource (PurrludeContent::namedResourceList[i], size);
 
-            if (auto d = parse (juce::String::fromUTF8 (data, size)))
+            auto json = juce::String::fromUTF8 (data, size);
+
+            if (! json.contains ("\"sections\""))
+                continue;   // other content (e.g. loops)
+
+            if (auto d = parse (json))
                 result.push_back (std::move (*d));
             else
                 jassertfalse;   // a malformed file in content/devices

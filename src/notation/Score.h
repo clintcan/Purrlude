@@ -53,9 +53,11 @@ struct Pitch
     int alter = 0;      ///< -1 flat, +1 sharp
     int octave = 4;
     int midi = 60;
+    std::string notehead;   ///< MusicXML notehead (e.g. "x" for cymbals); empty for normal
+    bool open = false;      ///< Marked with an "o" (an open hi-hat)
 };
 
-enum class Clef { treble, bass };
+enum class Clef { treble, bass, percussion };
 
 /** A note, chord or rest within one measure of one staff. */
 struct Event
@@ -81,6 +83,7 @@ struct Measure
 struct Part
 {
     std::string name;
+    bool percussion = false;                  ///< Drum notation: unpitched notes, no key signature
     std::vector<Clef> clefs;                  ///< One per staff (1 or 2 staves)
     std::vector<Measure> measures;
 };

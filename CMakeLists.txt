@@ -43,7 +43,8 @@ include(cmake/SoundFonts.cmake)
 # a STATIC library linking them would produce duplicate symbols.
 # ------------------------------------------------------------------------------
 # Device definitions (tone lists etc.), compiled in as binary data.
-file(GLOB PURRLUDE_DEVICE_DEFINITIONS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/content/devices/*.json)
+file(GLOB PURRLUDE_DEVICE_DEFINITIONS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/content/devices/*.json
+                                                        ${CMAKE_CURRENT_SOURCE_DIR}/content/loops/*.json)
 juce_add_binary_data(purrlude_content
     HEADER_NAME PurrludeContent.h
     NAMESPACE PurrludeContent
@@ -76,6 +77,8 @@ target_sources(purrlude_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/TrackMix.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/LiveInstrument.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/LiveInstrument.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/LoopLibrary.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/LoopLibrary.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/NoteEditing.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/NoteEditing.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/Project.h
@@ -97,6 +100,8 @@ target_sources(purrlude_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/notation/ScorePdf.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/MidiDevicesPanel.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/MidiDevicesPanel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/LoopsPanel.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/LoopsPanel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/ScoreView.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/ScoreView.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/PianoRoll.h

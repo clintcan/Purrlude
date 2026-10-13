@@ -72,3 +72,26 @@ TEST_CASE ("Verovio's SVG becomes a JUCE drawable", "[notation][render]")
         juce::PNGImageFormat().writeImageToStream (image, out);
     }
 }
+
+#include "model/LoopLibrary.h"
+
+TEST_CASE ("Verovio engraves drum notation", "[notation][render]")
+{
+    ScoreRenderer renderer (ScoreRenderer::findResourceDirectory());
+    const auto& loop = purrlude::LoopLibrary::getAll().front();
+
+    std::vector<NoteEvent> notes;
+
+    for (const auto& n : loop.notes)
+        notes.push_back ({ n.start, n.length, n.pitch, n.velocity });
+
+    auto score = buildMultiPartScore ({ { "Drums", notes, true } }, {}, {}, loop.name.toStdString());
+
+    juce::String error;
+    auto svg = renderer.renderMusicXml (toMusicXml (score), 900, error);
+    INFO (error);
+    REQUIRE (svg.startsWith ("<svg"));
+
+    if (auto dump = juce::SystemStats::getEnvironmentVariable ("PURRLUDE_DRUM_SVG_DUMP", {}); juce::File::isAbsolutePath (dump))
+        juce::File (dump).replaceWithText (svg);
+}
