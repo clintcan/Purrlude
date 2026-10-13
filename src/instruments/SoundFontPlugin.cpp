@@ -18,10 +18,26 @@ namespace
     constexpr int maxVoices = 96;
     constexpr float outputGainDb = -3.0f;
 
-    /** The SoundFont, loaded once and shared by every plugin (each plays a tsf_copy of it). */
-    class SharedFont
+    /** The SoundFont, loaded once (on a background thread) and shared by every plugin, each
+        of which plays a tsf_copy of it.
+
+        Deleted when JUCE shuts down, and waits for a load still in progress first: a loading
+        thread left running into process exit crashes on Windows as statics are torn down.
+    */
+    class SharedFont final : public juce::DeletedAtShutdown
     {
     public:
+        ~SharedFont() override
+        {
+            if (loader.joinable())
+                loader.join();
+
+            if (font != nullptr)
+                tsf_close (font);
+
+            clearSingletonInstance();
+        }
+
         void startLoading()
         {
             const std::lock_guard<std::mutex> lock (mutex);
@@ -29,7 +45,7 @@ namespace
             if (std::exchange (started, true))
                 return;
 
-            std::thread ([this]
+            loader = std::thread ([this]
             {
                 tsf* loaded = nullptr;
                 juce::MemoryBlock data;
@@ -44,7 +60,7 @@ namespace
                 }
 
                 loadedCondition.notify_all();
-            }).detach();
+            });
         }
 
         /** Waits for the load if it's still running. Null if the SoundFont is missing or broken. */
@@ -56,17 +72,19 @@ namespace
             return font;
         }
 
+        JUCE_DECLARE_SINGLETON_INLINE (SharedFont, false)
+
     private:
         std::mutex mutex;
         std::condition_variable loadedCondition;
+        std::thread loader;
         bool started = false, done = false;
-        tsf* font = nullptr;   // lives for the whole process
+        tsf* font = nullptr;
     };
 
     SharedFont& getSharedFont()
     {
-        static SharedFont* instance = new SharedFont();   // never destroyed: plugins may outlive statics
-        return *instance;
+        return *SharedFont::getInstance();
     }
 }
 

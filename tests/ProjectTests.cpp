@@ -29,13 +29,25 @@ namespace
         juce::MessageManager::getInstance()->runDispatchLoopUntil (ms);
     }
 
+    /** Runs the message loop until every message posted so far has been handled. A fixed
+        wait isn't enough on a slow machine (e.g. a long MIDI device scan holds the loop).
+    */
+    void flushMessages()
+    {
+        auto done = std::make_shared<std::atomic<bool>> (false);
+        juce::MessageManager::callAsync ([done] { *done = true; });   // messages run in order
+
+        for (auto end = juce::Time::getMillisecondCounter() + 30000; ! *done && juce::Time::getMillisecondCounter() < end;)
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
+    }
+
     /** Adds a one-beat note to a new clip on the instrument track, as a user edit. */
     void addNote (Project& project, int noteNumber, double startSeconds = 0.0)
     {
         auto& edit = project.getEdit();
 
-        // Tracktion starts tracking changes asynchronously after an Edit is created.
-        runMessageLoop (100);
+        // Tracktion starts tracking changes through an async message after an Edit is created.
+        flushMessages();
 
         auto start = tracktion::TimePosition::fromSeconds (startSeconds);
         auto clip = project.getInstrument().getTrack()->insertMIDIClip ({ start, start + tracktion::TimeDuration::fromSeconds (2.0) }, nullptr);
