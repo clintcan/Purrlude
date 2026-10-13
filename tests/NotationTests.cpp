@@ -223,6 +223,9 @@ TEST_CASE ("Grand staff MusicXML backs up for the second staff", "[notation]")
 
 //==============================================================================
 #include "model/Project.h"
+#include "notation/ScorePdf.h"
+#include "notation/ScoreSvg.h"
+#include "notation/ScoreRenderer.h"
 #include "notation/TrackNotation.h"
 
 // Manual check against a real recording, hidden from normal runs:
@@ -280,4 +283,39 @@ TEST_CASE ("Export a saved project's instrument track as MusicXML", "[.][takes]"
     }
 
     WARN (lines.joinIntoString ("\n") << "\nWrote " << out.getFullPathName());
+
+    // Optionally export the PDF, as File > Export Score as PDF does.
+    if (auto pdf = juce::SystemStats::getEnvironmentVariable ("PURRLUDE_PDF_DUMP", {}); juce::File::isAbsolutePath (pdf))
+    {
+        juce::String pdfError;
+        REQUIRE (purrlude::notation::exportScorePdf (score, juce::File (pdf), pdfError));
+    }
+
+    // Optionally dump the engraved A4 pages as SVG, to debug printing.
+    if (auto dump = juce::SystemStats::getEnvironmentVariable ("PURRLUDE_SVG_DUMP", {}); juce::File::isAbsolutePath (dump))
+    {
+        purrlude::notation::ScoreRenderer renderer (purrlude::notation::ScoreRenderer::findResourceDirectory());
+        juce::String error;
+        auto pages = renderer.renderPages (toMusicXml (score, { .tempoMark = false }), 595.28f, 841.89f, 36, error);
+
+        for (int i = 0; i < pages.size(); ++i)
+            juce::File (dump).getSiblingFile (juce::File (dump).getFileNameWithoutExtension() + "-" + juce::String (i + 1) + ".svg")
+                .replaceWithText (pages[i]);
+
+        // And page 1 drawn into an image the same way the PDF is drawn.
+        if (! pages.isEmpty())
+        {
+            auto prepared = purrlude::notation::prepareVerovioSvg (pages[0], juce::Colours::black);
+            auto drawable = juce::Drawable::createFromSVG (*prepared);
+            juce::Image image (juce::Image::RGB, 1191, 1684, true);
+            juce::Graphics g (image);
+            g.fillAll (juce::Colours::white);
+            g.addTransform (juce::AffineTransform::scale (2.0f));
+            purrlude::notation::drawScore (g, *drawable, *prepared, {});
+            auto png = juce::File (dump).withFileExtension (".png");
+            png.deleteFile();
+            juce::FileOutputStream out (png);
+            juce::PNGImageFormat().writeImageToStream (image, out);
+        }
+    }
 }

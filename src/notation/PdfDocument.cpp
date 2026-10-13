@@ -27,14 +27,13 @@ struct PdfDocument::Page
 class PdfDocument::Context final : public juce::LowLevelGraphicsContext
 {
 public:
-    Context (juce::MemoryOutputStream& out, float pageHeight)
+    Context (juce::MemoryOutputStream& out, float pageWidth, float pageHeight)
         : stream (out)
     {
         // JUCE's y axis points down, PDF's up.
         states.add ({});
         flip = juce::AffineTransform (1.0f, 0.0f, 0.0f, 0.0f, -1.0f, pageHeight);
-        clipBounds = { 0, 0, 1 << 20, 1 << 20 };
-        states.getReference (0).clip = clipBounds;
+        states.getReference (0).deviceClip = { 0.0f, 0.0f, pageWidth, pageHeight };
     }
 
     bool isVectorDevice() const override                    { return true; }
@@ -49,15 +48,15 @@ public:
         s.transform = t.followedBy (s.transform);
     }
 
+    // The clip is tracked in device space (page points), because JUCE asks about it in
+    // whatever coordinates are current: Component painting skips children whose bounds
+    // don't intersect getClipBounds(), so a clip in stale coordinates loses drawing.
     bool clipToRectangle (const juce::Rectangle<int>& r) override
     {
         juce::Path p;
         p.addRectangle (r.toFloat());
         clipToPath (p, {});
-
-        auto& s = state();
-        s.clip = s.clip.getIntersection (r);
-        return ! s.clip.isEmpty();
+        return ! isClipEmpty();
     }
 
     bool clipToRectangleList (const juce::RectangleList<int>& list) override
@@ -68,24 +67,34 @@ public:
             p.addRectangle (r.toFloat());
 
         clipToPath (p, {});
-        auto& s = state();
-        s.clip = s.clip.getIntersection (list.getBounds());
-        return ! s.clip.isEmpty();
+        return ! isClipEmpty();
     }
 
-    void excludeClipRectangle (const juce::Rectangle<int>&) override   {}
+    void excludeClipRectangle (const juce::Rectangle<int>&) override   {}   // only ever an optimisation
 
     void clipToPath (const juce::Path& path, const juce::AffineTransform& t) override
     {
+        auto& s = state();
+        s.deviceClip = s.deviceClip.getIntersection (path.getBoundsTransformed (t.followedBy (s.transform)));
+
         writePath (path, t);
         stream << (path.isUsingNonZeroWinding() ? "W n\n" : "W* n\n");
     }
 
     void clipToImageAlpha (const juce::Image&, const juce::AffineTransform&) override   {}
 
-    bool clipRegionIntersects (const juce::Rectangle<int>& r) override  { return state().clip.intersects (r); }
-    juce::Rectangle<int> getClipBounds() const override                { return states.getLast().clip; }
-    bool isClipEmpty() const override                                  { return states.getLast().clip.isEmpty(); }
+    bool clipRegionIntersects (const juce::Rectangle<int>& r) override
+    {
+        return state().deviceClip.intersects (r.toFloat().transformedBy (state().transform));
+    }
+
+    juce::Rectangle<int> getClipBounds() const override
+    {
+        const auto& s = states.getReference (states.size() - 1);
+        return s.deviceClip.transformedBy (s.transform.inverted()).getSmallestIntegerContainer();
+    }
+
+    bool isClipEmpty() const override                                  { return states.getLast().deviceClip.isEmpty(); }
 
     void saveState() override
     {
@@ -217,7 +226,7 @@ private:
         juce::Colour colour { juce::Colours::black };
         float opacity = 1.0f;
         juce::Font font { juce::FontOptions() };
-        juce::Rectangle<int> clip;
+        juce::Rectangle<float> deviceClip;   // page points, before the y flip
     };
 
     State& state()   { return states.getReference (states.size() - 1); }
@@ -294,7 +303,6 @@ private:
     juce::MemoryOutputStream& stream;
     juce::Array<State> states;
     juce::AffineTransform flip;
-    juce::Rectangle<int> clipBounds;
     juce::Colour lastColour { juce::Colours::transparentBlack }, lastStrokeColour { juce::Colours::transparentBlack };
 };
 
@@ -320,7 +328,7 @@ juce::Graphics& PdfDocument::addPage (float widthPoints, float heightPoints)
     page->width = widthPoints;
     page->height = heightPoints;
 
-    context = std::make_unique<Context> (page->content, heightPoints);
+    context = std::make_unique<Context> (page->content, widthPoints, heightPoints);
     graphics = std::make_unique<juce::Graphics> (*context);
     pages.push_back (std::move (page));
 

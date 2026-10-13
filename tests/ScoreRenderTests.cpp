@@ -65,7 +65,7 @@ TEST_CASE ("Verovio's SVG becomes a JUCE drawable", "[notation][render]")
         juce::Image image (juce::Image::ARGB, 1000, 300, true);
         juce::Graphics g (image);
         g.fillAll (juce::Colours::white);
-        drawable->drawWithin (g, size, juce::RectanglePlacement::xLeft | juce::RectanglePlacement::yTop, 1.0f);
+        drawScore (g, *drawable, *prepared, {});
 
         juce::File (dump).deleteFile();
         juce::FileOutputStream out { juce::File (dump) };

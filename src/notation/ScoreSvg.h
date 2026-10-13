@@ -22,4 +22,10 @@ std::unique_ptr<juce::XmlElement> prepareVerovioSvg (const juce::String& svg, ju
 */
 juce::Rectangle<float> getSvgDisplaySize (const juce::XmlElement& svg);
 
+/** Draws a Drawable made from the SVG so its page (Verovio's viewBox, margins included)
+    fills its display size, with the top-left at the given point. drawWithin() would fit the
+    drawing's content instead, stretching the music over the margins.
+*/
+void drawScore (juce::Graphics&, juce::Drawable&, const juce::XmlElement& svg, juce::Point<float> topLeft);
+
 } // namespace purrlude::notation

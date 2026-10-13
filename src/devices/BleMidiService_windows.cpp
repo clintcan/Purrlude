@@ -83,6 +83,20 @@ namespace
         }
     }
 
+    /** Background WinRT work still running. The service waits for it before it goes away:
+        a coroutine that finishes after the service (and JUCE's message thread) is gone
+        would post to a MessageManager that no longer exists.
+    */
+    using PendingCount = std::shared_ptr<std::atomic<int>>;
+
+    struct PendingGuard
+    {
+        explicit PendingGuard (PendingCount c) : count (std::move (c))   { ++*count; }
+        ~PendingGuard()                                                    { --*count; }
+
+        PendingCount count;
+    };
+
     struct PairedDeviceInfo
     {
         uint64_t address = 0;
@@ -97,7 +111,7 @@ namespace
     public:
         WindowsBleMidiService()
         {
-            refreshPairedDevices (selfRef);
+            refreshPairedDevices (selfRef, pending);
         }
 
         ~WindowsBleMidiService() override
@@ -106,6 +120,10 @@ namespace
 
             for (auto& [id, entry] : devices)
                 closeSession (entry);
+
+            // Let in-flight queries finish; they only post results, so this can't deadlock.
+            for (int waitedMs = 0; *pending > 0 && waitedMs < 5000; waitedMs += 5)
+                juce::Thread::sleep (5);
         }
 
         bool isAvailable() const override       { return available; }
@@ -161,7 +179,7 @@ namespace
                 watcher.Start();
                 scanning = true;
                 startTimer (2000);
-                refreshPairedDevices (selfRef);
+                refreshPairedDevices (selfRef, pending);
                 notifyChanged();
             }
             catch (const winrt::hresult_error& e)
@@ -216,7 +234,7 @@ namespace
             entry.info.connecting = true;
             notifyChanged();
 
-            pairAndConnect (selfRef, entry.address);
+            pairAndConnect (selfRef, pending, entry.address);
         }
 
         void disconnect (const juce::String& deviceId) override
@@ -234,7 +252,7 @@ namespace
             if (auto it = devices.find (deviceId); it != devices.end())
             {
                 closeSession (it->second);
-                unpair (selfRef, it->second.address);
+                unpair (selfRef, pending, it->second.address);
             }
         }
 
@@ -454,8 +472,10 @@ namespace
         //==============================================================================
         // Thread-pool coroutines. Parameters are taken by value; never touch `this`.
 
-        static winrt::fire_and_forget refreshPairedDevices (juce::WeakReference<WindowsBleMidiService> weak)
+        static winrt::fire_and_forget refreshPairedDevices (juce::WeakReference<WindowsBleMidiService> weak,
+                                                            PendingCount pending)
         {
+            PendingGuard guard { pending };   // counted from the call, before the first suspension
             co_await winrt::resume_background();
 
             try
@@ -519,8 +539,10 @@ namespace
             }
         }
 
-        static winrt::fire_and_forget pairAndConnect (juce::WeakReference<WindowsBleMidiService> weak, uint64_t address)
+        static winrt::fire_and_forget pairAndConnect (juce::WeakReference<WindowsBleMidiService> weak,
+                                                      PendingCount pending, uint64_t address)
         {
+            PendingGuard guard { pending };
             co_await winrt::resume_background();
 
             try
@@ -562,7 +584,7 @@ namespace
                         co_return;
                     }
 
-                    refreshPairedDevices (weak);
+                    refreshPairedDevices (weak, pending);
                 }
 
                 auto session = co_await gatt::GattSession::FromDeviceIdAsync (device.BluetoothDeviceId());
@@ -584,8 +606,10 @@ namespace
             }
         }
 
-        static winrt::fire_and_forget unpair (juce::WeakReference<WindowsBleMidiService> weak, uint64_t address)
+        static winrt::fire_and_forget unpair (juce::WeakReference<WindowsBleMidiService> weak,
+                                              PendingCount pending, uint64_t address)
         {
+            PendingGuard guard { pending };
             co_await winrt::resume_background();
 
             try
@@ -614,7 +638,7 @@ namespace
                 });
             }
 
-            refreshPairedDevices (weak);
+            refreshPairedDevices (weak, pending);
         }
 
         //==============================================================================
@@ -652,6 +676,8 @@ namespace
         adv::BluetoothLEAdvertisementWatcher watcher { nullptr };
         adv::BluetoothLEAdvertisementWatcher::Received_revoker receivedRevoker;
         adv::BluetoothLEAdvertisementWatcher::Stopped_revoker stoppedRevoker;
+
+        PendingCount pending = std::make_shared<std::atomic<int>> (0);
 
         JUCE_DECLARE_WEAK_REFERENCEABLE (WindowsBleMidiService)
 

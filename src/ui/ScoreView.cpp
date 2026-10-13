@@ -97,10 +97,11 @@ private:
 class ScoreView::Page final : public juce::Component
 {
 public:
-    void setScore (const juce::XmlElement& svg)
+    void setScore (std::shared_ptr<juce::XmlElement> svg)
     {
-        drawable = juce::Drawable::createFromSVG (svg);
-        displaySize = notation::getSvgDisplaySize (svg);
+        svgXml = std::move (svg);
+        drawable = juce::Drawable::createFromSVG (*svgXml);
+        displaySize = notation::getSvgDisplaySize (*svgXml);
         setSize (getWidth(), (int) std::ceil (displaySize.getHeight()) + paperMargin * 2);
         repaint();
     }
@@ -109,14 +110,14 @@ public:
     {
         g.fillAll (juce::Colours::white);
 
-        // Scale Verovio's internal units to the pixel size it asked for.
-        if (drawable != nullptr && ! displaySize.isEmpty())
-            drawable->drawWithin (g, displaySize.withPosition ((float) paperMargin, (float) paperMargin),
-                                  juce::RectanglePlacement::xLeft | juce::RectanglePlacement::yTop, 1.0f);
+        // Verovio's page (its internal units) mapped onto the pixel size it asked for.
+        if (drawable != nullptr && svgXml != nullptr)
+            notation::drawScore (g, *drawable, *svgXml, { (float) paperMargin, (float) paperMargin });
     }
 
 private:
     std::unique_ptr<juce::Drawable> drawable;
+    std::shared_ptr<juce::XmlElement> svgXml;
     juce::Rectangle<float> displaySize;
 };
 
@@ -194,7 +195,7 @@ void ScoreView::handleRendered (int requestId, std::shared_ptr<juce::XmlElement>
         return;
     }
 
-    page->setScore (*svg);
+    page->setScore (svg);
 
     auto empty = instrument.getTrack() == nullptr || notation::getTrackNotes (*instrument.getTrack()).empty();
     statusLabel.setText (empty ? "Record something on the Instrument track to see it as sheet music."

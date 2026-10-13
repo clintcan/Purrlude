@@ -46,8 +46,7 @@ bool exportScorePdf (const Score& score, const juce::File& file, juce::String& e
             return false;
         }
 
-        drawable->drawWithin (g, getSvgDisplaySize (*prepared),
-                              juce::RectanglePlacement::xLeft | juce::RectanglePlacement::yTop, 1.0f);
+        drawScore (g, *drawable, *prepared, {});
     }
 
     if (! pdf.writeTo (file))

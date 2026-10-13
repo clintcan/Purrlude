@@ -100,4 +100,33 @@ juce::Rectangle<float> getSvgDisplaySize (const juce::XmlElement& svg)
     return { svg.getStringAttribute ("width").getFloatValue(), svg.getStringAttribute ("height").getFloatValue() };
 }
 
+void drawScore (juce::Graphics& g, juce::Drawable& drawable, const juce::XmlElement& svg, juce::Point<float> topLeft)
+{
+    auto size = getSvgDisplaySize (svg);
+    juce::Rectangle<float> viewBox;
+
+    // Verovio puts the page's viewBox on a nested <svg class="definition-scale">.
+    for (auto* child : svg.getChildWithTagNameIterator ("svg"))
+    {
+        auto values = juce::StringArray::fromTokens (child->getStringAttribute ("viewBox"), " ,", {});
+
+        if (values.size() == 4)
+        {
+            viewBox = { values[0].getFloatValue(), values[1].getFloatValue(), values[2].getFloatValue(), values[3].getFloatValue() };
+            break;
+        }
+    }
+
+    if (viewBox.isEmpty() || size.isEmpty())
+    {
+        drawable.drawWithin (g, size.withPosition (topLeft), juce::RectanglePlacement::xLeft | juce::RectanglePlacement::yTop, 1.0f);
+        return;
+    }
+
+    auto scale = size.getWidth() / viewBox.getWidth();
+    drawable.draw (g, 1.0f, juce::AffineTransform::translation (-viewBox.getX(), -viewBox.getY())
+                                .scaled (scale)
+                                .translated (topLeft));
+}
+
 } // namespace purrlude::notation
