@@ -132,7 +132,20 @@ The app talks to `purrlude::BluetoothMidiManager` (`src/devices/BluetoothMidiMan
   - `tools/content/build_groove_loops.py <download-dir>` regenerates the file: it downloads the dataset (SHA-256 checked), picks the steadiest 4 bars of up to 3 beats per style, and maps the TD-11 kit to GM.
   - Hits just before a downbeat count as on it. Loops with a triplet feel are labelled "shuffle" and listed last, since triplets can't be notated yet.
 - **Model:** `LoopLibrary` (`src/model/`) loads the compiled-in loops. `insertLoop` puts one on the Drums track (a built-in drum-kit track, created if needed, without moving the keyboard's track), repeated to fill the bars, as one clip and one undo step. An empty song takes the loop's tempo.
-- **UI:** `LoopsPanel` (`src/ui/`), the Loops toolbar button, shares the side with MIDI Devices. It adds at the playhead's bar and shows the required credit.
+- **UI:** `LoopsPanel` (`src/ui/`), the Loops toolbar button, shares the side with MIDI Devices. It has Drums / Bass / Chords modes, adds at the playhead's bar, and shows the drum loops' required credit.
+- **Looping clips:** a loop is stored once in a looping clip, so lengthening the clip repeats it. `notation::getClipNotes` unrolls looping clips for the score and the arrangement.
+
+**Accompaniment** (`src/model/Accompaniment.h`, content in `content/accompaniment/patterns.json`, original):
+- **Progressions** are Roman numerals, one entry per bar; two numerals split the bar. Flats are explicit (`bVII`), and suffixes are `7`, `maj7`, `ø7`, `°`, `°7`. Each progression is written for major or minor keys.
+- **Patterns** are one-bar bass or chord parts. Each note names chord tones, not pitches: R, 3, 5, 7, 8, 6, b7, 5- (fifth below), A (a half step below the next chord's root), C (the voiced chord) and v0–v3 (a note of the voicing), joined with `+`.
+- **Generating notes:** bass roots sit in A1–G#2. Chords are voice-led: each takes the close-position inversion nearest the previous chord, over two passes so the loop joins.
+- **Chord names** are spelled from the numeral's degree, so ♭VII in C is Bb.
+- **Inserting:** `insert` puts one pass of the progression in a looping clip. It goes on a built-in track with the pattern's role (a track property) and GM program, created and named after the instrument if needed.
+- **Key:** `detectKey` estimates the key from all non-drum tracks. The panel follows it until the user picks a key.
+
+**Clip editing** (`src/model/ClipEditing.h`, `ArrangementView`):
+- **Operations:** `clips::move` (also copies), `setEnd` and `remove`. A clip put over others replaces what it covers, splitting them if needed.
+- **Undo:** each operation starts its own undo step and leaves it open, because Tracktion re-sorts a track's clips asynchronously and that re-sort has to join the step.
 
 **Piano roll:**
 - **Editor:** `PianoRoll` (`src/ui/`) edits one MIDI clip of the instrument track. It's the Piano Roll tab of the lower panel; double-click a clip in the arrangement to open it there.

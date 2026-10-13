@@ -1,0 +1,95 @@
+{
+  "name": "Purrlude accompaniment patterns",
+  "license": "Original work by the Purrlude contributors, distributed with the app under its license",
+
+  "about": "Progressions are Roman numerals, one entry per bar (two numerals in an entry split the bar). Pattern notes are [start, length, tones, velocity] in quarter notes; tones name chord tones: R root, 3, 5, 7 (the octave if the chord has no 7th), 8 octave, 6, b7, 5- (fifth below), A (a half step below the next chord's root), C (the whole voiced chord), v0-v3 (one note of the voicing), joined with + for several.",
+
+  "progressions": [
+    { "id": "pop",        "mode": "major", "name": "I–V–vi–IV",     "description": "Pop",            "bars": ["I", "V", "vi", "IV"] },
+    { "id": "fifties",    "mode": "major", "name": "I–vi–IV–V",     "description": "50s doo-wop",    "bars": ["I", "vi", "IV", "V"] },
+    { "id": "rock",       "mode": "major", "name": "I–IV–V–IV",     "description": "Rock",           "bars": ["I", "IV", "V", "IV"] },
+    { "id": "emotional",  "mode": "major", "name": "vi–IV–I–V",     "description": "Emotional pop",  "bars": ["vi", "IV", "I", "V"] },
+    { "id": "anthem",     "mode": "major", "name": "I–♭VII–IV–I",   "description": "Rock anthem",    "bars": ["I", "bVII", "IV", "I"] },
+    { "id": "jazz",       "mode": "major", "name": "ii–V–I",        "description": "Jazz",           "bars": ["ii7", "V7", "Imaj7", "Imaj7"] },
+    { "id": "blues",      "mode": "major", "name": "12-bar blues",  "description": "Blues",          "bars": ["I7", "I7", "I7", "I7", "IV7", "IV7", "I7", "I7", "V7", "IV7", "I7", "V7"] },
+
+    { "id": "minor-pop",  "mode": "minor", "name": "i–♭VI–♭III–♭VII", "description": "Minor pop",     "bars": ["i", "bVI", "bIII", "bVII"] },
+    { "id": "minor-rock", "mode": "minor", "name": "i–♭VII–♭VI–♭VII", "description": "Minor rock",    "bars": ["i", "bVII", "bVI", "bVII"] },
+    { "id": "andalusian", "mode": "minor", "name": "i–♭VII–♭VI–V",    "description": "Flamenco",      "bars": ["i", "bVII", "bVI", "V7"] },
+    { "id": "minor-iv",   "mode": "minor", "name": "i–iv–i–V",        "description": "Minor ballad",  "bars": ["i", "iv", "i", "V7"] },
+    { "id": "minor-jazz", "mode": "minor", "name": "ii–V–i",          "description": "Minor jazz",    "bars": ["iiø7", "V7", "i7", "i7"] },
+    { "id": "minor-blues","mode": "minor", "name": "Minor blues",     "description": "Blues",         "bars": ["i7", "i7", "i7", "i7", "iv7", "iv7", "i7", "i7", "bVI7", "V7", "i7", "V7"] }
+  ],
+
+  "patterns": [
+    { "id": "bass-pop-eighths",  "part": "bass", "style": "Pop", "name": "Root Eighths", "description": "Steady eighth notes on the root", "program": 33, "track": "Bass",
+      "notes": [[0,0.45,"R",100],[0.5,0.45,"R",80],[1,0.45,"R",95],[1.5,0.45,"R",80],[2,0.45,"R",100],[2.5,0.45,"R",80],[3,0.45,"R",95],[3.5,0.45,"R",80]] },
+    { "id": "bass-pop-fifth",    "part": "bass", "style": "Pop", "name": "Root and Fifth", "description": "Root, fifth and a lead-in to the next chord", "program": 33, "track": "Bass",
+      "notes": [[0,1.4,"R",100],[1.5,0.45,"R",80],[2,1.4,"5",95],[3.5,0.45,"A",80]] },
+
+    { "id": "bass-rock-eighths", "part": "bass", "style": "Rock", "name": "Driving Eighths", "description": "Picked eighth notes", "program": 34, "track": "Bass",
+      "notes": [[0,0.45,"R",110],[0.5,0.45,"R",90],[1,0.45,"R",100],[1.5,0.45,"R",90],[2,0.45,"R",105],[2.5,0.45,"R",90],[3,0.45,"R",100],[3.5,0.45,"R",90]] },
+    { "id": "bass-rock-octaves", "part": "bass", "style": "Rock", "name": "Octave Pump", "description": "Root and octave in eighths", "program": 34, "track": "Bass",
+      "notes": [[0,0.45,"R",110],[0.5,0.45,"8",90],[1,0.45,"R",100],[1.5,0.45,"8",90],[2,0.45,"R",105],[2.5,0.45,"8",90],[3,0.45,"R",100],[3.5,0.45,"8",90]] },
+
+    { "id": "bass-ballad-whole", "part": "bass", "style": "Ballad", "name": "Whole Notes", "description": "One long root per bar", "program": 35, "track": "Bass",
+      "notes": [[0,3.9,"R",90]] },
+    { "id": "bass-ballad-half",  "part": "bass", "style": "Ballad", "name": "Half Notes", "description": "Root and fifth", "program": 35, "track": "Bass",
+      "notes": [[0,1.9,"R",90],[2,1.9,"5",80]] },
+
+    { "id": "bass-funk",         "part": "bass", "style": "Funk", "name": "Sixteenth Groove", "description": "Syncopated root, octave and seventh", "program": 33, "track": "Bass",
+      "notes": [[0,0.22,"R",115],[0.75,0.22,"R",80],[1.5,0.22,"8",105],[1.75,0.22,"R",75],[2.5,0.22,"R",100],[2.75,0.22,"b7",90],[3,0.22,"8",105],[3.5,0.22,"5",90]] },
+
+    { "id": "bass-jazz-walk",    "part": "bass", "style": "Jazz", "name": "Walking Bass", "description": "Quarter notes walking to the next chord", "program": 32, "track": "Bass",
+      "notes": [[0,0.9,"R",95],[1,0.9,"3",85],[2,0.9,"5",90],[3,0.9,"A",85]] },
+    { "id": "bass-jazz-two",     "part": "bass", "style": "Jazz", "name": "Two Feel", "description": "Half notes on root and fifth", "program": 32, "track": "Bass",
+      "notes": [[0,1.9,"R",95],[2,1.9,"5",85]] },
+
+    { "id": "bass-latin-bossa",  "part": "bass", "style": "Latin", "name": "Bossa Nova", "description": "Root and fifth with anticipations", "program": 32, "track": "Bass",
+      "notes": [[0,1.4,"R",95],[1.5,0.45,"5",85],[2,1.4,"5",90],[3.5,0.45,"R",80]] },
+
+    { "id": "bass-reggae",       "part": "bass", "style": "Reggae", "name": "Roots Bass", "description": "Root, third and fifth, laid back", "program": 33, "track": "Bass",
+      "notes": [[0,1.4,"R",100],[1.5,0.45,"3",80],[2,0.9,"5",95],[3.5,0.45,"8",80]] },
+
+    { "id": "bass-country",      "part": "bass", "style": "Country", "name": "Boom-Chick", "description": "Root and the fifth below, on 1 and 3", "program": 32, "track": "Bass",
+      "notes": [[0,0.9,"R",100],[2,0.9,"5-",90]] },
+
+    { "id": "bass-blues-boogie", "part": "bass", "style": "Blues", "name": "Boogie", "description": "Root, third, fifth and sixth in eighths", "program": 33, "track": "Bass",
+      "notes": [[0,0.45,"R",100],[0.5,0.45,"R",80],[1,0.45,"3",95],[1.5,0.45,"3",80],[2,0.45,"5",95],[2.5,0.45,"5",80],[3,0.45,"6",95],[3.5,0.45,"6",80]] },
+
+    { "id": "chords-pop-quarters", "part": "chords", "style": "Pop", "name": "Piano Quarters", "description": "A chord on every beat", "program": 0, "track": "Piano",
+      "notes": [[0,0.9,"C",90],[1,0.9,"C",75],[2,0.9,"C",85],[3,0.9,"C",75]] },
+    { "id": "chords-pop-eighths",  "part": "chords", "style": "Pop", "name": "Piano Eighths", "description": "Steady eighth-note chords", "program": 0, "track": "Piano",
+      "notes": [[0,0.45,"C",90],[0.5,0.45,"C",70],[1,0.45,"C",85],[1.5,0.45,"C",70],[2,0.45,"C",88],[2.5,0.45,"C",70],[3,0.45,"C",85],[3.5,0.45,"C",70]] },
+
+    { "id": "chords-rock-power",   "part": "chords", "style": "Rock", "name": "Power Chords", "description": "Overdriven root-fifth eighths", "program": 29, "track": "Guitar",
+      "notes": [[0,0.45,"R+5+8",105],[0.5,0.45,"R+5+8",85],[1,0.45,"R+5+8",95],[1.5,0.45,"R+5+8",85],[2,0.45,"R+5+8",100],[2.5,0.45,"R+5+8",85],[3,0.45,"R+5+8",95],[3.5,0.45,"R+5+8",85]] },
+    { "id": "chords-rock-organ",   "part": "chords", "style": "Rock", "name": "Organ Pad", "description": "Held organ chords", "program": 16, "track": "Organ",
+      "notes": [[0,3.95,"C",80]] },
+
+    { "id": "chords-ballad-strings", "part": "chords", "style": "Ballad", "name": "Strings Pad", "description": "Long, soft string chords", "program": 48, "track": "Strings",
+      "notes": [[0,3.95,"C",70]] },
+    { "id": "chords-ballad-arpeggio", "part": "chords", "style": "Ballad", "name": "Piano Arpeggio", "description": "Broken chords in eighths", "program": 0, "track": "Piano",
+      "notes": [[0,0.5,"v0",85],[0.5,0.5,"v1",70],[1,0.5,"v2",75],[1.5,0.5,"v3",70],[2,0.5,"v4",80],[2.5,0.5,"v3",70],[3,0.5,"v2",75],[3.5,0.5,"v1",70]] },
+
+    { "id": "chords-funk-clav",    "part": "chords", "style": "Funk", "name": "Clavinet Stabs", "description": "Short syncopated chords", "program": 7, "track": "Clavinet",
+      "notes": [[0,0.2,"C",100],[0.75,0.2,"C",80],[1.5,0.2,"C",95],[2.5,0.2,"C",90],[3.25,0.2,"C",80],[3.5,0.2,"C",95]] },
+
+    { "id": "chords-jazz-charleston", "part": "chords", "style": "Jazz", "name": "Charleston Comping", "description": "Electric piano on 1 and the and of 2", "program": 4, "track": "E. Piano",
+      "notes": [[0,1.4,"C",80],[1.5,0.45,"C",75]] },
+    { "id": "chords-jazz-guitar",  "part": "chords", "style": "Jazz", "name": "Guitar Quarters", "description": "Short chords on every beat", "program": 26, "track": "Guitar",
+      "notes": [[0,0.7,"C",75],[1,0.7,"C",65],[2,0.7,"C",72],[3,0.7,"C",65]] },
+
+    { "id": "chords-latin-bossa",  "part": "chords", "style": "Latin", "name": "Bossa Guitar", "description": "Nylon guitar, syncopated", "program": 24, "track": "Guitar",
+      "notes": [[0,0.9,"C",85],[1.5,0.45,"C",75],[2.5,0.9,"C",80],[3.5,0.45,"C",70]] },
+
+    { "id": "chords-reggae-skank", "part": "chords", "style": "Reggae", "name": "Skank", "description": "Short chords on 2 and 4", "program": 27, "track": "Guitar",
+      "notes": [[1,0.25,"C",90],[3,0.25,"C",90]] },
+
+    { "id": "chords-country-strum", "part": "chords", "style": "Country", "name": "Boom-Chick Strum", "description": "Steel guitar on the off-beats", "program": 25, "track": "Guitar",
+      "notes": [[1,0.4,"C",85],[1.5,0.4,"C",65],[3,0.4,"C",85],[3.5,0.4,"C",65]] },
+
+    { "id": "chords-blues-piano",  "part": "chords", "style": "Blues", "name": "Blues Piano", "description": "Chords on the beat with pickups", "program": 0, "track": "Piano",
+      "notes": [[0,0.9,"C",90],[1.5,0.45,"C",70],[2,0.9,"C",85],[3.5,0.45,"C",70]] }
+  ]
+}

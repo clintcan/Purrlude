@@ -44,7 +44,8 @@ include(cmake/SoundFonts.cmake)
 # ------------------------------------------------------------------------------
 # Device definitions (tone lists etc.), compiled in as binary data.
 file(GLOB PURRLUDE_DEVICE_DEFINITIONS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/content/devices/*.json
-                                                        ${CMAKE_CURRENT_SOURCE_DIR}/content/loops/*.json)
+                                                        ${CMAKE_CURRENT_SOURCE_DIR}/content/loops/*.json
+                                                        ${CMAKE_CURRENT_SOURCE_DIR}/content/accompaniment/*.json)
 juce_add_binary_data(purrlude_content
     HEADER_NAME PurrludeContent.h
     NAMESPACE PurrludeContent
@@ -81,6 +82,8 @@ target_sources(purrlude_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/LoopLibrary.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/ClipEditing.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/ClipEditing.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/Accompaniment.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/Accompaniment.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/NoteEditing.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/NoteEditing.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/Project.h
