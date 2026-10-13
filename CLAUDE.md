@@ -1,0 +1,151 @@
+# Purrlude - A Digital Audio Workstation Cross Platform Software
+
+Purrlude is a cross-platform digital audio workstation (DAW) for composing, recording, arranging and mixing music. It aims to be **easy for beginners and deep enough for power users**: a clean default UI that hides complexity until it's needed, with full control (automation, routing, keyboard-driven workflows) available underneath.
+
+> Status: early stage. No code or tech stack has been committed yet. When a stack decision is made, record it in the "Tech Stack" section below and remove the "undecided" markers.
+
+## Target Platforms
+
+- Windows, macOS, Linux (desktop, primary)
+- iOS / Android are possible later targets; avoid design choices that rule them out (e.g. keep the audio engine and core model UI-independent).
+
+## Signature Features
+
+These are what set Purrlude apart. Treat them as first-class, not add-ons.
+
+### 1. Arrangement → Sheet Music
+- Render a live music score (staff notation) directly from the arrangement: every instrument track maps to a staff/part.
+- Score view stays in sync with the piano roll / arrangement; edits in either are reflected in both.
+- Instrument-aware notation: correct clefs, transposing instruments, drum notation (percussion clef + drum map), tablature as a stretch goal.
+- Quantization/notation cleanup layer that turns performed MIDI (humanized timing, overlapping notes) into readable notation without altering the underlying MIDI.
+- Export: **PDF** (full score and individual parts), plus **MusicXML** and MIDI for interchange.
+
+### 2. Audio → MIDI Conversion
+- Convert recorded or imported audio into MIDI notes.
+- Modes: monophonic melody (voice, single-line instruments), polyphonic (piano, guitar), and drum/percussion transcription (onsets → drum map).
+- Output lands on a new MIDI track; user can review, correct, then view it as sheet music.
+- Should run offline/locally; no audio is sent to external services without explicit user consent.
+
+### 3. Flexible Input & Bluetooth MIDI
+- Audio inputs: any device exposed by the platform audio API, multi-channel interfaces, per-track input selection, input monitoring.
+- MIDI inputs: USB MIDI, virtual MIDI ports, multiple simultaneous controllers, MIDI learn for mapping knobs/faders.
+- **Bluetooth LE MIDI**: scan for nearby BLE MIDI devices, show them in a device browser, pair/connect, remember paired devices and auto-reconnect.
+  - Implement per platform behind a common interface (e.g. CoreMIDI BLE on macOS/iOS, Windows MIDI/WinRT BLE APIs on Windows, BlueZ on Linux, Android MidiManager).
+  - Surface latency/connection state clearly in the UI; handle disconnects gracefully mid-session.
+
+### 4. Software Instruments, Drum Loops & Accompaniment
+- Built-in software instruments (synths, sampler, drum machine) available out of the box.
+- Plugin hosting for third-party instruments/effects (VST3 / AU / CLAP / LV2, as supported per platform).
+- **Built-in content library** of drum loops and accompaniment patterns (styles such as pop, rock, jazz, latin, etc.) sourced from **free/openly licensed sources**.
+  - Every bundled asset must have its source, author and license recorded in a manifest (e.g. `content/LICENSES` or a metadata file per pack).
+  - Only include content whose license permits redistribution inside the app (e.g. CC0, CC-BY with attribution shown in-app). Do not bundle CC-NC/ND or unclear-license material without flagging it.
+  - Loops should be tempo/key-aware (stretch to project tempo, transpose accompaniment to project key).
+
+## Core DAW Features
+
+- Multi-track arrangement view (audio + MIDI tracks), clips, loops, markers, tempo and time-signature changes.
+- Piano roll, drum editor, and score editor.
+- Recording (audio and MIDI) with count-in, metronome, punch-in/out, loop/take recording.
+- Mixer with sends, buses, groups, built-in effects (EQ, compressor, reverb, delay, etc.), and automation.
+- Undo/redo for every edit; non-destructive editing.
+- Project save/load with autosave and crash recovery.
+- Export/bounce: WAV, FLAC, MP3/OGG, stems, MIDI, MusicXML, PDF score.
+
+## UX Principles
+
+- **Easy by default**: a new user should be able to pick an instrument, add a drum loop, record, and see the sheet music within minutes. Use sensible defaults and templates.
+- **Powerful on demand**: advanced options live in inspectors, context menus and preferences, not in the user's face. Full keyboard shortcuts and customizable layouts for power users.
+- Progressive disclosure over modes — avoid separate "beginner" and "pro" apps.
+- Responsive and never blocks the audio thread; UI stays fluid during heavy projects.
+- Accessible: scalable UI, keyboard navigation, colorblind-safe palettes.
+
+## Architecture Guidelines
+
+- Keep a clean separation between:
+  - **Audio engine** (real-time, lock-free, no allocations/IO/locks on the audio thread)
+  - **Project/document model** (tracks, clips, notes, automation — the single source of truth)
+  - **Notation layer** (derives score from the model; never the source of truth for MIDI data)
+  - **Analysis layer** (audio→MIDI, tempo/key detection; runs off the audio thread)
+  - **Device layer** (audio, MIDI, Bluetooth MIDI — platform-specific backends behind shared interfaces)
+  - **UI**
+- Platform-specific code goes behind interfaces; the rest of the codebase must stay platform-neutral.
+- Real-time safety is a hard rule: code reviews should flag any blocking call reachable from the audio callback.
+
+## Tech Stack
+
+**C++20 on JUCE 8, with Tracktion Engine as the DAW core.** Items marked _(planned)_ are not integrated yet.
+
+| Area | Choice | License |
+|---|---|---|
+| Language / build | C++20, CMake ≥ 3.22, CPM.cmake (`cmake/CPM.cmake`) | — |
+| Framework | JUCE 8 (pinned to the commit Tracktion Engine v3.2.0 ships with) | AGPLv3 / commercial |
+| DAW engine | Tracktion Engine v3.2.0 (Edit model, tracks, clips, automation, recording, plugin hosting) | GPLv3 / commercial |
+| UI | JUCE components with a custom LookAndFeel | — |
+| Score rendering | Verovio (MusicXML/MEI → SVG) _(planned)_ | LGPLv3 |
+| PDF export | Verovio SVG → PDF via Skia PDF backend or cairo + librsvg _(planned)_ | BSD / LGPL |
+| Notation cleanup | In-house (quantize, voice separation, spelling, ties) _(planned)_ | — |
+| Audio → MIDI (polyphonic) | Spotify basic-pitch model on ONNX Runtime _(planned)_ | Apache 2.0 / MIT |
+| Audio → MIDI (monophonic) | In-house pYIN _(planned)_ | — |
+| Audio → MIDI (drums) | Onset detection + small ONNX classifier _(planned)_ | — |
+| Built-in instruments | sfizz (SFZ) + FluidSynth (SF2/GM) _(planned)_ | BSD-2 / LGPL |
+| Time-stretch | Signalsmith Stretch _(planned)_; Tracktion's SoundTouch is used until then | MIT / LGPL |
+| Plugin formats | VST3 / AU / LV2 via JUCE; CLAP via clap-juce-extensions _(planned)_ | — |
+| Tests / CI | Catch2 v3, GitHub Actions (Windows/macOS/Linux) | BSL-1.0 |
+
+**Licensing:** JUCE (AGPL) + Tracktion Engine (GPL) mean Purrlude must be released under AGPLv3, or commercial licenses for both must be purchased for closed-source distribution. **This decision is still open.** Every new dependency must be license-compatible; prefer permissive (MIT/BSD/Apache) or LGPL. Avoid aubio (GPL) and Rubber Band (GPL) unless the project commits to GPL.
+
+### Bluetooth MIDI backends
+
+All behind `purrlude::BleMidiService` (`src/devices/BleMidiService.h`). A connected device appears as an ordinary MIDI port to the rest of the app.
+
+- macOS / iOS: CoreMIDI BLE (JUCE's `BluetoothMidiDevicePairingDialogue` on iOS)
+- Android: JUCE's pairing dialogue / Android MidiManager
+- Windows: WinRT `BluetoothLEAdvertisementWatcher` for discovery + Windows MIDI Services for I/O (highest-risk backend; prototype early)
+- Linux: BlueZ over D-Bus for discovery/pairing; BlueZ's MIDI profile exposes connected devices as ALSA sequencer ports
+
+### Content library sourcing
+
+- Ship loops and accompaniment primarily as **MIDI patterns** played by built-in instruments (tempo/key-agnostic, notatable, fewer license issues).
+- Sources: Magenta Groove MIDI Dataset (CC BY 4.0, attribution required), original/commissioned patterns, CC0 audio only (e.g. CC0-filtered Freesound).
+- Sample sets: GeneralUser GS, FluidR3_GM, VSCO-2 CE, permissively licensed SFZ drum kits — verify each license before bundling.
+- Do not use sites whose terms forbid redistribution as a loop library (e.g. Looperman).
+
+## Project Layout
+
+```
+CMakeLists.txt          Top-level build; fetches JUCE + Tracktion Engine via CPM
+CMakePresets.json       Configure/build/test presets (vs2022, xcode, ninja)
+cmake/CPM.cmake         Vendored CPM.cmake v0.40.2
+src/app/                Application shell (JUCEApplication, main window)
+src/devices/            Audio/MIDI/Bluetooth device layer
+tests/                  Catch2 test runner (PurrludeTests)
+.github/workflows/      CI for Windows, macOS, Linux
+```
+
+Planned directories as the architecture layers land: `src/model/`, `src/notation/`, `src/analysis/`, `src/ui/`, `content/`.
+
+`purrlude_core` is a CMake **INTERFACE** library: JUCE modules are compiled into each final target, so core sources are compiled into both the app and the test runner. Add new non-UI-shell sources to `purrlude_core`, not to the `Purrlude` target.
+
+## Build & Test
+
+```sh
+# Windows (Visual Studio 2022)
+cmake --preset vs2022
+cmake --build --preset vs2022-debug
+ctest --preset vs2022-debug
+
+# macOS
+cmake --preset xcode && cmake --build --preset xcode-debug && ctest --preset xcode-debug
+
+# Linux / any platform with Ninja
+cmake --preset ninja && cmake --build --preset ninja-debug && ctest --preset ninja-debug
+```
+
+Dependencies download into `.cpm-cache/` on first configure (slow the first time). Linux needs the JUCE system packages listed in `.github/workflows/build.yml`.
+
+## Conventions
+
+- Namespace: `purrlude`. Code style follows JUCE/Tracktion (4-space indent, space before call parentheses, `camelCase` methods, `PascalCase` types).
+- Use `tracktion::` (not the `te::` alias) in headers.
+- The `tracktion::Edit` is the project document; UI and analysis must never hold raw pointers into it across message-loop iterations without listening for changes.
+- Add tests for model, notation and analysis logic; audio-engine code should have offline (non-real-time) render tests.

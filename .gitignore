@@ -1,0 +1,7 @@
+build/
+.cpm-cache/
+.vs/
+.vscode/
+.idea/
+*.user
+.DS_Store
