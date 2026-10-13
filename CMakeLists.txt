@@ -72,6 +72,8 @@ target_sources(purrlude_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/instruments/SoundFontPlugin.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/TrackInstrument.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/TrackInstrument.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/TrackMix.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/TrackMix.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/LiveInstrument.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/LiveInstrument.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/NoteEditing.h

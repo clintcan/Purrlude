@@ -48,7 +48,9 @@ private:
     const tracktion::EditItemID trackID;
 
     juce::Label nameLabel;
-    juce::TextButton armButton { "Arm" };
+    juce::TextButton armButton { "Arm" }, muteButton { "M" }, soloButton { "S" };
+    juce::Slider volumeSlider, panKnob;
+    float valueBeforeDrag = 0.0f;   ///< Volume or pan when a drag started (for its undo step)
     juce::ComboBox instrumentBox, soundBox;
 
     juce::StringArray soundIDs, soundNames;   ///< Parallel to soundBox items; ID "" is the built-in instrument

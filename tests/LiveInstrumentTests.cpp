@@ -8,6 +8,7 @@
 #include "instruments/SoundFontPlugin.h"
 #include "model/LiveInstrument.h"
 #include "model/TrackInstrument.h"
+#include "model/TrackMix.h"
 
 TEST_CASE ("A live instrument gets a synth and every MIDI input", "[model][instrument]")
 {
@@ -373,4 +374,69 @@ TEST_CASE ("Tracks can be added, selected and deleted, and live input follows", 
 
     live.deleteTrack (first);
     REQUIRE (tracktion::getAudioTracks (*edit).size() == 1);
+}
+
+TEST_CASE ("Every track has volume, pan, mute and solo", "[model][instrument]")
+{
+    juce::ScopedJuceInitialiser_GUI juceInit;
+    std::unique_ptr<tracktion::Engine> enginePtr = purrlude::createEngine ("PurrludeTests");
+    tracktion::Engine& engine = *enginePtr;
+
+    auto edit = tracktion::Edit::createSingleTrackEdit (engine);
+    purrlude::LiveInstrument live (*edit);
+
+    // Tracks added later are created without default plugins; setup gives them volume/pan too.
+    auto* added = live.addTrack();
+    REQUIRE (added->getVolumePlugin() != nullptr);
+
+    purrlude::TrackInstrument instrument (*edit, *added);
+    instrument.setVolumeDb (-6.0f);
+    instrument.setPan (-0.5f);
+    REQUIRE (std::abs (instrument.getVolumeDb() + 6.0f) < 0.01f);
+    REQUIRE (std::abs (instrument.getPan() + 0.5f) < 0.01f);
+
+    instrument.setVolumeDb (20.0f);                       // limited to +6 dB
+    REQUIRE (instrument.getVolumeDb() <= 6.01f);
+
+    REQUIRE_FALSE (instrument.isMuted());
+    instrument.setMuted (true);
+    REQUIRE (instrument.isMuted());
+
+    instrument.setSolo (true);
+    REQUIRE (instrument.isSolo());
+    REQUIRE_FALSE (purrlude::TrackInstrument (*edit, live.getTrack()->itemID == added->itemID
+                                                       ? tracktion::getAudioTracks (*edit)[0]->itemID
+                                                       : live.getTrack()->itemID).isSolo());
+}
+
+TEST_CASE ("Mixer changes can be undone", "[model][instrument]")
+{
+    juce::ScopedJuceInitialiser_GUI juceInit;
+    std::unique_ptr<tracktion::Engine> enginePtr = purrlude::createEngine ("PurrludeTests");
+    tracktion::Engine& engine = *enginePtr;
+
+    auto edit = tracktion::Edit::createSingleTrackEdit (engine);
+    purrlude::LiveInstrument live (*edit);
+    auto id = live.getTrack()->itemID;
+
+    using purrlude::TrackMix::Control;
+    namespace mix = purrlude::TrackMix;
+
+    mix::change (*edit, id, Control::mute, 1.0f, 0.0f);
+    REQUIRE (mix::get (*edit, id, Control::mute) == 1.0f);
+
+    // A drag: applied live, then recorded as one step from where it started.
+    mix::set (*edit, id, Control::volumeDb, -3.0f);
+    mix::set (*edit, id, Control::volumeDb, -9.0f);
+    mix::change (*edit, id, Control::volumeDb, -9.0f, 0.0f);
+
+    edit->undo();
+    REQUIRE (std::abs (mix::get (*edit, id, Control::volumeDb)) < 0.01f);   // back to 0 dB in one step
+    REQUIRE (mix::get (*edit, id, Control::mute) == 1.0f);
+
+    edit->undo();
+    REQUIRE (mix::get (*edit, id, Control::mute) == 0.0f);
+
+    edit->redo();
+    REQUIRE (mix::get (*edit, id, Control::mute) == 1.0f);
 }

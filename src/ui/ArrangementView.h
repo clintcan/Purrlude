@@ -59,7 +59,7 @@ private:
     std::optional<double> recordStartBeat;
     int lastContentHeight = 0;
 
-    static constexpr int rulerHeight = 24, laneHeight = 128, headerWidth = 170, addButtonArea = 44;
+    static constexpr int rulerHeight = 24, laneHeight = 156, headerWidth = 170, addButtonArea = 44;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ArrangementView)
 };

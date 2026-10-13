@@ -68,6 +68,23 @@ public:
     */
     void previewNote (int noteNumber, bool on) const;
 
+    //==============================================================================
+    /** Track volume in dB and pan (-1 left .. 1 right), via the track's VolumeAndPan plugin.
+        For an external sound source they're also sent as CC 7 / CC 10 on its channel.
+    */
+    void setVolumeDb (float);
+    float getVolumeDb() const;
+    void setPan (float);
+    float getPan() const;
+
+    void setMuted (bool);
+    bool isMuted() const;
+    void setSolo (bool);
+    bool isSolo() const;
+
+    /** Sends volume and pan to an external sound source (CC 7, CC 10), if there is one. */
+    void sendMixToDevice() const;
+
 private:
     tracktion::Edit& edit;
     tracktion::EditItemID trackID;

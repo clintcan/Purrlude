@@ -1,6 +1,7 @@
 #include "TrackHeader.h"
 
 #include "devices/DeviceLibrary.h"
+#include "model/TrackMix.h"
 #include "instruments/GeneralMidi.h"
 
 namespace purrlude
@@ -43,6 +44,83 @@ TrackHeader::TrackHeader (tracktion::Edit& e, LiveInstrument& l, MidiDeviceSetti
     };
     addAndMakeVisible (armButton);
 
+    muteButton.setClickingTogglesState (true);
+    muteButton.setTooltip ("Mute this track");
+    muteButton.setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xff0072b2));
+    muteButton.onClick = [this]
+    {
+        auto on = muteButton.getToggleState() ? 1.0f : 0.0f;
+        TrackMix::change (edit, trackID, TrackMix::Control::mute, on, 1.0f - on);
+    };
+    addAndMakeVisible (muteButton);
+
+    soloButton.setClickingTogglesState (true);
+    soloButton.setTooltip ("Solo: hear only soloed tracks");
+    soloButton.setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xffe69f00));
+    soloButton.onClick = [this]
+    {
+        auto on = soloButton.getToggleState() ? 1.0f : 0.0f;
+        TrackMix::change (edit, trackID, TrackMix::Control::solo, on, 1.0f - on);
+    };
+    addAndMakeVisible (soloButton);
+
+    volumeSlider.setSliderStyle (juce::Slider::LinearHorizontal);
+    volumeSlider.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+    volumeSlider.setRange (-60.0, 6.0, 0.1);
+    volumeSlider.setSkewFactorFromMidPoint (-12.0);
+    volumeSlider.setDoubleClickReturnValue (true, 0.0);
+    volumeSlider.textFromValueFunction = [] (double db) { return db <= -59.9 ? juce::String ("-inf dB") : juce::String (db, 1) + " dB"; };
+    volumeSlider.setPopupDisplayEnabled (true, true, nullptr);
+    volumeSlider.setTooltip ("Volume (double-click for 0 dB)");
+    // A drag is applied live and becomes one undo step when it ends; a click or
+    // double-click reset is one step on its own.
+    auto volumeFromSlider = [this]
+    {
+        auto db = (float) volumeSlider.getValue();
+        return db <= -59.9f ? -100.0f : db;
+    };
+
+    volumeSlider.onDragStart = [this] { valueBeforeDrag = TrackMix::get (edit, trackID, TrackMix::Control::volumeDb); };
+    volumeSlider.onDragEnd = [this, volumeFromSlider]
+    {
+        TrackMix::change (edit, trackID, TrackMix::Control::volumeDb, volumeFromSlider(), valueBeforeDrag);
+    };
+    volumeSlider.onValueChange = [this, volumeFromSlider]
+    {
+        if (volumeSlider.isMouseButtonDown())
+            TrackMix::set (edit, trackID, TrackMix::Control::volumeDb, volumeFromSlider());
+        else
+            TrackMix::change (edit, trackID, TrackMix::Control::volumeDb, volumeFromSlider(),
+                              TrackMix::get (edit, trackID, TrackMix::Control::volumeDb));
+    };
+    addAndMakeVisible (volumeSlider);
+
+    panKnob.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
+    panKnob.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+    panKnob.setRange (-1.0, 1.0, 0.01);
+    panKnob.setDoubleClickReturnValue (true, 0.0);
+    panKnob.textFromValueFunction = [] (double pan)
+    {
+        auto percent = juce::roundToInt (std::abs (pan) * 100.0);
+        return percent == 0 ? juce::String ("Centre") : juce::String (percent) + (pan < 0 ? "% L" : "% R");
+    };
+    panKnob.setPopupDisplayEnabled (true, true, nullptr);
+    panKnob.setTooltip ("Pan (double-click to centre)");
+    panKnob.onDragStart = [this] { valueBeforeDrag = TrackMix::get (edit, trackID, TrackMix::Control::pan); };
+    panKnob.onDragEnd = [this]
+    {
+        TrackMix::change (edit, trackID, TrackMix::Control::pan, (float) panKnob.getValue(), valueBeforeDrag);
+    };
+    panKnob.onValueChange = [this]
+    {
+        if (panKnob.isMouseButtonDown())
+            TrackMix::set (edit, trackID, TrackMix::Control::pan, (float) panKnob.getValue());
+        else
+            TrackMix::change (edit, trackID, TrackMix::Control::pan, (float) panKnob.getValue(),
+                              TrackMix::get (edit, trackID, TrackMix::Control::pan));
+    };
+    addAndMakeVisible (panKnob);
+
     instrumentBox.setTooltip ("The instrument this track plays: a built-in sound, or a tone on the device");
     instrumentBox.onChange = [this] { instrumentChosen(); };
     addAndMakeVisible (instrumentBox);
@@ -51,7 +129,8 @@ TrackHeader::TrackHeader (tracktion::Edit& e, LiveInstrument& l, MidiDeviceSetti
     soundBox.onChange = [this] { soundChosen(); };
     addAndMakeVisible (soundBox);
 
-    for (auto* c : std::initializer_list<juce::Component*> { &armButton, &instrumentBox, &soundBox })
+    for (auto* c : std::initializer_list<juce::Component*> { &armButton, &muteButton, &soloButton, &instrumentBox,
+                                                            &soundBox, &volumeSlider, &panKnob })
         c->setWantsKeyboardFocus (false);
 
     updateChoices();
@@ -64,6 +143,17 @@ void TrackHeader::refresh()
         nameLabel.setText (track->getName(), juce::dontSendNotification);
 
     armButton.setToggleState (isSelected() && live.isArmed(), juce::dontSendNotification);
+
+    // Undo, or another view, may have changed these.
+    auto instrument = getInstrument();
+    muteButton.setToggleState (instrument.isMuted(), juce::dontSendNotification);
+    soloButton.setToggleState (instrument.isSolo(), juce::dontSendNotification);
+
+    if (! volumeSlider.isMouseButtonDown())
+        volumeSlider.setValue (juce::jmax (-60.0f, instrument.getVolumeDb()), juce::dontSendNotification);
+
+    if (! panKnob.isMouseButtonDown())
+        panKnob.setValue (instrument.getPan(), juce::dontSendNotification);
 
     // The sound source, undo, or a tone picked on the keyboard can change the instrument behind the menu's back.
     if (! instrumentBox.isPopupActive())
@@ -103,11 +193,20 @@ void TrackHeader::resized()
     auto r = getLocalBounds().reduced (8, 6);
     nameLabel.setBounds (r.removeFromTop (22).withTrimmedLeft (-4));
     r.removeFromTop (4);
-    armButton.setBounds (r.removeFromTop (24).withWidth (60));
+    auto buttons = r.removeFromTop (24);
+    armButton.setBounds (buttons.removeFromLeft (52));
+    buttons.removeFromLeft (4);
+    muteButton.setBounds (buttons.removeFromLeft (28));
+    buttons.removeFromLeft (4);
+    soloButton.setBounds (buttons.removeFromLeft (28));
     r.removeFromTop (6);
     instrumentBox.setBounds (r.removeFromTop (24));
     r.removeFromTop (6);
     soundBox.setBounds (r.removeFromTop (24));
+    r.removeFromTop (4);
+    auto mix = r.removeFromTop (26);
+    panKnob.setBounds (mix.removeFromRight (26));
+    volumeSlider.setBounds (mix.withTrimmedRight (4));
 }
 
 void TrackHeader::mouseDown (const juce::MouseEvent& e)

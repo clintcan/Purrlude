@@ -82,6 +82,11 @@ void TrackInstrument::setUp (tracktion::Edit& edit, tracktion::AudioTrack& track
             track.pluginList.insertPlugin (synth, 0, nullptr);
     }
 
+    // Every track has volume and pan (tracks added without default plugins have neither).
+    if (track.getVolumePlugin() == nullptr)
+        if (auto volume = edit.getPluginCache().createNewPlugin (tracktion::VolumeAndPanPlugin::xmlTypeName, {}))
+            track.pluginList.insertPlugin (volume, -1, nullptr);
+
     // Only when it differs: setting it makes the audio thread re-apply it.
     if (auto* soundFont = findSoundFont (track); soundFont != nullptr && soundFont->getProgram() != instrument.getProgram())
         soundFont->setProgram (instrument.getProgram());
@@ -129,6 +134,7 @@ void TrackInstrument::setSoundSource (const juce::String& deviceID, const juce::
     track->state.setProperty (soundSourceNameProperty, deviceName, nullptr);
     setOutputChannel (outputChannel);
     sendToneToDevice();
+    sendMixToDevice();
     edit.restartPlayback();
 }
 
@@ -253,6 +259,89 @@ bool TrackInstrument::hasGeneralMidiSynth() const
 {
     auto* track = getTrack();
     return track != nullptr && findSoundFont (*track) != nullptr;
+}
+
+// Volume and pan are written to the plugin's state without the undo manager: the plugin's
+// own setters record every move, which would flood the undo history during a fader drag.
+// Undo for the mixer is TrackMix's job.
+void TrackInstrument::setVolumeDb (float db)
+{
+    if (auto* track = getTrack())
+        if (auto* volume = track->getVolumePlugin())
+            volume->state.setProperty (tracktion::IDs::volume,
+                                       tracktion::decibelsToVolumeFaderPosition (juce::jlimit (-100.0f, 6.0f, db)), nullptr);
+
+    sendMixToDevice();
+}
+
+// Read from the state: the plugin's parameter catches up with it asynchronously.
+float TrackInstrument::getVolumeDb() const
+{
+    auto* track = getTrack();
+    auto* volume = track != nullptr ? track->getVolumePlugin() : nullptr;
+
+    if (volume == nullptr)
+        return 0.0f;
+
+    auto position = volume->state.getProperty (tracktion::IDs::volume, tracktion::decibelsToVolumeFaderPosition (0.0f));
+    return tracktion::volumeFaderPositionToDB ((float) position);
+}
+
+void TrackInstrument::setPan (float pan)
+{
+    if (auto* track = getTrack())
+        if (auto* volume = track->getVolumePlugin())
+            volume->state.setProperty (tracktion::IDs::pan, juce::jlimit (-1.0f, 1.0f, pan), nullptr);
+
+    sendMixToDevice();
+}
+
+float TrackInstrument::getPan() const
+{
+    auto* track = getTrack();
+    auto* volume = track != nullptr ? track->getVolumePlugin() : nullptr;
+    return volume != nullptr ? (float) volume->state.getProperty (tracktion::IDs::pan, 0.0f) : 0.0f;
+}
+
+void TrackInstrument::setMuted (bool muted)
+{
+    if (auto* track = getTrack())
+        track->setMute (muted);
+}
+
+bool TrackInstrument::isMuted() const
+{
+    auto* track = getTrack();
+    return track != nullptr && track->isMuted (false);
+}
+
+void TrackInstrument::setSolo (bool solo)
+{
+    if (auto* track = getTrack())
+        track->setSolo (solo);
+}
+
+bool TrackInstrument::isSolo() const
+{
+    auto* track = getTrack();
+    return track != nullptr && track->isSolo (false);
+}
+
+void TrackInstrument::sendMixToDevice() const
+{
+    auto id = getSoundSourceID();
+
+    if (id.isEmpty())
+        return;
+
+    if (auto* device = findMidiOutput (edit, id); device != nullptr && device->isEnabled())
+    {
+        // CC 7 is usually a gain curve already; map the fader's gain linearly, 0 dB = 127.
+        auto gain = juce::Decibels::decibelsToGain (getVolumeDb(), -60.0f);
+        auto channel = getOutputChannel();
+        device->fireMessage (juce::MidiMessage::controllerEvent (channel, 7, juce::jlimit (0, 127, juce::roundToInt (gain * 127.0f))));
+        device->fireMessage (juce::MidiMessage::controllerEvent (channel, 10, juce::jlimit (0, 127, juce::roundToInt (64.0f + getPan() * 63.5f))));
+    }
 }
 
 void TrackInstrument::previewNote (int noteNumber, bool on) const

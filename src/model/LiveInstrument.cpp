@@ -190,7 +190,11 @@ void LiveInstrument::changeListenerCallback (juce::ChangeBroadcaster* source)
 
         if (playing && ! wasPlaying)
             for (auto* track : tracktion::getAudioTracks (edit))
-                TrackInstrument (edit, *track).sendToneToDevice();
+            {
+                TrackInstrument instrument (edit, *track);
+                instrument.sendToneToDevice();
+                instrument.sendMixToDevice();
+            }
 
         wasPlaying = playing;
         return;
