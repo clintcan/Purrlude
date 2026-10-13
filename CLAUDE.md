@@ -100,7 +100,7 @@ All behind `purrlude::BleMidiService` (`src/devices/BleMidiService.h`). A connec
 
 - macOS / iOS: CoreMIDI BLE (JUCE's `BluetoothMidiDevicePairingDialogue` on iOS)
 - Android: JUCE's pairing dialogue / Android MidiManager
-- Windows: WinRT `BluetoothLEAdvertisementWatcher` for discovery + Windows MIDI Services for I/O (highest-risk backend; prototype early)
+- Windows (`src/devices/BleMidiService_windows.cpp`, implemented): C++/WinRT `BluetoothLEAdvertisementWatcher` for discovery, custom pairing (just-works/confirm-only; PIN devices must be paired in Windows Settings), and a `GattSession` with `MaintainConnection` to hold the link. MIDI I/O goes through JUCE with `JUCE_USE_WINRT_MIDI=1`, which exposes connected BLE devices as normal MIDI ports. Windows MIDI Services can replace this later.
 - Linux: BlueZ over D-Bus for discovery/pairing; BlueZ's MIDI profile exposes connected devices as ALSA sequencer ports
 
 ### Content library sourcing
@@ -147,5 +147,7 @@ Dependencies download into `.cpm-cache/` on first configure (slow the first time
 
 - Namespace: `purrlude`. Code style follows JUCE/Tracktion (4-space indent, space before call parentheses, `camelCase` methods, `PascalCase` types).
 - Use `tracktion::` (not the `te::` alias) in headers.
+- Platform backends live in `*_windows.cpp` / `*_mac.mm` / `*_linux.cpp` files, added to `purrlude_core` with `$<PLATFORM_ID:...>` generator expressions.
+- OS callbacks (WinRT, CoreBluetooth, D-Bus) run on background threads: copy plain data and post to the message thread via `juce::MessageManager::callAsync` + `juce::WeakReference`; never touch shared state from those threads.
 - The `tracktion::Edit` is the project document; UI and analysis must never hold raw pointers into it across message-loop iterations without listening for changes.
 - Add tests for model, notation and analysis logic; audio-engine code should have offline (non-real-time) render tests.

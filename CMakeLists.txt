@@ -44,6 +44,7 @@ add_library(purrlude_core INTERFACE)
 target_sources(purrlude_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/devices/BleMidiService.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/devices/BleMidiService.cpp
+    $<$<PLATFORM_ID:Windows>:${CMAKE_CURRENT_SOURCE_DIR}/src/devices/BleMidiService_windows.cpp>
 )
 
 target_include_directories(purrlude_core INTERFACE src)
@@ -68,6 +69,13 @@ target_link_libraries(purrlude_core INTERFACE
     juce::juce_audio_processors
     juce::juce_audio_utils
 )
+
+if(WIN32)
+    # WinRT MIDI makes connected Bluetooth LE MIDI devices show up as JUCE MIDI ports;
+    # WindowsApp provides the WinRT APIs used by BleMidiService_windows.cpp.
+    target_compile_definitions(purrlude_core INTERFACE JUCE_USE_WINRT_MIDI=1)
+    target_link_libraries(purrlude_core INTERFACE WindowsApp)
+endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_link_libraries(purrlude_core INTERFACE atomic)
