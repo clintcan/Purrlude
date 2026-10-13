@@ -592,6 +592,9 @@ bool MainComponent::keyPressed (const juce::KeyPress& key)
     if (key == juce::KeyPress::homeKey)     { transportBar->returnToStart(); return true; }
     if (code == 'R')                        { transportBar->toggleRecord();  return true; }
 
+    if ((key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey) && arrangement != nullptr)
+        return arrangement->deleteSelectedClip();
+
     return false;
 }
 

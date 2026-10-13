@@ -7,9 +7,14 @@
 namespace purrlude::notation
 {
 
+/** The notes a clip plays, in quarter-note beats from the start of the Edit. Its trim and
+    offset are applied, and a looping clip is unrolled.
+*/
+std::vector<NoteEvent> getClipNotes (tracktion::MidiClip&);
+
 /** The notes a track plays, in quarter-note beats from the start of the Edit.
-    Clip trims and offsets are applied; muted clips are skipped. Looped clips
-    are read once, unlooped (looping isn't notated yet).
+    Clip trims and offsets are applied, looping clips are unrolled, and muted
+    clips are skipped.
 */
 std::vector<NoteEvent> getTrackNotes (tracktion::AudioTrack&);
 

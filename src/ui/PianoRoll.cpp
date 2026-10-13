@@ -123,9 +123,11 @@ public:
             g.drawVerticalLine ((int) x, 0.0f, (float) getHeight());
         }
 
-        // Outside the clip's visible range is dimmed: those notes don't play.
-        auto visibleStart = beatToX (clip->getOffsetInBeats().inBeats());
-        auto visibleEnd = beatToX (clip->getOffsetInBeats().inBeats() + clip->getLengthInBeats().inBeats());
+        // Outside the clip's visible range is dimmed: those notes don't play. A looping clip
+        // (such as a drum loop) plays its loop range over and over.
+        auto visibleStart = beatToX (clip->isLooping() ? clip->getLoopStartBeats().inBeats() : clip->getOffsetInBeats().inBeats());
+        auto visibleEnd = clip->isLooping() ? beatToX ((clip->getLoopStartBeats() + clip->getLoopLengthBeats()).inBeats())
+                                            : beatToX (clip->getOffsetInBeats().inBeats() + clip->getLengthInBeats().inBeats());
         g.setColour (juce::Colours::black.withAlpha (0.35f));
         g.fillRect (juce::Rectangle<float> (0.0f, 0.0f, visibleStart, (float) getHeight()));
         g.fillRect (juce::Rectangle<float> (visibleEnd, 0.0f, (float) getWidth() - visibleEnd, (float) getHeight()));

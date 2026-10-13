@@ -44,8 +44,9 @@ namespace LoopLibrary
     */
     tracktion::AudioTrack* findOrCreateDrumTrack (tracktion::Edit&, LiveInstrument&);
 
-    /** Puts the loop on the drum track, repeated to fill `bars` bars from `startBar` (0-based),
-        as one clip. If the song has no notes yet, the project tempo becomes the loop's.
+    /** Puts the loop on the drum track as one clip that loops it for `bars` bars from
+        `startBar` (0-based), replacing what was there. If the song has no notes yet, the
+        project tempo becomes the loop's.
         One undo step. Returns the clip.
     */
     tracktion::MidiClip* insertLoop (tracktion::Edit&, LiveInstrument&, const Loop&, int startBar, int bars);

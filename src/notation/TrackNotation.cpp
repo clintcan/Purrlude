@@ -11,31 +11,63 @@ TimeSignature getTimeSignature (tracktion::Edit& edit)
     return sig != nullptr ? TimeSignature { sig->numerator.get(), sig->denominator.get() } : TimeSignature {};
 }
 
-std::vector<NoteEvent> getTrackNotes (tracktion::AudioTrack& track)
+std::vector<NoteEvent> getClipNotes (tracktion::MidiClip& clip)
 {
     // Tracktion beats are time-signature beats; notation works in quarter notes.
-    auto toQuarters = 4.0 / getTimeSignature (track.edit).denominator;
+    auto toQuarters = 4.0 / getTimeSignature (clip.edit).denominator;
+    std::vector<NoteEvent> notes;
+
+    auto clipStart = clip.getStartBeat().inBeats();
+    auto clipEnd = clip.getEndBeat().inBeats();
+    auto contentStart = clipStart - clip.getOffsetInBeats().inBeats();
+
+    // A looping clip plays its loop range over and over from contentStart.
+    auto looping = clip.isLooping();
+    auto loopStart = looping ? clip.getLoopStartBeats().inBeats() : 0.0;
+    auto loopLength = looping ? clip.getLoopLengthBeats().inBeats() : 0.0;
+
+    for (int repeat = 0; ; ++repeat)
+    {
+        auto repeatStart = contentStart + repeat * loopLength;
+
+        if (repeat > 0 && (! looping || loopLength <= 0.0 || repeatStart >= clipEnd))
+            break;
+
+        for (auto* n : clip.getSequence().getNotes())
+        {
+            auto noteStart = n->getStartBeat().inBeats(), noteEnd = n->getEndBeat().inBeats();
+
+            if (looping)
+            {
+                if (noteStart < loopStart || noteStart >= loopStart + loopLength)
+                    continue;
+
+                noteStart -= loopStart;
+                noteEnd = std::min (noteEnd - loopStart, loopLength);
+            }
+
+            // Only the part of each note inside the clip's visible range sounds.
+            auto start = std::max (clipStart, repeatStart + noteStart);
+            auto end = std::min (clipEnd, repeatStart + noteEnd);
+
+            if (end > start)
+                notes.push_back ({ start * toQuarters, (end - start) * toQuarters, n->getNoteNumber(), n->getVelocity() });
+        }
+    }
+
+    return notes;
+}
+
+std::vector<NoteEvent> getTrackNotes (tracktion::AudioTrack& track)
+{
     std::vector<NoteEvent> notes;
 
     for (auto* clip : track.getClips())
     {
-        auto* midiClip = dynamic_cast<tracktion::MidiClip*> (clip);
-
-        if (midiClip == nullptr || midiClip->isMuted())
-            continue;
-
-        auto clipStart = midiClip->getStartBeat().inBeats();
-        auto clipEnd = midiClip->getEndBeat().inBeats();
-        auto contentStart = clipStart - midiClip->getOffsetInBeats().inBeats();
-
-        for (auto* n : midiClip->getSequence().getNotes())
+        if (auto* midiClip = dynamic_cast<tracktion::MidiClip*> (clip); midiClip != nullptr && ! midiClip->isMuted())
         {
-            // Only the part of each note inside the clip's visible range sounds.
-            auto start = std::max (clipStart, contentStart + n->getStartBeat().inBeats());
-            auto end = std::min (clipEnd, contentStart + n->getEndBeat().inBeats());
-
-            if (end > start)
-                notes.push_back ({ start * toQuarters, (end - start) * toQuarters, n->getNoteNumber(), n->getVelocity() });
+            auto clipNotes = getClipNotes (*midiClip);
+            notes.insert (notes.end(), clipNotes.begin(), clipNotes.end());
         }
     }
 

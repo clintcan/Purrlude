@@ -79,6 +79,8 @@ target_sources(purrlude_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/LiveInstrument.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/LoopLibrary.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/LoopLibrary.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/ClipEditing.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/ClipEditing.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/NoteEditing.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/NoteEditing.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/Project.h

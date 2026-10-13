@@ -10,6 +10,11 @@ namespace purrlude
 /** The arrangement: bar ruler, one lane per instrument track (header, clips with their
     notes drawn in), the take being recorded, the playhead, and "+ Track".
 
+    Clips: click to select, drag to move (snapping to bars, or beats with Shift; onto
+    another lane to change track), Option/Alt-drag to copy, drag the right edge to
+    change the length, double-click to edit the notes. Clicking an empty lane or the
+    ruler moves the playhead.
+
     Reads the Edit afresh on every paint and keeps no pointers into it, so it can't go
     stale; a timer repaints and keeps the track headers in step with the Edit's tracks.
     Its height grows with the number of tracks (see getContentHeight); put it in a
@@ -35,7 +40,13 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
     void mouseDown (const juce::MouseEvent&) override;
+    void mouseDrag (const juce::MouseEvent&) override;
+    void mouseUp (const juce::MouseEvent&) override;
+    void mouseMove (const juce::MouseEvent&) override;
     void mouseDoubleClick (const juce::MouseEvent&) override;
+
+    /** Deletes the selected clip, if there is one (Delete/Backspace). */
+    bool deleteSelectedClip();
 
 private:
     void timerCallback() override;
@@ -49,6 +60,31 @@ private:
     double getVisibleBeats() const;
     float beatToX (double beat) const;
     double xToBeat (float x) const;
+    int laneIndexAt (int y) const;
+    juce::Rectangle<float> getClipArea (int laneIndex, double startBeat, double endBeat) const;
+
+    struct ClipHit
+    {
+        tracktion::Clip* clip = nullptr;
+        int laneIndex = 0;
+        bool onRightEdge = false;
+    };
+
+    ClipHit findClipAt (juce::Point<int>) const;
+
+    /** A clip being dragged: where it was, and where it would go. */
+    struct ClipDrag
+    {
+        tracktion::EditItemID clipID;
+        bool resizing = false, copying = false, moved = false;
+        double startBeat = 0.0, endBeat = 0.0, grabBeat = 0.0;
+        int laneIndex = 0;
+        double newStart = 0.0, newEnd = 0.0;
+        int newLaneIndex = 0;
+    };
+
+    std::optional<ClipDrag> clipDrag;
+    tracktion::EditItemID selectedClipID;
 
     tracktion::Edit& edit;
     LiveInstrument& live;

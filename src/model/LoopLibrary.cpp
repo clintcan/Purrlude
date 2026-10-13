@@ -159,27 +159,25 @@ tracktion::MidiClip* LoopLibrary::insertLoop (tracktion::Edit& edit, LiveInstrum
     auto range = tracktion::TimeRange (tempo.toTime (tracktion::BeatPosition::fromBeats (startBeat)),
                                        tempo.toTime (tracktion::BeatPosition::fromBeats (startBeat + lengthBeats)));
 
+    // It replaces whatever the Drums track had there.
+    track->deleteRegion (range, nullptr);
     auto clip = track->insertMIDIClip (loop.name, range, nullptr);
 
     if (clip == nullptr)
         return nullptr;
 
+    // The pattern is stored once and the clip loops it, so lengthening the clip repeats it.
     auto& sequence = clip->getSequence();
 
-    for (double offset = 0.0; offset < lengthBeats; offset += loopBeats)
+    for (const auto& n : loop.notes)
     {
-        for (const auto& n : loop.notes)
-        {
-            auto start = offset + n.start * quartersToBeats;
-
-            if (start >= lengthBeats)
-                continue;
-
-            auto length = juce::jmin (n.length * quartersToBeats, lengthBeats - start);
-            sequence.addNote (n.pitch, tracktion::BeatPosition::fromBeats (start),
-                              tracktion::BeatDuration::fromBeats (length), n.velocity, 0, &um);
-        }
+        auto start = n.start * quartersToBeats;
+        auto length = juce::jmin (n.length * quartersToBeats, loopBeats - start);
+        sequence.addNote (n.pitch, tracktion::BeatPosition::fromBeats (start),
+                          tracktion::BeatDuration::fromBeats (length), n.velocity, 0, &um);
     }
+
+    clip->setLoopRangeBeats ({ tracktion::BeatPosition(), tracktion::BeatDuration::fromBeats (loopBeats) });
 
     // The transaction is left open: Tracktion re-sorts the track's clips asynchronously,
     // and that has to be part of this step, or Cmd+Z would undo only the re-sort.
