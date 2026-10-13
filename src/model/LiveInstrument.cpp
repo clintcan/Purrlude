@@ -63,13 +63,30 @@ tracktion::AudioTrack* LiveInstrument::getTrack() const
     return tracktion::findAudioTrackForID (edit, trackID);
 }
 
-bool LiveInstrument::isInputRouted() const
+tracktion::InputDeviceInstance* LiveInstrument::findInputInstance() const
 {
     for (auto* instance : edit.getAllInputDevices())
         if (instance->getInputDevice().getDeviceID() == allMidiInsID)
-            return instance->getTargets().contains (trackID);
+            return instance;
 
-    return false;
+    return nullptr;
+}
+
+bool LiveInstrument::isInputRouted() const
+{
+    auto* instance = findInputInstance();
+    return instance != nullptr && instance->getTargets().contains (trackID);
+}
+
+void LiveInstrument::setArmed (bool shouldBeArmed)
+{
+    if (isInputRouted())
+        findInputInstance()->setRecordingEnabled (trackID, shouldBeArmed);
+}
+
+bool LiveInstrument::isArmed() const
+{
+    return isInputRouted() && findInputInstance()->isRecordingEnabled (trackID);
 }
 
 void LiveInstrument::routeInput()
@@ -77,16 +94,17 @@ void LiveInstrument::routeInput()
     if (getTrack() == nullptr || isInputRouted())
         return;
 
-    for (auto* instance : edit.getAllInputDevices())
+    if (auto* instance = findInputInstance())
     {
-        if (instance->getInputDevice().getDeviceID() != allMidiInsID)
-            continue;
-
         // Not undoable: this is setup, not a user edit.
         if (auto result = instance->setTarget (trackID, false, nullptr, 0); ! result)
+        {
             DBG ("LiveInstrument: could not route MIDI input: " << result.error());
+            return;
+        }
 
-        return;
+        // Ready to record by default: press Record and play.
+        instance->setRecordingEnabled (trackID, true);
     }
 }
 

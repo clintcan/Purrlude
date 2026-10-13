@@ -7,6 +7,7 @@ target_sources(PurrludeTests PRIVATE
     BleMidiServiceTests.cpp
     BluetoothMidiManagerTests.cpp
     LiveInstrumentTests.cpp
+    ProjectTests.cpp
     $<$<PLATFORM_ID:Windows>:BleMidiGattProbe_windows.cpp>
 )
 

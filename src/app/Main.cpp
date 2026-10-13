@@ -6,18 +6,37 @@ namespace purrlude
 class MainWindow final : public juce::DocumentWindow
 {
 public:
-    MainWindow (const juce::String& name, tracktion::Engine& engine, BluetoothMidiManager& bluetooth)
+    MainWindow (const juce::String& name, tracktion::Engine& engine, BluetoothMidiManager& bluetooth,
+                juce::PropertiesFile& settings)
         : DocumentWindow (name,
                           juce::Desktop::getInstance().getDefaultLookAndFeel()
                               .findColour (juce::ResizableWindow::backgroundColourId),
                           DocumentWindow::allButtons)
     {
         setUsingNativeTitleBar (true);
-        setContentOwned (new MainComponent (engine, bluetooth), true);
+        content = new MainComponent (engine, bluetooth, settings);
+        setContentOwned (content, true);
         setResizable (true, true);
         centreWithSize (getWidth(), getHeight());
         setVisible (true);
+
+       #if JUCE_MAC
+        juce::MenuBarModel::setMacMainMenu (content);
+       #else
+        setMenuBar (content);
+       #endif
     }
+
+    ~MainWindow() override
+    {
+       #if JUCE_MAC
+        juce::MenuBarModel::setMacMainMenu (nullptr);
+       #else
+        setMenuBar (nullptr);
+       #endif
+    }
+
+    MainComponent& getMainComponent()       { return *content; }
 
     void closeButtonPressed() override
     {
@@ -25,6 +44,8 @@ public:
     }
 
 private:
+    MainComponent* content = nullptr;   // owned by the window
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainWindow)
 };
 
@@ -47,7 +68,8 @@ public:
         engine = std::make_unique<tracktion::Engine> (getApplicationName());
         bluetooth = std::make_unique<BluetoothMidiManager> (BleMidiService::createForPlatform(),
                                                             *settings.getUserSettings());
-        mainWindow = std::make_unique<MainWindow> (getApplicationName(), *engine, *bluetooth);
+        mainWindow = std::make_unique<MainWindow> (getApplicationName(), *engine, *bluetooth,
+                                                   *settings.getUserSettings());
     }
 
     void shutdown() override
@@ -61,7 +83,23 @@ public:
 
     void systemRequestedQuit() override
     {
-        quit();
+        if (mainWindow == nullptr)
+        {
+            quit();
+            return;
+        }
+
+        // Ignore repeated requests while the "save changes?" prompt is open.
+        if (std::exchange (quitPending, true))
+            return;
+
+        mainWindow->getMainComponent().confirmClose ([this] (bool canClose)
+        {
+            quitPending = false;
+
+            if (canClose)
+                quit();
+        });
     }
 
 private:
@@ -69,6 +107,7 @@ private:
     std::unique_ptr<tracktion::Engine> engine;
     std::unique_ptr<BluetoothMidiManager> bluetooth;
     std::unique_ptr<MainWindow> mainWindow;
+    bool quitPending = false;
 };
 
 } // namespace purrlude

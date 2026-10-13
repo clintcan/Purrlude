@@ -27,10 +27,17 @@ public:
     /** True once "All MIDI Ins" feeds the instrument track. */
     bool isInputRouted() const;
 
+    /** Record-arms the track: when the transport records, played MIDI becomes a clip on it.
+        Armed by default once the input is routed.
+    */
+    void setArmed (bool);
+    bool isArmed() const;
+
     /** Device ID of Tracktion's merged MIDI input. */
     static constexpr const char* allMidiInsID = "all_midi_in";
 
 private:
+    tracktion::InputDeviceInstance* findInputInstance() const;
     void routeInput();
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
 

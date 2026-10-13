@@ -50,8 +50,14 @@ target_sources(purrlude_core INTERFACE
     $<$<PLATFORM_ID:Darwin>:${CMAKE_CURRENT_SOURCE_DIR}/src/devices/BleMidiService_mac.mm>
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/LiveInstrument.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/LiveInstrument.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/Project.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/Project.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/MidiDevicesPanel.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/MidiDevicesPanel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/TransportBar.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/TransportBar.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/ArrangementView.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/ArrangementView.cpp
 )
 
 target_include_directories(purrlude_core INTERFACE src)

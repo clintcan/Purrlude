@@ -123,13 +123,23 @@ CMakePresets.json       Configure/build/test presets (vs2022, xcode, ninja)
 cmake/CPM.cmake         Vendored CPM.cmake v0.40.2
 src/app/                Application shell (JUCEApplication, main window)
 src/devices/            Audio/MIDI/Bluetooth device layer
-src/model/              Project-model helpers on top of tracktion::Edit (LiveInstrument)
-src/ui/                 UI components (MidiDevicesPanel)
+src/model/              Project model on top of tracktion::Edit (Project, LiveInstrument)
+src/ui/                 UI components (TransportBar, ArrangementView, MidiDevicesPanel)
 tests/                  Catch2 test runner (PurrludeTests)
 .github/workflows/      CI for Windows, macOS, Linux
 ```
 
 Planned directories as the architecture layers land: `src/notation/`, `src/analysis/`, `content/`.
+
+### Projects
+
+`purrlude::Project` (`src/model/Project.h`) owns one open song: its `tracktion::Edit`, the `LiveInstrument`, the file and the autosave.
+
+- **File format:** projects are Tracktion Edit XML with a `.purrlude` extension, saved by writing a temp file and swapping it in. The default folder is `~/Documents/Purrlude`.
+- **Autosave:** autosaves go to `Autosave/` next to the app's settings file, never next to the user's file. `MainComponent` writes one every 30 s (not while recording), and each records which project file it belongs to.
+- **Recovery:** a clean close deletes the autosave. Anything left over at launch is offered for recovery.
+- **Unsaved changes:** these come from `Edit::hasChangedSinceSaved()`. Tracktion starts tracking changes only after the message loop runs, so tests must pump it before editing.
+- **New projects:** setup (inserting the synth, metronome and count-in defaults) doesn't count as a change.
 
 `purrlude_core` is a CMake **INTERFACE** library: JUCE modules are compiled into each final target, so core sources are compiled into both the app and the test runner. Add new non-UI-shell sources to `purrlude_core`, not to the `Purrlude` target.
 

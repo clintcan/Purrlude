@@ -23,6 +23,11 @@ TEST_CASE ("A live instrument gets a synth and every MIDI input", "[model][instr
 
     REQUIRE (instrument.isInputRouted());
     REQUIRE (edit->playInStopEnabled);
+
+    // Armed by default, so pressing Record captures what's played.
+    REQUIRE (instrument.isArmed());
+    instrument.setArmed (false);
+    REQUIRE_FALSE (instrument.isArmed());
 }
 
 TEST_CASE ("A live instrument keeps an existing instrument", "[model][instrument]")
