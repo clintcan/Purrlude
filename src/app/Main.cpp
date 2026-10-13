@@ -6,14 +6,14 @@ namespace purrlude
 class MainWindow final : public juce::DocumentWindow
 {
 public:
-    MainWindow (const juce::String& name, tracktion::Engine& engine)
+    MainWindow (const juce::String& name, tracktion::Engine& engine, BluetoothMidiManager& bluetooth)
         : DocumentWindow (name,
                           juce::Desktop::getInstance().getDefaultLookAndFeel()
                               .findColour (juce::ResizableWindow::backgroundColourId),
                           DocumentWindow::allButtons)
     {
         setUsingNativeTitleBar (true);
-        setContentOwned (new MainComponent (engine), true);
+        setContentOwned (new MainComponent (engine, bluetooth), true);
         setResizable (true, true);
         centreWithSize (getWidth(), getHeight());
         setVisible (true);
@@ -37,15 +37,26 @@ public:
 
     void initialise (const juce::String&) override
     {
+        juce::PropertiesFile::Options options;
+        options.applicationName = getApplicationName();
+        options.folderName = getApplicationName();
+        options.filenameSuffix = ".settings";
+        options.osxLibrarySubFolder = "Application Support";
+        settings.setStorageParameters (options);
+
         engine = std::make_unique<tracktion::Engine> (getApplicationName());
-        mainWindow = std::make_unique<MainWindow> (getApplicationName(), *engine);
+        bluetooth = std::make_unique<BluetoothMidiManager> (BleMidiService::createForPlatform(),
+                                                            *settings.getUserSettings());
+        mainWindow = std::make_unique<MainWindow> (getApplicationName(), *engine, *bluetooth);
     }
 
     void shutdown() override
     {
         // The window (and the Edit it owns) must go before the engine.
         mainWindow = nullptr;
+        bluetooth = nullptr;
         engine = nullptr;
+        settings.saveIfNeeded();
     }
 
     void systemRequestedQuit() override
@@ -54,7 +65,9 @@ public:
     }
 
 private:
+    juce::ApplicationProperties settings;
     std::unique_ptr<tracktion::Engine> engine;
+    std::unique_ptr<BluetoothMidiManager> bluetooth;
     std::unique_ptr<MainWindow> mainWindow;
 };
 

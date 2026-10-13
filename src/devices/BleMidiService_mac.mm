@@ -456,7 +456,8 @@ private:
             {
                 auto id = entry.info.id;
                 releaseDevice (entry);
-                reportError (id, "Timed out connecting. Make sure the device is on and not connected to another computer.");
+                reportError (id, "Timed out connecting. Turn the device off and on, then connect again. "
+                                 "Also check it isn't connected to another computer.");
                 changed = true;
             }
 

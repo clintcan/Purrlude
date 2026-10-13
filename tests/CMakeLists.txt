@@ -5,6 +5,8 @@ juce_add_console_app(PurrludeTests PRODUCT_NAME "PurrludeTests")
 target_sources(PurrludeTests PRIVATE
     EngineSmokeTests.cpp
     BleMidiServiceTests.cpp
+    BluetoothMidiManagerTests.cpp
+    LiveInstrumentTests.cpp
     $<$<PLATFORM_ID:Windows>:BleMidiGattProbe_windows.cpp>
 )
 

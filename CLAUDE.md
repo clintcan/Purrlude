@@ -98,7 +98,11 @@ These are what set Purrlude apart. Treat them as first-class, not add-ons.
 
 All behind `purrlude::BleMidiService` (`src/devices/BleMidiService.h`). A connected device appears as an ordinary MIDI port to the rest of the app.
 
-- macOS (`src/devices/BleMidiService_mac.mm`, implemented, macOS 13+): CoreBluetooth scans and connects, subscribes to the MIDI I/O characteristic, then calls `MIDIBluetoothDriverActivateAllConnections()` (on the message thread; it fails with -304 from a background queue) so Apple's Bluetooth MIDI driver takes over the link and publishes a CoreMIDI device. CoreMIDI devices are matched to peripherals by advertised name. No public API removes a pairing, so `forget()` only disconnects. The test runner embeds `tests/PurrludeTests-Info.plist` for Bluetooth permission. Tested with a Roland GO:KEYS 5: it sends on channel 1 but only plays incoming notes on channel 4 (run the hardware test with `PURRLUDE_BLE_CHANNEL=4`), and it can wedge (CoreMIDI shows it online with no ports, no advertising) after a quick disconnect/reconnect; power-cycling the keyboard recovers it.
+The app talks to `purrlude::BluetoothMidiManager` (`src/devices/BluetoothMidiManager.h`), not the service directly. It remembers devices the user connected (in the app's settings file), reconnects them at launch and after unexpected drops (waiting 5 s after a disconnect and 15 s between attempts; manual connects within 5 s of a disconnect are deferred too), runs scans only while needed, and supports multiple listeners. The UI is `src/ui/MidiDevicesPanel`.
+
+Live playing: `purrlude::LiveInstrument` (`src/model/LiveInstrument.h`) puts the built-in 4OSC synth on the first track and routes Tracktion's "All MIDI Ins" virtual device to it, so any connected keyboard, Bluetooth included, plays it with no per-device routing.
+
+- macOS (`src/devices/BleMidiService_mac.mm`, implemented, macOS 13+): CoreBluetooth scans and connects, subscribes to the MIDI I/O characteristic, then calls `MIDIBluetoothDriverActivateAllConnections()` (on the message thread; it fails with -304 from a background queue) so Apple's Bluetooth MIDI driver takes over the link and publishes a CoreMIDI device. CoreMIDI devices are matched to peripherals by advertised name. No public API removes a pairing, so `forget()` only disconnects. The test runner embeds `tests/PurrludeTests-Info.plist` for Bluetooth permission. Tested with a Roland GO:KEYS 5: it sends on channel 1 but only plays incoming notes on channel 4 (run the hardware test with `PURRLUDE_BLE_CHANNEL=4`), and it can wedge (CoreMIDI shows it online with no ports, no advertising) after a quick disconnect/reconnect; power-cycling the keyboard recovers it. Its "pairing" mode is for Bluetooth audio; BLE MIDI connects without it, and leaving it in pairing mode may make the wedge more likely.
 - iOS: JUCE's `BluetoothMidiDevicePairingDialogue` / the same CoreBluetooth + CoreMIDI flow
 - Android: JUCE's pairing dialogue / Android MidiManager
 - Windows (`src/devices/BleMidiService_windows.cpp`, implemented): C++/WinRT `BluetoothLEAdvertisementWatcher` for discovery, custom pairing (just-works/confirm-only; PIN devices must be paired in Windows Settings), and a `GattSession` with `MaintainConnection` to hold the link. MIDI I/O goes through JUCE with `JUCE_USE_WINRT_MIDI=1`, which exposes connected BLE devices as normal MIDI ports. Windows MIDI Services can replace this later.
@@ -119,11 +123,13 @@ CMakePresets.json       Configure/build/test presets (vs2022, xcode, ninja)
 cmake/CPM.cmake         Vendored CPM.cmake v0.40.2
 src/app/                Application shell (JUCEApplication, main window)
 src/devices/            Audio/MIDI/Bluetooth device layer
+src/model/              Project-model helpers on top of tracktion::Edit (LiveInstrument)
+src/ui/                 UI components (MidiDevicesPanel)
 tests/                  Catch2 test runner (PurrludeTests)
 .github/workflows/      CI for Windows, macOS, Linux
 ```
 
-Planned directories as the architecture layers land: `src/model/`, `src/notation/`, `src/analysis/`, `src/ui/`, `content/`.
+Planned directories as the architecture layers land: `src/notation/`, `src/analysis/`, `content/`.
 
 `purrlude_core` is a CMake **INTERFACE** library: JUCE modules are compiled into each final target, so core sources are compiled into both the app and the test runner. Add new non-UI-shell sources to `purrlude_core`, not to the `Purrlude` target.
 
