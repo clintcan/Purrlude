@@ -1,4 +1,5 @@
 #include "MainComponent.h"
+#include "model/EngineSetup.h"
 
 namespace purrlude
 {
@@ -7,14 +8,14 @@ class MainWindow final : public juce::DocumentWindow
 {
 public:
     MainWindow (const juce::String& name, tracktion::Engine& engine, BluetoothMidiManager& bluetooth,
-                juce::PropertiesFile& settings)
+                MidiDeviceSettings& deviceSettings, juce::PropertiesFile& settings)
         : DocumentWindow (name,
                           juce::Desktop::getInstance().getDefaultLookAndFeel()
                               .findColour (juce::ResizableWindow::backgroundColourId),
                           DocumentWindow::allButtons)
     {
         setUsingNativeTitleBar (true);
-        content = new MainComponent (engine, bluetooth, settings);
+        content = new MainComponent (engine, bluetooth, deviceSettings, settings);
         setContentOwned (content, true);
         setResizable (true, true);
         centreWithSize (getWidth(), getHeight());
@@ -65,10 +66,11 @@ public:
         options.osxLibrarySubFolder = "Application Support";
         settings.setStorageParameters (options);
 
-        engine = std::make_unique<tracktion::Engine> (getApplicationName());
+        engine = createEngine (getApplicationName());
         bluetooth = std::make_unique<BluetoothMidiManager> (BleMidiService::createForPlatform(),
                                                             *settings.getUserSettings());
-        mainWindow = std::make_unique<MainWindow> (getApplicationName(), *engine, *bluetooth,
+        deviceSettings = std::make_unique<MidiDeviceSettings> (*settings.getUserSettings());
+        mainWindow = std::make_unique<MainWindow> (getApplicationName(), *engine, *bluetooth, *deviceSettings,
                                                    *settings.getUserSettings());
     }
 
@@ -76,6 +78,7 @@ public:
     {
         // The window (and the Edit it owns) must go before the engine.
         mainWindow = nullptr;
+        deviceSettings = nullptr;
         bluetooth = nullptr;
         engine = nullptr;
         settings.saveIfNeeded();
@@ -106,6 +109,7 @@ private:
     juce::ApplicationProperties settings;
     std::unique_ptr<tracktion::Engine> engine;
     std::unique_ptr<BluetoothMidiManager> bluetooth;
+    std::unique_ptr<MidiDeviceSettings> deviceSettings;
     std::unique_ptr<MainWindow> mainWindow;
     bool quitPending = false;
 };

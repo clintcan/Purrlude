@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include "model/EngineSetup.h"
 #include "notation/MusicXmlWriter.h"
 #include "notation/NotationBuilder.h"
 
@@ -230,7 +231,8 @@ TEST_CASE ("Grand staff MusicXML backs up for the second staff", "[notation]")
 TEST_CASE ("Export a saved project's instrument track as MusicXML", "[.][takes]")
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
-    tracktion::Engine engine { "PurrludeTests" };
+    std::unique_ptr<tracktion::Engine> enginePtr = purrlude::createEngine ("PurrludeTests");
+    tracktion::Engine& engine = *enginePtr;
 
     auto path = juce::SystemStats::getEnvironmentVariable ("PURRLUDE_PROJECT", {});
     REQUIRE (juce::File::isAbsolutePath (path));

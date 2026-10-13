@@ -35,12 +35,21 @@ CPMAddPackage(
 add_subdirectory(${tracktion_engine_SOURCE_DIR}/modules ${CMAKE_BINARY_DIR}/tracktion_engine)
 
 include(cmake/Verovio.cmake)
+include(cmake/SoundFonts.cmake)
 
 # ------------------------------------------------------------------------------
 # Purrlude core: everything except the app shell, so tests can link it.
 # An INTERFACE library because JUCE modules are compiled into each final target;
 # a STATIC library linking them would produce duplicate symbols.
 # ------------------------------------------------------------------------------
+# Device definitions (tone lists etc.), compiled in as binary data.
+file(GLOB PURRLUDE_DEVICE_DEFINITIONS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/content/devices/*.json)
+juce_add_binary_data(purrlude_content
+    HEADER_NAME PurrludeContent.h
+    NAMESPACE PurrludeContent
+    SOURCES ${PURRLUDE_DEVICE_DEFINITIONS}
+)
+
 add_library(purrlude_core INTERFACE)
 
 target_sources(purrlude_core INTERFACE
@@ -48,8 +57,19 @@ target_sources(purrlude_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/devices/BleMidiService.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/devices/BluetoothMidiManager.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/devices/BluetoothMidiManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/devices/MidiDeviceSettings.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/devices/MidiDeviceSettings.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/devices/ToneListener.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/devices/ToneListener.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/devices/DeviceLibrary.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/devices/DeviceLibrary.cpp
     $<$<PLATFORM_ID:Windows>:${CMAKE_CURRENT_SOURCE_DIR}/src/devices/BleMidiService_windows.cpp>
     $<$<PLATFORM_ID:Darwin>:${CMAKE_CURRENT_SOURCE_DIR}/src/devices/BleMidiService_mac.mm>
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/EngineSetup.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/EngineSetup.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/instruments/GeneralMidi.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/instruments/SoundFontPlugin.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/instruments/SoundFontPlugin.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/LiveInstrument.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/LiveInstrument.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/Project.h
@@ -93,6 +113,7 @@ target_compile_definitions(purrlude_core INTERFACE
     TRACKTION_ENABLE_TIMESTRETCH_SOUNDTOUCH=1
     # Development fallback for Verovio's fonts; release builds use the copy next to the app.
     PURRLUDE_VEROVIO_DATA="${PURRLUDE_VEROVIO_DATA}"
+    PURRLUDE_SOUNDFONT="${PURRLUDE_SOUNDFONT}"
 )
 
 target_link_libraries(purrlude_core INTERFACE
@@ -103,6 +124,8 @@ target_link_libraries(purrlude_core INTERFACE
     juce::juce_audio_processors
     juce::juce_audio_utils
     purrlude_verovio
+    purrlude_tinysoundfont
+    purrlude_content
 )
 
 if(WIN32)
@@ -164,6 +187,22 @@ endif()
 add_custom_command(TARGET Purrlude POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${PURRLUDE_VEROVIO_DATA}" "${PURRLUDE_VEROVIO_DEST}"
     COMMENT "Copying Verovio resources"
+    VERBATIM
+)
+
+# The GM SoundFont and its license (see SoundFontPlugin::findSoundFont and content/LICENSES.md).
+if(APPLE)
+    set(PURRLUDE_SOUNDFONT_DEST "$<TARGET_BUNDLE_CONTENT_DIR:Purrlude>/Resources/soundfonts")
+else()
+    set(PURRLUDE_SOUNDFONT_DEST "$<TARGET_FILE_DIR:Purrlude>/soundfonts")
+endif()
+
+add_custom_command(TARGET Purrlude POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${PURRLUDE_SOUNDFONT_DEST}"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PURRLUDE_SOUNDFONT}" "${PURRLUDE_SOUNDFONT_DEST}/GeneralUser-GS.sf2"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PURRLUDE_SOUNDFONT_LICENSE}" "${PURRLUDE_SOUNDFONT_DEST}/LICENSE-GeneralUser-GS.txt"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/content/LICENSES.md" "${PURRLUDE_SOUNDFONT_DEST}/LICENSES.md"
+    COMMENT "Copying the General MIDI SoundFont"
     VERBATIM
 )
 

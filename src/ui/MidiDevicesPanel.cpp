@@ -81,10 +81,56 @@ private:
 };
 
 //==============================================================================
-MidiDevicesPanel::MidiDevicesPanel (BluetoothMidiManager& b, tracktion::Engine& e)
-    : bluetooth (b), engine (e)
+/** A MIDI output and the channel Purrlude sends to it on. */
+class MidiDevicesPanel::OutputRow final : public juce::Component
 {
-    for (auto* heading : { &bluetoothHeading, &inputsHeading })
+public:
+    OutputRow (MidiDeviceSettings& settings, const juce::String& deviceName)
+    {
+        name.setText (deviceName, juce::dontSendNotification);
+        name.setFont (juce::FontOptions (14.0f));
+        name.setMinimumHorizontalScale (0.7f);
+
+        for (int channel = 1; channel <= 16; ++channel)
+            channelBox.addItem ("Ch " + juce::String (channel), channel);
+
+        channelBox.setSelectedId (settings.getOutputChannel (deviceName), juce::dontSendNotification);
+        channelBox.setTooltip ("The channel this device plays its own sounds on");
+        channelBox.onChange = [&settings, deviceName, this]
+        {
+            settings.setOutputChannel (deviceName, channelBox.getSelectedId());
+        };
+
+        addAndMakeVisible (name);
+        addAndMakeVisible (channelBox);
+    }
+
+    void resized() override
+    {
+        auto r = getLocalBounds().reduced (0, 3);
+        channelBox.setBounds (r.removeFromRight (80));
+        name.setBounds (r.withTrimmedRight (6));
+    }
+
+private:
+    juce::Label name;
+    juce::ComboBox channelBox;
+};
+
+//==============================================================================
+MidiDevicesPanel::MidiDevicesPanel (BluetoothMidiManager& b, tracktion::Engine& e, MidiDeviceSettings& s)
+    : bluetooth (b), engine (e), deviceSettings (s)
+{
+    outputsHint.setFont (juce::FontOptions (12.0f));
+    outputsHint.setColour (juce::Label::textColourId, juce::Colours::lightgrey);
+    outputsHint.setJustificationType (juce::Justification::topLeft);
+    outputsHint.setText ("To hear a keyboard's own sounds, choose it as the track's Sound. Notes go out on the "
+                         "channel set here (a Roland GO:KEYS plays channel 4). If notes sound twice, turn the "
+                         "keyboard's Local Control off.",
+                         juce::dontSendNotification);
+    addAndMakeVisible (outputsHint);
+
+    for (auto* heading : { &bluetoothHeading, &inputsHeading, &outputsHeading })
     {
         heading->setFont (juce::FontOptions (18.0f, juce::Font::bold));
         addAndMakeVisible (*heading);
@@ -159,6 +205,23 @@ void MidiDevicesPanel::refresh()
                                           : inputs.joinIntoString ("\n"),
                          juce::dontSendNotification);
 
+    juce::StringArray outputs;
+    auto& devices = engine.getDeviceManager();
+
+    for (int i = 0; i < devices.getNumMidiOutDevices(); ++i)
+        if (auto* device = devices.getMidiOutDevice (i))
+            outputs.add (device->getName());
+
+    // Rebuilding would close an open channel menu, so only do it when the list changes.
+    if (outputs != outputNames)
+    {
+        outputNames = outputs;
+        outputRows.clear();
+
+        for (const auto& name : outputNames)
+            addAndMakeVisible (outputRows.add (new OutputRow (deviceSettings, name)));
+    }
+
     resized();
 }
 
@@ -191,6 +254,15 @@ void MidiDevicesPanel::resized()
     inputsHeading.setBounds (r.removeFromTop (28));
     auto lines = juce::jmax (1, juce::StringArray::fromLines (inputsLabel.getText()).size());
     inputsLabel.setBounds (r.removeFromTop (20 * lines + 4));
+
+    r.removeFromTop (16);
+    outputsHeading.setBounds (r.removeFromTop (28));
+
+    for (auto* row : outputRows)
+        row->setBounds (r.removeFromTop (32));
+
+    r.removeFromTop (4);
+    outputsHint.setBounds (r.removeFromTop (64));
 }
 
 } // namespace purrlude

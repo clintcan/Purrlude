@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include "model/EngineSetup.h"
 #include "model/Project.h"
 
 using purrlude::Project;
@@ -18,7 +19,8 @@ namespace
     struct Fixture
     {
         juce::ScopedJuceInitialiser_GUI juceInit;
-        tracktion::Engine engine { "PurrludeTests" };
+        std::unique_ptr<tracktion::Engine> enginePtr = purrlude::createEngine ("PurrludeTests");
+        tracktion::Engine& engine = *enginePtr;
         TempDir files, autosaves;
     };
 

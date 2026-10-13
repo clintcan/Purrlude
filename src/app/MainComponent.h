@@ -1,6 +1,8 @@
 #pragma once
 
 #include "devices/BluetoothMidiManager.h"
+#include "devices/MidiDeviceSettings.h"
+#include "devices/ToneListener.h"
 #include "model/Project.h"
 #include "ui/ArrangementView.h"
 #include "ui/MidiDevicesPanel.h"
@@ -24,10 +26,11 @@ namespace purrlude
 */
 class MainComponent final : public juce::Component,
                             public juce::MenuBarModel,
-                            private juce::Timer
+                            private juce::Timer,
+                            private juce::ChangeListener
 {
 public:
-    MainComponent (tracktion::Engine&, BluetoothMidiManager&, juce::PropertiesFile& settings);
+    MainComponent (tracktion::Engine&, BluetoothMidiManager&, MidiDeviceSettings&, juce::PropertiesFile& settings);
     ~MainComponent() override;
 
     void paint (juce::Graphics&) override;
@@ -62,11 +65,13 @@ private:
     void updateTitle();
     void toggleDevicesPanel();
     void timerCallback() override;
+    void changeListenerCallback (juce::ChangeBroadcaster*) override;
 
     juce::File getAutosaveDirectory() const;
     juce::File getDefaultProjectDirectory() const;
 
     tracktion::Engine& engine;
+    MidiDeviceSettings& deviceSettings;
     juce::PropertiesFile& settings;
 
     std::unique_ptr<Project> project;
@@ -79,6 +84,7 @@ private:
     juce::TextButton devicesButton { "MIDI Devices" };
     juce::TextButton scoreButton { "Score" };
     MidiDevicesPanel devicesPanel;
+    ToneListener toneListener { deviceSettings };
 
     int ticksSinceAutosave = 0;
 

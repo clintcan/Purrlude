@@ -87,7 +87,7 @@ These are what set Purrlude apart. Treat them as first-class, not add-ons.
 | Audio → MIDI (polyphonic) | Spotify basic-pitch model on ONNX Runtime _(planned)_ | Apache 2.0 / MIT |
 | Audio → MIDI (monophonic) | In-house pYIN _(planned)_ | — |
 | Audio → MIDI (drums) | Onset detection + small ONNX classifier _(planned)_ | — |
-| Built-in instruments | sfizz (SFZ) + FluidSynth (SF2/GM) _(planned)_ | BSD-2 / LGPL |
+| Built-in instruments | TinySoundFont (SF2) + GeneralUser GS v2.0.3 GM bank; sfizz (SFZ) _(planned)_ | MIT / GeneralUser GS License v2.0 |
 | Time-stretch | Signalsmith Stretch _(planned)_; Tracktion's SoundTouch is used until then | MIT / LGPL |
 | Plugin formats | VST3 / AU / LV2 via JUCE; CLAP via clap-juce-extensions _(planned)_ | — |
 | Tests / CI | Catch2 v3, GitHub Actions (Windows/macOS/Linux) | BSL-1.0 |
@@ -99,6 +99,24 @@ These are what set Purrlude apart. Treat them as first-class, not add-ons.
 All behind `purrlude::BleMidiService` (`src/devices/BleMidiService.h`). A connected device appears as an ordinary MIDI port to the rest of the app.
 
 The app talks to `purrlude::BluetoothMidiManager` (`src/devices/BluetoothMidiManager.h`), not the service directly. It remembers devices the user connected (in the app's settings file), reconnects them at launch and after unexpected drops (waiting 5 s after a disconnect and 15 s between attempts; manual connects within 5 s of a disconnect are deferred too), runs scans only while needed, and supports multiple listeners. The UI is `src/ui/MidiDevicesPanel`.
+
+**MIDI output and sound source:**
+- **Output channels:** `MidiDeviceSettings` (`src/devices/`) remembers each output device's channel by name, because keyboards differ. A Roland GO:KEYS sends on channel 1 but plays its own sounds only on channel 4. Set it under MIDI outputs in the devices panel.
+- **Sound source:** the Instrument track's Sound menu chooses the built-in synth or an external output (`LiveInstrument::setSoundSource`, stored on the track's state).
+- **How external output works:** the synth is disabled (disabled plugins pass MIDI through), a MIDI Patch Bay at the front of the chain remaps every channel to the device's channel, and the track outputs to the MIDI device. Recorded clips keep their original channel.
+- **No echo to the same keyboard:** when the output device is also connected as an input, "All MIDI Ins" monitoring is switched off. The keyboard already sounds what you play, so echoing would double every note.
+
+**Instruments and device tones:**
+- **Built-in GM instrument:** `SoundFontPlugin` (`src/instruments/`) plays GeneralUser GS (`cmake/SoundFonts.cmake`; downloaded at a pinned commit, SHA-256 checked, copied next to the app) with TinySoundFont.
+  - It's registered by `purrlude::createEngine` (`src/model/EngineSetup.h`). Always create engines through it, in the app and in tests.
+  - All TinySoundFont calls run on the audio thread, except `initialise()`, which pre-allocates voices and all 16 channels.
+  - Program changes reach the audio thread through an atomic, and incoming Program Changes are ignored.
+- **External devices:** use their own tone banks, not GM. The GO:KEYS 5 ignores GM Program Changes and needs Bank Select 71/96 (and others) first.
+  - `LiveInstrument::setDeviceTone` stores a bank + program on the track and sends it when the tone is chosen, when the device becomes the sound source, and when playback starts.
+  - `ToneListener` opens its own connection to each MIDI input, turns Bank Select + Program Change into tones (`ToneParser`), and learns them into `MidiDeviceSettings`. A tone picked on the keyboard becomes the track's tone.
+- **Device definitions:** `content/devices/*.json` are compiled in via `juce_add_binary_data` and read by `DeviceLibrary`. They give the receive channel (the default output channel) and the full tone list.
+  - The GO:KEYS 3/5 list (1,228 tones) comes from Roland's tone list PDF.
+  - Bank and program are derived from the tone number, because three printed entries are wrong.
 
 Live playing: `purrlude::LiveInstrument` (`src/model/LiveInstrument.h`) puts the built-in 4OSC synth on the first track and routes Tracktion's "All MIDI Ins" virtual device to it, so any connected keyboard, Bluetooth included, plays it with no per-device routing.
 
@@ -122,7 +140,9 @@ CMakeLists.txt          Top-level build; fetches JUCE + Tracktion Engine via CPM
 CMakePresets.json       Configure/build/test presets (vs2022, xcode, ninja)
 cmake/CPM.cmake         Vendored CPM.cmake v0.40.2
 src/app/                Application shell (JUCEApplication, main window)
-src/devices/            Audio/MIDI/Bluetooth device layer
+src/devices/            Audio/MIDI/Bluetooth device layer, device settings, tone learning, device library
+src/instruments/        Built-in instruments (SoundFont GM synth)
+content/                Bundled content: LICENSES.md manifest, devices/*.json definitions
 src/model/              Project model on top of tracktion::Edit (Project, LiveInstrument)
 src/notation/           Notation layer: performed notes -> Score -> MusicXML (no UI)
 src/ui/                 UI components (TransportBar, ArrangementView, MidiDevicesPanel)
@@ -130,7 +150,7 @@ tests/                  Catch2 test runner (PurrludeTests)
 .github/workflows/      CI for Windows, macOS, Linux
 ```
 
-Planned directories as the architecture layers land: `src/analysis/`, `content/`.
+Planned directories as the architecture layers land: `src/analysis/`.
 
 ### Projects
 

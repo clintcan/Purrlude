@@ -16,9 +16,22 @@ namespace
     enum SaveChoice { cancel = 0, save = 1, discard = 2 };
 }
 
-MainComponent::MainComponent (tracktion::Engine& e, BluetoothMidiManager& bluetooth, juce::PropertiesFile& s)
-    : engine (e), settings (s), devicesPanel (bluetooth, e)
+MainComponent::MainComponent (tracktion::Engine& e, BluetoothMidiManager& bluetooth, MidiDeviceSettings& d,
+                              juce::PropertiesFile& s)
+    : engine (e), deviceSettings (d), settings (s), devicesPanel (bluetooth, e, d)
 {
+    deviceSettings.addChangeListener (this);
+    engine.getDeviceManager().addChangeListener (this);
+
+    // A tone picked on the keyboard the instrument plays through becomes the track's tone.
+    toneListener.onToneSelected = [this] (const juce::String& deviceName, const DeviceTone& tone)
+    {
+        auto& instrument = project->getInstrument();
+
+        if (instrument.getSoundSourceID().isNotEmpty() && instrument.getSoundSourceName() == deviceName)
+            instrument.setDeviceTone (tone);
+    };
+
     audioSettingsButton.onClick = [this] { engine.getUIBehaviour().showSettingsScreen(); };
     devicesButton.setClickingTogglesState (true);
     devicesButton.setToggleState (true, juce::dontSendNotification);
@@ -58,6 +71,8 @@ MainComponent::MainComponent (tracktion::Engine& e, BluetoothMidiManager& blueto
 
 MainComponent::~MainComponent()
 {
+    deviceSettings.removeChangeListener (this);
+    engine.getDeviceManager().removeChangeListener (this);
     stopTimer();
     scoreView = nullptr;
     arrangement = nullptr;
@@ -87,7 +102,7 @@ void MainComponent::setProject (std::unique_ptr<Project> newProject)
     project = std::move (newProject);
 
     transportBar = std::make_unique<TransportBar> (project->getEdit());
-    arrangement = std::make_unique<ArrangementView> (project->getEdit(), project->getInstrument());
+    arrangement = std::make_unique<ArrangementView> (project->getEdit(), project->getInstrument(), deviceSettings);
     scoreView = std::make_unique<ScoreView> (project->getEdit(), project->getInstrument());
     addAndMakeVisible (*transportBar);
     addAndMakeVisible (*arrangement);
@@ -393,6 +408,21 @@ void MainComponent::updateTitle()
         if (auto* peer = window->getPeer())
             peer->setDocumentEditedStatus (unsaved);
     }
+}
+
+void MainComponent::changeListenerCallback (juce::ChangeBroadcaster* source)
+{
+    if (source == &engine.getDeviceManager())
+    {
+        toneListener.refreshDevices();
+        return;
+    }
+
+    // A device's channel changed: apply it if the instrument plays through that device.
+    auto& instrument = project->getInstrument();
+
+    if (instrument.getSoundSourceID().isNotEmpty())
+        instrument.setOutputChannel (deviceSettings.getOutputChannel (instrument.getSoundSourceName()));
 }
 
 void MainComponent::timerCallback()
