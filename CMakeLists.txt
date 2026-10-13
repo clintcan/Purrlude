@@ -63,10 +63,14 @@ target_sources(purrlude_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/notation/TrackNotation.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/notation/ScoreRenderer.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/notation/ScoreRenderer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/notation/ScoreSvg.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/notation/ScoreSvg.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/notation/PdfDocument.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/notation/PdfDocument.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/notation/ScorePdf.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/notation/ScorePdf.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/MidiDevicesPanel.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/MidiDevicesPanel.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/ScoreSvg.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/ScoreSvg.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/ScoreView.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/ScoreView.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/TransportBar.h

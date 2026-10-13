@@ -27,7 +27,7 @@ TEST_CASE ("Verovio engraves a score to SVG", "[notation][render]")
         juce::File (dump).replaceWithText (svg);
 }
 
-#include "ui/ScoreSvg.h"
+#include "notation/ScoreSvg.h"
 
 TEST_CASE ("Verovio's SVG becomes a JUCE drawable", "[notation][render]")
 {
@@ -43,7 +43,7 @@ TEST_CASE ("Verovio's SVG becomes a JUCE drawable", "[notation][render]")
     INFO (error);
     REQUIRE (svg.isNotEmpty());
 
-    auto prepared = purrlude::prepareVerovioSvg (svg, juce::Colours::black);
+    auto prepared = prepareVerovioSvg (svg, juce::Colours::black);
     REQUIRE (prepared != nullptr);
 
     auto text = prepared->toString();
@@ -54,7 +54,7 @@ TEST_CASE ("Verovio's SVG becomes a JUCE drawable", "[notation][render]")
     REQUIRE (drawable != nullptr);
 
     // Shown at about the requested width, with a sensible height for two staves.
-    auto size = purrlude::getSvgDisplaySize (*prepared);
+    auto size = getSvgDisplaySize (*prepared);
     REQUIRE (size.getWidth() > 850.0f);
     REQUIRE (size.getWidth() < 950.0f);
     REQUIRE (size.getHeight() > 80.0f);

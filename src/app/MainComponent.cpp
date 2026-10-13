@@ -1,5 +1,9 @@
 #include "MainComponent.h"
 
+#include "notation/MusicXmlWriter.h"
+#include "notation/ScorePdf.h"
+#include "notation/TrackNotation.h"
+
 namespace purrlude
 {
 
@@ -315,6 +319,59 @@ void MainComponent::saveProjectAs (std::function<void (bool)> callback)
     });
 }
 
+void MainComponent::exportScore (ExportFormat format)
+{
+    auto* track = project->getInstrument().getTrack();
+
+    if (track == nullptr)
+        return;
+
+    auto extension = format == ExportFormat::pdf ? juce::String (".pdf") : juce::String (".musicxml");
+    auto dir = project->getFile() != juce::File() ? project->getFile().getParentDirectory() : getDefaultProjectDirectory();
+    dir.createDirectory();
+
+    fileChooser = std::make_unique<juce::FileChooser> (format == ExportFormat::pdf ? "Export score as PDF" : "Export MusicXML",
+                                                       dir.getChildFile (project->getName() + extension), "*" + extension);
+
+    fileChooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
+                                | juce::FileBrowserComponent::warnAboutOverwriting,
+                              [safe = juce::WeakReference<MainComponent> (this), format, extension] (const juce::FileChooser& chooser)
+    {
+        auto file = chooser.getResult();
+
+        if (safe == nullptr || file == juce::File())
+            return;
+
+        file = file.withFileExtension (extension);
+
+        auto* track = safe->project->getInstrument().getTrack();
+
+        if (track == nullptr)
+            return;
+
+        auto score = notation::buildTrackScore (*track, safe->project->getName().toStdString());
+        juce::String error;
+        bool ok = false;
+
+        if (format == ExportFormat::pdf)
+        {
+            juce::MouseCursor::showWaitCursor();
+            ok = notation::exportScorePdf (score, file, error);
+            juce::MouseCursor::hideWaitCursor();
+        }
+        else
+        {
+            ok = notation::writeMusicXml (score, file);
+            error = "Couldn't write " + file.getFullPathName();
+        }
+
+        if (ok)
+            file.revealToUser();
+        else
+            safe->showError ("Couldn't export the score", error);
+    });
+}
+
 void MainComponent::showError (const juce::String& title, const juce::String& message)
 {
     juce::AlertWindow::showAsync (juce::MessageBoxOptions()
@@ -399,6 +456,7 @@ bool MainComponent::keyPressed (const juce::KeyPress& key)
             case 'N':   newProject();   return true;
             case 'O':   openProject();  return true;
             case 'S':   if (mods.isShiftDown()) saveProjectAs(); else saveProject();                            return true;
+            case 'E':   exportScore (ExportFormat::pdf);                                                        return true;
             case 'Z':   if (mods.isShiftDown()) project->getEdit().redo(); else project->getEdit().undo();      return true;
             default:    return false;
         }
@@ -437,6 +495,9 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
         menu.addSeparator();
         addItem (saveId, "Save", "command + S");
         addItem (saveAsId, "Save As...", "command + shift + S");
+        menu.addSeparator();
+        addItem (exportPdfId, "Export Score as PDF...", "command + E");
+        addItem (exportMusicXmlId, "Export MusicXML...", "");
     }
     else
     {
@@ -456,6 +517,8 @@ void MainComponent::menuItemSelected (int id, int)
         case openId:    openProject();                      break;
         case saveId:    saveProject();                      break;
         case saveAsId:  saveProjectAs();                    break;
+        case exportPdfId:       exportScore (ExportFormat::pdf);        break;
+        case exportMusicXmlId:  exportScore (ExportFormat::musicXml);   break;
         case undoId:    project->getEdit().undo();          break;
         case redoId:    project->getEdit().redo();          break;
         default:        break;

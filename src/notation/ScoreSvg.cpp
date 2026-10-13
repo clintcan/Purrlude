@@ -2,7 +2,7 @@
 
 #include <map>
 
-namespace purrlude
+namespace purrlude::notation
 {
 
 std::unique_ptr<juce::XmlElement> prepareVerovioSvg (const juce::String& svg, juce::Colour ink)
@@ -76,10 +76,21 @@ std::unique_ptr<juce::XmlElement> prepareVerovioSvg (const juce::String& svg, ju
     for (auto* element : toRemove)
         xml->removeChildElement (element, true);
 
-    // The dropped <style> stroked every path (staff lines, stems, barlines) in the ink colour;
-    // the same as an inherited attribute.
-    xml->setAttribute ("stroke", "#" + ink.toDisplayString (false));
+    // The dropped <style> stroked shapes in the ink colour. Only shapes with a stroke-width
+    // (staff lines, stems, barlines, ledger lines, ties) need it: stroking glyph outlines would
+    // thicken them and, once JUCE flattens the strokes, bloat them with thousands of segments.
+    auto inkText = "#" + ink.toDisplayString (false);
 
+    std::function<void (juce::XmlElement&)> addStrokes = [&] (juce::XmlElement& e)
+    {
+        if (e.hasAttribute ("stroke-width") && ! e.hasAttribute ("stroke"))
+            e.setAttribute ("stroke", inkText);
+
+        for (auto* child : e.getChildIterator())
+            addStrokes (*child);
+    };
+
+    addStrokes (*xml);
     return xml;
 }
 
@@ -89,4 +100,4 @@ juce::Rectangle<float> getSvgDisplaySize (const juce::XmlElement& svg)
     return { svg.getStringAttribute ("width").getFloatValue(), svg.getStringAttribute ("height").getFloatValue() };
 }
 
-} // namespace purrlude
+} // namespace purrlude::notation

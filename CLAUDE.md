@@ -82,7 +82,7 @@ These are what set Purrlude apart. Treat them as first-class, not add-ons.
 | DAW engine | Tracktion Engine v3.2.0 (Edit model, tracks, clips, automation, recording, plugin hosting) | GPLv3 / commercial |
 | UI | JUCE components with a custom LookAndFeel | — |
 | Score rendering | Verovio 6.3.0 (MusicXML → SVG), built statically by `cmake/Verovio.cmake` | LGPLv3 |
-| PDF export | Verovio SVG → PDF via Skia PDF backend or cairo + librsvg _(planned)_ | BSD / LGPL |
+| PDF export | In-house `notation::PdfDocument`: a JUCE `LowLevelGraphicsContext` that writes vector PDF | — |
 | Notation cleanup | In-house (`src/notation/`): quantize, key estimate, spelling, staves, ties; MusicXML export | — |
 | Audio → MIDI (polyphonic) | Spotify basic-pitch model on ONNX Runtime _(planned)_ | Apache 2.0 / MIT |
 | Audio → MIDI (monophonic) | In-house pYIN _(planned)_ | — |
@@ -173,6 +173,14 @@ The on-screen score leaves out the metronome mark, whose note symbol needs a SMu
 Verovio's `data/` folder (fonts and glyph files) is copied into the app (`Contents/Resources/verovio` on macOS, `verovio/` next to the exe elsewhere). Dev builds and tests fall back to the source tree via `PURRLUDE_VEROVIO_DATA`.
 
 Verovio 6.3.0's `NO_EDIT_SUPPORT` doesn't compile, so leave it off.
+
+Only shapes with a `stroke-width` (lines, stems, ties) get the ink stroke. Stroking glyph outlines thickens them, and JUCE flattens stroked outlines into thousands of segments, which made PDFs about 6× larger.
+
+**PDF:** `exportScorePdf` (File → Export Score as PDF, Cmd-E) engraves A4 pages with Verovio, with the title as a header. It draws each page's Drawable into a `PdfDocument` page. Everything is vector and text is written as glyph outlines, so no fonts are embedded. There are no images or true transparency. Individual-part PDFs will come with multiple instrument tracks.
+
+**MusicXML:** File → Export MusicXML writes the same score.
+
+`ScoreRenderer` serializes all Verovio calls on a global lock, because Verovio's state is global. Renderers on different threads (the score view and an export) are therefore safe.
 
 **Checking real recordings:** `PURRLUDE_PROJECT=/path/song.purrlude PurrludeTests "[takes]" -s` writes `song.musicxml` and prints each measure.
 

@@ -20,7 +20,7 @@ namespace purrlude
 
     Shortcuts: Space play/stop, R record, Home return to start,
     Cmd/Ctrl+Z undo, Cmd/Ctrl+Shift+Z redo, Cmd/Ctrl+N/O/S new/open/save,
-    Cmd/Ctrl+Shift+S save as.
+    Cmd/Ctrl+Shift+S save as, Cmd/Ctrl+E export the score as PDF.
 */
 class MainComponent final : public juce::Component,
                             public juce::MenuBarModel,
@@ -43,7 +43,7 @@ public:
     void menuItemSelected (int, int) override;
 
 private:
-    enum MenuIds { newId = 1, openId, saveId, saveAsId, undoId, redoId };
+    enum MenuIds { newId = 1, openId, saveId, saveAsId, exportPdfId, exportMusicXmlId, undoId, redoId };
 
     void setProject (std::unique_ptr<Project>);
     void startUp();
@@ -54,6 +54,9 @@ private:
     void openProject();
     void saveProject (std::function<void (bool saved)> = {});
     void saveProjectAs (std::function<void (bool saved)> = {});
+
+    enum class ExportFormat { pdf, musicXml };
+    void exportScore (ExportFormat);
 
     void showError (const juce::String& title, const juce::String& message);
     void updateTitle();

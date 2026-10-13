@@ -2,7 +2,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
-namespace purrlude
+namespace purrlude::notation
 {
 
 /** Makes Verovio's SVG drawable by JUCE's SVG parser:
@@ -10,7 +10,8 @@ namespace purrlude
       references (JUCE only resolves <use> for plain paths), keeping its transform;
     - "currentColor", which JUCE doesn't support, becomes the given ink colour;
     - <defs> and <style> are dropped once nothing refers to them; the style's
-      "stroke every path" rule becomes a stroke attribute on the root.
+      stroke colour is set on the shapes that have a stroke-width (lines, stems,
+      ties), not on glyph outlines.
 
     Safe to call on any thread (it only touches XmlElements).
 */
@@ -21,4 +22,4 @@ std::unique_ptr<juce::XmlElement> prepareVerovioSvg (const juce::String& svg, ju
 */
 juce::Rectangle<float> getSvgDisplaySize (const juce::XmlElement& svg);
 
-} // namespace purrlude
+} // namespace purrlude::notation

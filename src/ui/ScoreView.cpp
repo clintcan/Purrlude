@@ -1,6 +1,6 @@
 #include "ScoreView.h"
 
-#include "ScoreSvg.h"
+#include "notation/ScoreSvg.h"
 #include "notation/MusicXmlWriter.h"
 #include "notation/ScoreRenderer.h"
 #include "notation/TrackNotation.h"
@@ -73,7 +73,7 @@ private:
 
             if (svg.isNotEmpty())
             {
-                prepared = prepareVerovioSvg (svg, juce::Colours::black);
+                prepared = notation::prepareVerovioSvg (svg, juce::Colours::black);
 
                 if (prepared == nullptr)
                     error = "The engraved score couldn't be read.";
@@ -100,7 +100,7 @@ public:
     void setScore (const juce::XmlElement& svg)
     {
         drawable = juce::Drawable::createFromSVG (svg);
-        displaySize = getSvgDisplaySize (svg);
+        displaySize = notation::getSvgDisplaySize (svg);
         setSize (getWidth(), (int) std::ceil (displaySize.getHeight()) + paperMargin * 2);
         repaint();
     }
