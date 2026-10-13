@@ -1,83 +1,79 @@
 #pragma once
 
-#include "devices/MidiDeviceSettings.h"
+#include "TrackInstrument.h"
 
 #include <tracktion_engine/tracktion_engine.h>
 
 namespace purrlude
 {
 
-/** Gives an Edit a playable instrument track.
+/** The project's live MIDI input and its instrument tracks.
 
-    The first audio track gets the built-in 4OSC synth (unless it already has
-    an instrument) and Tracktion's "All MIDI Ins" device as its live input. That
-    device merges every enabled MIDI input, so any keyboard plays the synth as
-    soon as it appears, whether it's USB, virtual or Bluetooth.
+    Tracktion's "All MIDI Ins" device merges every enabled MIDI input, so any
+    keyboard (USB, virtual or Bluetooth) plays as soon as it appears. It feeds
+    the selected track, which is also the one armed for recording; choosing
+    another track moves the input there.
+
+    Every audio track is an instrument track (see TrackInstrument). There is
+    always at least one.
 
     Routing needs the device rescan that enabling "All MIDI Ins" triggers, so it
     may complete asynchronously; isInputRouted() reports when it has.
 */
-class LiveInstrument final : private juce::ChangeListener
+class LiveInstrument final : private juce::ChangeListener,
+                             private juce::Timer
 {
 public:
     explicit LiveInstrument (tracktion::Edit&);
     ~LiveInstrument() override;
 
-    /** The instrument track, or nullptr if it has been deleted. */
+    //==============================================================================
+    /** The selected track (live input and recording go here), or nullptr if none. */
     tracktion::AudioTrack* getTrack() const;
+    tracktion::EditItemID getSelectedTrackID() const noexcept     { return trackID; }
 
-    /** True once "All MIDI Ins" feeds the instrument track. */
+    /** Moves the live input (and record arm) to another track. */
+    void selectTrack (tracktion::EditItemID);
+
+    /** Adds an instrument track after the last one, selects it and returns it. Undoable. */
+    tracktion::AudioTrack* addTrack();
+
+    /** Deletes a track (never the last one); the first track is selected if it was selected. Undoable. */
+    void deleteTrack (tracktion::EditItemID);
+
+    /** The selected track's instrument. */
+    TrackInstrument getInstrument() const                          { return { edit, trackID }; }
+
+    //==============================================================================
+    /** True once "All MIDI Ins" feeds the selected track. */
     bool isInputRouted() const;
 
-    /** Record-arms the track: when the transport records, played MIDI becomes a clip on it.
-        Armed by default once the input is routed.
+    /** Record-arms the selected track: when the transport records, played MIDI becomes a clip
+        on it. Armed by default once the input is routed.
     */
     void setArmed (bool);
     bool isArmed() const;
 
-    //==============================================================================
-    /** Where the track is heard: the built-in synth (empty ID), or an external MIDI output
-        such as a keyboard's own sounds. For an external output the synth is switched off
-        and a MIDI Patch Bay on the track sends every note on outputChannel; recorded
-        clips keep their original channel. Saved with the project.
-    */
-    void setSoundSource (const juce::String& midiOutputDeviceID, const juce::String& deviceName, int outputChannel);
-    void useBuiltInSynth()                          { setSoundSource ({}, {}, 1); }
-
-    /** Empty when the built-in synth plays. */
-    juce::String getSoundSourceID() const;
-    juce::String getSoundSourceName() const;
-
-    /** The channel notes are sent on to an external output (1-16). */
-    void setOutputChannel (int);
-    int getOutputChannel() const;
-
-    //==============================================================================
-    /** The built-in instrument: a General MIDI program (0-127) or gm::drumKit. Saved with the project. */
-    void setProgram (int);
-    int getProgram() const;
-
-    /** The tone an external sound source plays (its own bank + program, as learned from the
-        device), or none to leave the device on whatever tone it's set to. Sent to the device
-        when chosen, when the device becomes the sound source, and when playback starts.
-        Saved with the project.
-    */
-    void setDeviceTone (std::optional<DeviceTone>);
-    std::optional<DeviceTone> getDeviceTone() const;
-
-    /** False if the GM SoundFont wasn't found and the placeholder synth plays instead. */
-    bool hasGeneralMidiSynth() const;
-
-    /** Plays or releases a note on the track's sound now, e.g. to preview a note while
-        editing. Not recorded. The built-in synth gets it as if from a MIDI keyboard; an
-        external sound source gets it directly on its channel.
-    */
-    void previewNote (int noteNumber, bool on);
-
-    /** False while playing through a keyboard that is also an input: it already sounds
-        what you play, so echoing it back would double every note. Recording is unaffected.
+    /** False while the selected track plays through a keyboard that is also an input: it
+        already sounds what you play, so echoing it back would double every note.
+        Recording is unaffected.
     */
     bool isEchoingLiveInput() const;
+
+    //==============================================================================
+    // The selected track's instrument (see TrackInstrument).
+    void setSoundSource (const juce::String& id, const juce::String& name, int channel)   { getInstrument().setSoundSource (id, name, channel); updateMonitoring(); }
+    void useBuiltInSynth()                                      { getInstrument().useBuiltInSynth(); updateMonitoring(); }
+    juce::String getSoundSourceID() const                       { return getInstrument().getSoundSourceID(); }
+    juce::String getSoundSourceName() const                     { return getInstrument().getSoundSourceName(); }
+    void setOutputChannel (int channel)                         { getInstrument().setOutputChannel (channel); }
+    int getOutputChannel() const                                { return getInstrument().getOutputChannel(); }
+    void setProgram (int program)                               { getInstrument().setProgram (program); }
+    int getProgram() const                                      { return getInstrument().getProgram(); }
+    void setDeviceTone (std::optional<DeviceTone> tone)         { getInstrument().setDeviceTone (tone); }
+    std::optional<DeviceTone> getDeviceTone() const             { return getInstrument().getDeviceTone(); }
+    bool hasGeneralMidiSynth() const                            { return getInstrument().hasGeneralMidiSynth(); }
+    void previewNote (int noteNumber, bool on)                  { getInstrument().previewNote (noteNumber, on); }
 
     /** Device ID of Tracktion's merged MIDI input. */
     static constexpr const char* allMidiInsID = "all_midi_in";
@@ -86,8 +82,8 @@ private:
     tracktion::InputDeviceInstance* findInputInstance() const;
     void routeInput();
     void updateMonitoring();
-    void sendToneToDevice();
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
+    void timerCallback() override;
 
     tracktion::Edit& edit;
     tracktion::EditItemID trackID;

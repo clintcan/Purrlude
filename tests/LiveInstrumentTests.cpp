@@ -7,6 +7,7 @@
 #include "instruments/GeneralMidi.h"
 #include "instruments/SoundFontPlugin.h"
 #include "model/LiveInstrument.h"
+#include "model/TrackInstrument.h"
 
 TEST_CASE ("A live instrument gets a synth and every MIDI input", "[model][instrument]")
 {
@@ -321,4 +322,55 @@ TEST_CASE ("Malformed device definitions are rejected", "[devices]")
     REQUIRE (ok);
     REQUIRE (ok->receiveChannel == 2);
     REQUIRE (ok->findTone ({ 1, 2, 3, {} })->name == "One");
+}
+
+TEST_CASE ("Tracks can be added, selected and deleted, and live input follows", "[model][instrument]")
+{
+    juce::ScopedJuceInitialiser_GUI juceInit;
+    std::unique_ptr<tracktion::Engine> enginePtr = purrlude::createEngine ("PurrludeTests");
+    tracktion::Engine& engine = *enginePtr;
+
+    auto edit = tracktion::Edit::createSingleTrackEdit (engine);
+    purrlude::LiveInstrument live (*edit);
+    auto first = live.getTrack()->itemID;
+
+    for (auto end = juce::Time::getMillisecondCounter() + 5000; ! live.isInputRouted() && juce::Time::getMillisecondCounter() < end;)
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (50);
+
+    REQUIRE (live.isInputRouted());
+    REQUIRE (live.isArmed());
+
+    // A new track gets its own instrument and takes the live input and record arm.
+    auto* second = live.addTrack();
+    REQUIRE (second != nullptr);
+    REQUIRE (tracktion::getAudioTracks (*edit).size() == 2);
+    REQUIRE (live.getTrack() == second);
+    REQUIRE (live.isInputRouted());
+    REQUIRE (live.isArmed());
+    REQUIRE (second->pluginList.getPluginsOfType<purrlude::SoundFontPlugin>().size() == 1);
+
+    // Each track keeps its own instrument.
+    live.setProgram (40);
+    purrlude::TrackInstrument firstInstrument (*edit, first);
+    REQUIRE (firstInstrument.getProgram() == 0);
+    REQUIRE (purrlude::TrackInstrument (*edit, *second).getProgram() == 40);
+
+    // Selecting moves the input off the other track.
+    live.selectTrack (first);
+    REQUIRE (live.getTrack()->itemID == first);
+    REQUIRE (live.isInputRouted());
+
+    for (auto* instance : edit->getAllInputDevices())
+        if (instance->getInputDevice().getDeviceID() == purrlude::LiveInstrument::allMidiInsID)
+            REQUIRE_FALSE (instance->getTargets().contains (second->itemID));
+
+    // Deleting the selected track selects another; the last track can't be deleted.
+    auto secondID = second->itemID;
+    live.selectTrack (secondID);
+    live.deleteTrack (secondID);
+    REQUIRE (tracktion::getAudioTracks (*edit).size() == 1);
+    REQUIRE (live.getTrack()->itemID == first);
+
+    live.deleteTrack (first);
+    REQUIRE (tracktion::getAudioTracks (*edit).size() == 1);
 }

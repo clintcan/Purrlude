@@ -1,8 +1,5 @@
 #include "LiveInstrument.h"
 
-#include "instruments/GeneralMidi.h"
-#include "instruments/SoundFontPlugin.h"
-
 namespace purrlude
 {
 
@@ -16,74 +13,22 @@ namespace
 
         return {};
     }
-
-    const juce::Identifier soundSourceIdProperty   { "purrludeSoundSource" };
-    const juce::Identifier soundSourceNameProperty { "purrludeSoundSourceName" };
-    const juce::Identifier outputChannelProperty   { "purrludeOutputChannel" };
-    const juce::Identifier programProperty         { "purrludeProgram" };
-    const juce::Identifier toneProperty            { "purrludeDeviceTone" };   // "msb lsb program" or absent
-    const juce::Identifier toneNameProperty        { "purrludeDeviceToneName" };
-
-    tracktion::Plugin* findSynth (tracktion::AudioTrack& track)
-    {
-        for (auto* plugin : track.pluginList)
-            if (plugin->isSynth())
-                return plugin;
-
-        return nullptr;
-    }
-
-    SoundFontPlugin* findSoundFont (tracktion::AudioTrack& track)
-    {
-        return dynamic_cast<SoundFontPlugin*> (findSynth (track));
-    }
-
-    tracktion::MidiPatchBayPlugin* findPatchBay (tracktion::AudioTrack& track)
-    {
-        for (auto* plugin : track.pluginList)
-            if (auto* patchBay = dynamic_cast<tracktion::MidiPatchBayPlugin*> (plugin))
-                return patchBay;
-
-        return nullptr;
-    }
-
 }
 
 LiveInstrument::LiveInstrument (tracktion::Edit& e)
     : edit (e)
 {
     edit.ensureNumberOfAudioTracks (1);
-    auto* track = tracktion::getAudioTracks (edit)[0];
-    trackID = track->itemID;
+    auto tracks = tracktion::getAudioTracks (edit);
 
-    auto* existing = findSynth (*track);
+    // A brand-new project's track ("Track 1") becomes the instrument track.
+    if (tracks.size() == 1 && tracks[0]->getName().startsWith ("Track"))
+        tracks[0]->setName ("Instrument");
 
-    if (existing == nullptr)
-        track->setName ("Instrument");
+    for (auto* track : tracks)
+        TrackInstrument::setUp (edit, *track);
 
-    // The GM instrument, when its SoundFont is available. Older projects with the
-    // placeholder 4OSC synth are moved over; 4OSC remains the fallback.
-    if (SoundFontPlugin::isAvailable() && (existing == nullptr || dynamic_cast<tracktion::FourOscPlugin*> (existing) != nullptr))
-    {
-        auto index = existing != nullptr ? track->pluginList.indexOf (existing) : 0;
-
-        if (existing != nullptr)
-            existing->deleteFromParent();
-
-        if (auto synth = edit.getPluginCache().createNewPlugin (SoundFontPlugin::xmlTypeName, {}))
-        {
-            track->pluginList.insertPlugin (synth, index, nullptr);
-            synth->setEnabled (getSoundSourceID().isEmpty());
-        }
-    }
-    else if (existing == nullptr)
-    {
-        if (auto synth = edit.getPluginCache().createNewPlugin (tracktion::FourOscPlugin::xmlTypeName, {}))
-            track->pluginList.insertPlugin (synth, 0, nullptr);
-    }
-
-    if (auto* soundFont = findSoundFont (*track))
-        soundFont->setProgram (getProgram());
+    trackID = tracks[0]->itemID;
 
     // Live input should be audible while the transport is stopped, too.
     edit.playInStopEnabled = true;
@@ -99,19 +44,70 @@ LiveInstrument::LiveInstrument (tracktion::Edit& e)
     edit.engine.getDeviceManager().addChangeListener (this);
     routeInput();
     updateMonitoring();
+    startTimer (500);
 }
 
 LiveInstrument::~LiveInstrument()
 {
+    stopTimer();
     edit.engine.getDeviceManager().removeChangeListener (this);
     edit.getTransport().removeChangeListener (this);
 }
 
+//==============================================================================
 tracktion::AudioTrack* LiveInstrument::getTrack() const
 {
     return tracktion::findAudioTrackForID (edit, trackID);
 }
 
+void LiveInstrument::selectTrack (tracktion::EditItemID id)
+{
+    if (id == trackID || tracktion::findAudioTrackForID (edit, id) == nullptr)
+        return;
+
+    auto armed = isArmed();
+    trackID = id;
+
+    // Move the live input: moveToTrack takes it off the previous track.
+    if (auto* instance = findInputInstance())
+    {
+        if (auto result = instance->setTarget (trackID, true, nullptr, 0); result)
+            instance->setRecordingEnabled (trackID, armed);
+        else
+            DBG ("LiveInstrument: could not move MIDI input: " << result.error());
+    }
+
+    updateMonitoring();
+}
+
+tracktion::AudioTrack* LiveInstrument::addTrack()
+{
+    auto track = edit.insertNewAudioTrack (tracktion::TrackInsertPoint::getEndOfTracks (edit), nullptr, false);
+
+    if (track == nullptr)
+        return nullptr;
+
+    track->setName ("Instrument " + juce::String (tracktion::getAudioTracks (edit).size()));
+    TrackInstrument::setUp (edit, *track);
+    selectTrack (track->itemID);
+    return track.get();
+}
+
+void LiveInstrument::deleteTrack (tracktion::EditItemID id)
+{
+    auto tracks = tracktion::getAudioTracks (edit);
+    auto* track = tracktion::findAudioTrackForID (edit, id);
+
+    if (track == nullptr || tracks.size() <= 1)
+        return;
+
+    if (id == trackID)
+        selectTrack (tracks[0]->itemID == id ? tracks[1]->itemID : tracks[0]->itemID);
+
+    edit.deleteTrack (track);
+}
+
+//==============================================================================
 tracktion::InputDeviceInstance* LiveInstrument::findInputInstance() const
 {
     for (auto* instance : edit.getAllInputDevices())
@@ -146,7 +142,7 @@ void LiveInstrument::routeInput()
     if (auto* instance = findInputInstance())
     {
         // Not undoable: this is setup, not a user edit.
-        if (auto result = instance->setTarget (trackID, false, nullptr, 0); ! result)
+        if (auto result = instance->setTarget (trackID, true, nullptr, 0); ! result)
         {
             DBG ("LiveInstrument: could not route MIDI input: " << result.error());
             return;
@@ -154,161 +150,6 @@ void LiveInstrument::routeInput()
 
         // Ready to record by default: press Record and play.
         instance->setRecordingEnabled (trackID, true);
-    }
-}
-
-void LiveInstrument::setSoundSource (const juce::String& deviceID, const juce::String& deviceName, int outputChannel)
-{
-    auto* track = getTrack();
-
-    if (track == nullptr)
-        return;
-
-    bool external = deviceID.isNotEmpty();
-
-    for (auto* plugin : track->pluginList)
-        if (plugin->isSynth())
-            plugin->setEnabled (! external);   // a disabled plugin passes MIDI straight through
-
-    if (external)
-    {
-        if (auto* device = dynamic_cast<tracktion::MidiOutputDevice*> (edit.engine.getDeviceManager().findOutputDeviceForID (deviceID)))
-            device->setEnabled (true);
-
-        if (findPatchBay (*track) == nullptr)
-            if (auto patchBay = edit.getPluginCache().createNewPlugin (tracktion::MidiPatchBayPlugin::xmlTypeName, {}))
-                track->pluginList.insertPlugin (patchBay, 0, nullptr);
-
-        track->getOutput().setOutputToDeviceID (deviceID);
-    }
-    else
-    {
-        if (auto* patchBay = findPatchBay (*track))
-            patchBay->deleteFromParent();
-
-        track->getOutput().setOutputToDefaultDevice (false);
-    }
-
-    track->state.setProperty (soundSourceIdProperty, deviceID, nullptr);
-    track->state.setProperty (soundSourceNameProperty, deviceName, nullptr);
-    setOutputChannel (outputChannel);
-    updateMonitoring();
-    sendToneToDevice();
-    edit.restartPlayback();
-}
-
-void LiveInstrument::setProgram (int program)
-{
-    auto* track = getTrack();
-
-    if (track == nullptr)
-        return;
-
-    program = program == gm::drumKit ? gm::drumKit : juce::jlimit (0, 127, program);
-    track->state.setProperty (programProperty, program, nullptr);
-
-    if (auto* soundFont = findSoundFont (*track))
-        soundFont->setProgram (program);
-}
-
-void LiveInstrument::setDeviceTone (std::optional<DeviceTone> tone)
-{
-    auto* track = getTrack();
-
-    if (track == nullptr)
-        return;
-
-    if (tone)
-    {
-        track->state.setProperty (toneProperty, juce::String (tone->bankMsb) + " " + juce::String (tone->bankLsb)
-                                                  + " " + juce::String (tone->program), nullptr);
-        track->state.setProperty (toneNameProperty, tone->name, nullptr);
-    }
-    else
-    {
-        track->state.removeProperty (toneProperty, nullptr);
-        track->state.removeProperty (toneNameProperty, nullptr);
-    }
-
-    sendToneToDevice();
-}
-
-std::optional<DeviceTone> LiveInstrument::getDeviceTone() const
-{
-    auto* track = getTrack();
-
-    if (track == nullptr || ! track->state.hasProperty (toneProperty))
-        return std::nullopt;
-
-    auto parts = juce::StringArray::fromTokens (track->state[toneProperty].toString(), " ", {});
-
-    if (parts.size() != 3)
-        return std::nullopt;
-
-    return DeviceTone { juce::jlimit (0, 127, parts[0].getIntValue()), juce::jlimit (0, 127, parts[1].getIntValue()),
-                        juce::jlimit (0, 127, parts[2].getIntValue()), track->state[toneNameProperty].toString() };
-}
-
-int LiveInstrument::getProgram() const
-{
-    auto* track = getTrack();
-    return track != nullptr ? (int) track->state.getProperty (programProperty, 0) : 0;
-}
-
-bool LiveInstrument::hasGeneralMidiSynth() const
-{
-    auto* track = getTrack();
-    return track != nullptr && findSoundFont (*track) != nullptr;
-}
-
-void LiveInstrument::sendToneToDevice()
-{
-    auto id = getSoundSourceID();
-    auto tone = getDeviceTone();
-
-    if (id.isEmpty() || ! tone)
-        return;
-
-    if (auto* device = dynamic_cast<tracktion::MidiOutputDevice*> (edit.engine.getDeviceManager().findOutputDeviceForID (id)))
-    {
-        if (device->isEnabled())
-        {
-            // Bank Select first: devices like the GO:KEYS 5 ignore a Program Change outside their own bank.
-            auto channel = getOutputChannel();
-            device->fireMessage (juce::MidiMessage::controllerEvent (channel, 0, tone->bankMsb));
-            device->fireMessage (juce::MidiMessage::controllerEvent (channel, 32, tone->bankLsb));
-            device->fireMessage (juce::MidiMessage::programChange (channel, tone->program));
-        }
-    }
-}
-
-void LiveInstrument::previewNote (int noteNumber, bool on)
-{
-    // Never inject into a take being recorded.
-    if (edit.getTransport().isRecording())
-        return;
-
-    // Playing through a device: send straight to it on its channel. Live echo may be off
-    // (see isEchoingLiveInput), so going through the track's input would stay silent.
-    if (auto id = getSoundSourceID(); id.isNotEmpty())
-    {
-        if (auto* device = dynamic_cast<tracktion::MidiOutputDevice*> (edit.engine.getDeviceManager().findOutputDeviceForID (id)))
-            if (device->isEnabled())
-                device->fireMessage (on ? juce::MidiMessage::noteOn (getOutputChannel(), noteNumber, (juce::uint8) 100)
-                                        : juce::MidiMessage::noteOff (getOutputChannel(), noteNumber));
-
-        return;
-    }
-
-    if (auto allIns = findAllMidiIns (edit.engine))
-    {
-        auto message = on ? juce::MidiMessage::noteOn (1, noteNumber, (juce::uint8) 100)
-                          : juce::MidiMessage::noteOff (1, noteNumber);
-
-        // Stamped like real MIDI input (seconds on the hi-res clock); a 0 timestamp
-        // reads as long past and the note is dropped.
-        message.setTimeStamp (juce::Time::getMillisecondCounterHiRes() * 0.001);
-        allIns->handleIncomingMidiMessage (message, allIns->getMPESourceID());
     }
 }
 
@@ -340,62 +181,44 @@ void LiveInstrument::updateMonitoring()
     }
 }
 
-juce::String LiveInstrument::getSoundSourceID() const
-{
-    auto* track = getTrack();
-    return track != nullptr ? track->state[soundSourceIdProperty].toString() : juce::String();
-}
-
-juce::String LiveInstrument::getSoundSourceName() const
-{
-    auto* track = getTrack();
-    return track != nullptr ? track->state[soundSourceNameProperty].toString() : juce::String();
-}
-
-void LiveInstrument::setOutputChannel (int channel)
-{
-    auto* track = getTrack();
-
-    if (track == nullptr)
-        return;
-
-    channel = juce::jlimit (1, 16, channel);
-    track->state.setProperty (outputChannelProperty, channel, nullptr);
-
-    if (auto* patchBay = findPatchBay (*track))
-    {
-        // Every incoming channel goes out on the device's channel.
-        tracktion::MidiPatchBayPlugin::Mappings mappings;
-
-        for (int source = 1; source <= 16; ++source)
-            mappings.map[source] = (char) channel;
-
-        patchBay->setMappings (mappings);
-    }
-}
-
-int LiveInstrument::getOutputChannel() const
-{
-    auto* track = getTrack();
-    return track != nullptr ? juce::jlimit (1, 16, (int) track->state.getProperty (outputChannelProperty, 1)) : 1;
-}
-
 void LiveInstrument::changeListenerCallback (juce::ChangeBroadcaster* source)
 {
     if (source == &edit.getTransport())
     {
-        // Re-select the tone when playback starts, in case it was changed on the keyboard.
+        // Re-select device tones when playback starts, in case they were changed on the keyboard.
         auto playing = edit.getTransport().isPlaying();
 
         if (playing && ! wasPlaying)
-            sendToneToDevice();
+            for (auto* track : tracktion::getAudioTracks (edit))
+                TrackInstrument (edit, *track).sendToneToDevice();
 
         wasPlaying = playing;
         return;
     }
 
     // The device list changed: "All MIDI Ins" may only now have an instance in the Edit,
-    // and the sound-source keyboard may have connected or gone.
+    // and a sound-source keyboard may have connected or gone.
+    routeInput();
+    updateMonitoring();
+}
+
+void LiveInstrument::timerCallback()
+{
+    // The selected track may have been deleted (e.g. by undo); fall back to the first.
+    if (getTrack() == nullptr)
+    {
+        auto tracks = tracktion::getAudioTracks (edit);
+
+        if (tracks.isEmpty())
+            return;
+
+        trackID = tracks[0]->itemID;
+    }
+
+    // Tracks restored by undo, or a track's sound source changed: keep everything in step.
+    for (auto* track : tracktion::getAudioTracks (edit))
+        TrackInstrument::setUp (edit, *track);
+
     routeInput();
     updateMonitoring();
 }

@@ -118,6 +118,12 @@ The app talks to `purrlude::BluetoothMidiManager` (`src/devices/BluetoothMidiMan
   - The GO:KEYS 3/5 list (1,228 tones) comes from Roland's tone list PDF.
   - Bank and program are derived from the tone number, because three printed entries are wrong.
 
+**Tracks:**
+- **Instrument tracks:** every audio track is one. `TrackInstrument` is a light handle whose state lives on the track (sound source, GM program, device tone, channel, preview).
+- **Live input:** `LiveInstrument` routes "All MIDI Ins" to the selected track, which is also the armed one. It adds and deletes tracks (undoable, never the last), and resends device tones on play.
+- **UI:** the arrangement has one `TrackHeader` per track and scrolls vertically in a Viewport.
+- **Score:** the Score view and PDF/MusicXML export use `notation::buildEditScore` (a part per track with notes, one shared key, equal length). File > Export Parts as PDF writes one PDF per track.
+
 **Piano roll:**
 - **Editor:** `PianoRoll` (`src/ui/`) edits one MIDI clip of the instrument track. It's the Piano Roll tab of the lower panel; double-click a clip in the arrangement to open it there.
 - **Edits:** they go through `notes::` operations in `src/model/NoteEditing.h` (add, move, resize, remove, quantize; all undoable). These are what's tested.

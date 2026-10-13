@@ -19,4 +19,9 @@ TimeSignature getTimeSignature (tracktion::Edit&);
 /** A one-part score for the track, using the Edit's tempo and time signature. */
 Score buildTrackScore (tracktion::AudioTrack&, const std::string& title, const BuildOptions& = {});
 
+/** The whole song: one part per track that has notes (named after the track), in one key.
+    If no track has notes, the first track as an empty part.
+*/
+Score buildEditScore (tracktion::Edit&, const std::string& title, const BuildOptions& = {});
+
 } // namespace purrlude::notation

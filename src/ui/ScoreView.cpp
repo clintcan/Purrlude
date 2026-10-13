@@ -160,16 +160,11 @@ void ScoreView::resized()
 
 void ScoreView::timerCallback()
 {
-    auto* track = instrument.getTrack();
-
-    if (track == nullptr)
-        return;
-
     // Wait for the take: a score that changes mid-recording would only distract.
     if (edit.getTransport().isRecording())
         return;
 
-    auto score = notation::buildTrackScore (*track, {});
+    auto score = notation::buildEditScore (edit, {});
     auto musicXml = notation::toMusicXml (score, { .tempoMark = false });
     auto width = viewport.getMaximumVisibleWidth() - paperMargin * 2;
 
@@ -197,8 +192,9 @@ void ScoreView::handleRendered (int requestId, std::shared_ptr<juce::XmlElement>
 
     page->setScore (svg);
 
-    auto empty = instrument.getTrack() == nullptr || notation::getTrackNotes (*instrument.getTrack()).empty();
-    statusLabel.setText (empty ? "Record something on the Instrument track to see it as sheet music."
+    auto tracks = tracktion::getAudioTracks (edit);
+    auto empty = std::none_of (tracks.begin(), tracks.end(), [] (auto* t) { return ! notation::getTrackNotes (*t).empty(); });
+    statusLabel.setText (empty ? "Record something to see it as sheet music."
                                : juce::String(),
                          juce::dontSendNotification);
 }

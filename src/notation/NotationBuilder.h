@@ -19,6 +19,22 @@ Score buildScore (const std::vector<NoteEvent>&, TimeSignature, const BuildOptio
                   const std::string& title = {}, const std::string& partName = "Instrument",
                   double tempoBpm = 120.0);
 
+struct PartNotes
+{
+    std::string name;
+    std::vector<NoteEvent> notes;
+};
+
+/** Builds a score with one part per entry. The key is estimated from all parts together,
+    and every part gets the same number of measures (shorter ones end in rests).
+*/
+Score buildMultiPartScore (const std::vector<PartNotes>&, TimeSignature, const BuildOptions& = {},
+                           const std::string& title = {}, double tempoBpm = 120.0);
+
+/** One part, in a given key, at least minMeasures long. */
+Part buildPart (const std::vector<NoteEvent>&, TimeSignature, KeySignature, const BuildOptions&,
+                const std::string& partName, int minMeasures);
+
 //==============================================================================
 // The individual steps, exposed for testing.
 

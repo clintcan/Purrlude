@@ -40,6 +40,22 @@ std::vector<NoteEvent> getTrackNotes (tracktion::AudioTrack& track)
     return notes;
 }
 
+Score buildEditScore (tracktion::Edit& edit, const std::string& title, const BuildOptions& options)
+{
+    std::vector<PartNotes> parts;
+    auto tracks = tracktion::getAudioTracks (edit);
+
+    for (auto* track : tracks)
+        if (auto notes = getTrackNotes (*track); ! notes.empty())
+            parts.push_back ({ track->getName().toStdString(), std::move (notes) });
+
+    if (parts.empty() && ! tracks.isEmpty())
+        parts.push_back ({ tracks[0]->getName().toStdString(), {} });
+
+    auto bpm = edit.tempoSequence.getTempo (0) != nullptr ? edit.tempoSequence.getTempo (0)->getBpm() : 120.0;
+    return buildMultiPartScore (parts, getTimeSignature (edit), options, title, bpm);
+}
+
 Score buildTrackScore (tracktion::AudioTrack& track, const std::string& title, const BuildOptions& options)
 {
     auto& edit = track.edit;

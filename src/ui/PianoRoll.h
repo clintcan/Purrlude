@@ -37,6 +37,7 @@ private:
     class GridViewport;
 
     tracktion::MidiClip* getClip() const;
+    void previewNote (int pitch, bool on);
     void timerCallback() override;
     void updateLayout();
     double getGrid() const;

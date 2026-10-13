@@ -164,6 +164,16 @@ void SoundFontPlugin::applyToBuffer (const tracktion::PluginRenderContext& fc)
     if (auto newProgram = pendingProgram.exchange (-1); newProgram >= 0)
         applyProgram (newProgram);
 
+    previewFifo.read (previewFifo.getNumReady()).forEach ([this] (int index)
+    {
+        auto entry = previewQueue[(size_t) index];
+
+        if (entry >= 128)
+            tsf_channel_note_on (synth, 0, entry - 128, 0.8f);
+        else
+            tsf_channel_note_off (synth, 0, entry);
+    });
+
     auto* midi = fc.bufferForMidiMessages;
 
     if (midi != nullptr && midi->isAllNotesOff)
@@ -234,6 +244,14 @@ void SoundFontPlugin::setProgram (int newProgram)
 int SoundFontPlugin::getProgram() const
 {
     return program.get();
+}
+
+void SoundFontPlugin::queuePreview (int noteNumber, bool on)
+{
+    previewFifo.write (1).forEach ([this, noteNumber, on] (int index)
+    {
+        previewQueue[(size_t) index] = juce::jlimit (0, 127, noteNumber) + (on ? 128 : 0);
+    });
 }
 
 //==============================================================================

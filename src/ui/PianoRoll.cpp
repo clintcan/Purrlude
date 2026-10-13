@@ -347,14 +347,14 @@ private:
     void startPreview (int pitch)
     {
         stopPreview();
-        owner.instrument.previewNote (pitch, true);
+        owner.previewNote (pitch, true);
         previewPitch = pitch;
     }
 
     void stopPreview()
     {
         if (previewPitch >= 0)
-            owner.instrument.previewNote (previewPitch, false);
+            owner.previewNote (previewPitch, false);
 
         previewPitch = -1;
     }
@@ -405,14 +405,14 @@ public:
     void mouseDown (const juce::MouseEvent& e) override
     {
         pressed = Grid::yToPitch (e.position.y + (float) owner.viewport->getViewPositionY());
-        owner.instrument.previewNote (pressed, true);
+        owner.previewNote (pressed, true);
         repaint();
     }
 
     void mouseUp (const juce::MouseEvent&) override
     {
         if (pressed >= 0)
-            owner.instrument.previewNote (pressed, false);
+            owner.previewNote (pressed, false);
 
         pressed = -1;
         repaint();
@@ -508,26 +508,39 @@ PianoRoll::~PianoRoll()
 
 tracktion::MidiClip* PianoRoll::getClip() const
 {
-    auto* track = instrument.getTrack();
-
-    if (track == nullptr)
-        return nullptr;
-
-    tracktion::MidiClip* first = nullptr;
-
-    for (auto* clip : track->getClips())
-    {
-        if (auto* midi = dynamic_cast<tracktion::MidiClip*> (clip))
-        {
-            if (midi->itemID == clipID)
+    // The chosen clip, on whichever track it is.
+    for (auto* track : tracktion::getAudioTracks (edit))
+        for (auto* clip : track->getClips())
+            if (auto* midi = dynamic_cast<tracktion::MidiClip*> (clip); midi != nullptr && midi->itemID == clipID)
                 return midi;
 
-            if (first == nullptr)
-                first = midi;
-        }
-    }
+    // Otherwise the first clip on the selected track, then on any track.
+    auto firstOn = [] (tracktion::AudioTrack* track) -> tracktion::MidiClip*
+    {
+        if (track != nullptr)
+            for (auto* clip : track->getClips())
+                if (auto* midi = dynamic_cast<tracktion::MidiClip*> (clip))
+                    return midi;
 
-    return first;
+        return nullptr;
+    };
+
+    if (auto* clip = firstOn (instrument.getTrack()))
+        return clip;
+
+    for (auto* track : tracktion::getAudioTracks (edit))
+        if (auto* clip = firstOn (track))
+            return clip;
+
+    return nullptr;
+}
+
+void PianoRoll::previewNote (int pitch, bool on)
+{
+    // On the clip's own track, whichever track the keyboard is playing.
+    if (auto* clip = getClip())
+        if (auto* track = dynamic_cast<tracktion::AudioTrack*> (clip->getTrack()))
+            TrackInstrument (edit, *track).previewNote (pitch, on);
 }
 
 void PianoRoll::showClip (tracktion::EditItemID id)
@@ -583,7 +596,7 @@ void PianoRoll::resized()
     auto r = getLocalBounds();
     auto bar = r.removeFromTop (toolbarHeight).reduced (6, 4);
 
-    titleLabel.setBounds (bar.removeFromLeft (160));
+    titleLabel.setBounds (bar.removeFromLeft (200));
     gridBox.setBounds (bar.removeFromLeft (70));
     bar.removeFromLeft (6);
     quantizeButton.setBounds (bar.removeFromLeft (80));
@@ -601,7 +614,10 @@ void PianoRoll::resized()
 void PianoRoll::timerCallback()
 {
     auto* clip = getClip();
-    titleLabel.setText (clip != nullptr ? clip->getName() : juce::String ("No clip yet"), juce::dontSendNotification);
+    auto* clipTrack = clip != nullptr ? clip->getTrack() : nullptr;
+    titleLabel.setText (clip == nullptr ? juce::String ("No clip yet")
+                                        : (clipTrack != nullptr ? clipTrack->getName() + ": " : juce::String()) + clip->getName(),
+                        juce::dontSendNotification);
 
     // Edits, undo and playback all show up here.
     grid->updateSize();

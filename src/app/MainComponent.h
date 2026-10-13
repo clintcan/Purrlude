@@ -47,7 +47,7 @@ public:
     void menuItemSelected (int, int) override;
 
 private:
-    enum MenuIds { newId = 1, openId, saveId, saveAsId, exportPdfId, exportMusicXmlId, undoId, redoId };
+    enum MenuIds { newId = 1, openId, saveId, saveAsId, exportPdfId, exportPartsId, exportMusicXmlId, undoId, redoId };
 
     void setProject (std::unique_ptr<Project>);
     void startUp();
@@ -59,8 +59,9 @@ private:
     void saveProject (std::function<void (bool saved)> = {});
     void saveProjectAs (std::function<void (bool saved)> = {});
 
-    enum class ExportFormat { pdf, musicXml };
+    enum class ExportFormat { pdf, partPdfs, musicXml };
     void exportScore (ExportFormat);
+    void exportParts();
 
     void showError (const juce::String& title, const juce::String& message);
     void updateTitle();
@@ -78,6 +79,7 @@ private:
     std::unique_ptr<Project> project;
     std::unique_ptr<TransportBar> transportBar;
     std::unique_ptr<ArrangementView> arrangement;
+    juce::Viewport arrangementViewport;
     std::unique_ptr<ScoreView> scoreView;
     std::unique_ptr<PianoRoll> pianoRoll;
     juce::TabbedComponent editorTabs { juce::TabbedButtonBar::TabsAtTop };

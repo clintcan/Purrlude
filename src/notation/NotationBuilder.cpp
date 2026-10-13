@@ -312,12 +312,44 @@ std::vector<NoteValue> splitIntoNoteValues (int startInMeasure, int length)
 Score buildScore (const std::vector<NoteEvent>& performed, TimeSignature time, const BuildOptions& options,
                   const std::string& title, const std::string& partName, double tempoBpm)
 {
+    return buildMultiPartScore ({ { partName, performed } }, time, options, title, tempoBpm);
+}
+
+Score buildMultiPartScore (const std::vector<PartNotes>& parts, TimeSignature time, const BuildOptions& options,
+                           const std::string& title, double tempoBpm)
+{
     Score score;
     score.title = title;
     score.time = time;
     score.tempoBpm = tempoBpm;
-    score.key = options.key ? *options.key : estimateKey (performed);
 
+    // One key for the whole score, from every part's notes.
+    std::vector<NoteEvent> allNotes;
+
+    for (const auto& p : parts)
+        allNotes.insert (allNotes.end(), p.notes.begin(), p.notes.end());
+
+    score.key = options.key ? *options.key : estimateKey (allNotes);
+
+    for (const auto& p : parts)
+        score.parts.push_back (buildPart (p.notes, time, score.key, options, p.name, 1));
+
+    // Every part has the same number of measures: pad the shorter ones with rests.
+    size_t numMeasures = 0;
+
+    for (const auto& part : score.parts)
+        numMeasures = std::max (numMeasures, part.measures.size());
+
+    for (size_t i = 0; i < score.parts.size(); ++i)
+        if (score.parts[i].measures.size() < numMeasures)
+            score.parts[i] = buildPart (parts[i].notes, time, score.key, options, parts[i].name, (int) numMeasures);
+
+    return score;
+}
+
+Part buildPart (const std::vector<NoteEvent>& performed, TimeSignature time, KeySignature key,
+                const BuildOptions& options, const std::string& partName, int minMeasures)
+{
     auto grid = options.gridTicks > 0 ? options.gridTicks : chooseGrid (performed);
     auto notes = removeSamePitchOverlaps (quantize (performed, grid));
 
@@ -361,7 +393,7 @@ Score buildScore (const std::vector<NoteEvent>& performed, TimeSignature time, c
     for (const auto& n : notes)
         end = std::max (end, n.start + n.length);
 
-    auto numMeasures = std::max (1, (end + measureTicks - 1) / measureTicks);
+    auto numMeasures = std::max (std::max (1, minMeasures), (end + measureTicks - 1) / measureTicks);
     part.measures.resize ((size_t) numMeasures);
 
     for (auto& m : part.measures)
@@ -374,7 +406,7 @@ Score buildScore (const std::vector<NoteEvent>& performed, TimeSignature time, c
             std::vector<Pitch> pitches;
 
             for (auto midi : segment.pitches)
-                pitches.push_back (spell (midi, score.key));
+                pitches.push_back (spell (midi, key));
 
             bool firstPiece = true;
 
@@ -420,8 +452,7 @@ Score buildScore (const std::vector<NoteEvent>& performed, TimeSignature time, c
         }
     }
 
-    score.parts.push_back (std::move (part));
-    return score;
+    return part;
 }
 
 } // namespace purrlude::notation

@@ -1,8 +1,5 @@
 #include "ArrangementView.h"
 
-#include "devices/DeviceLibrary.h"
-#include "instruments/GeneralMidi.h"
-
 namespace purrlude
 {
 
@@ -14,27 +11,22 @@ namespace
     constexpr int minimumBars = 16;
 }
 
-ArrangementView::ArrangementView (tracktion::Edit& e, LiveInstrument& i, MidiDeviceSettings& s)
-    : edit (e), instrument (i), deviceSettings (s)
+ArrangementView::ArrangementView (tracktion::Edit& e, LiveInstrument& l, MidiDeviceSettings& s)
+    : edit (e), live (l), deviceSettings (s)
 {
-    armButton.setClickingTogglesState (true);
-    armButton.setTooltip ("Record-arm: when armed, Record captures what you play on this track");
-    armButton.setColour (juce::TextButton::buttonOnColourId, recordColour);
-    armButton.onClick = [this] { instrument.setArmed (armButton.getToggleState()); };
-    addAndMakeVisible (armButton);
-
-    instrumentBox.setTooltip ("The instrument this track plays: a built-in sound, or a tone learned from the device");
-    instrumentBox.onChange = [this] { instrumentChosen(); };
-    addAndMakeVisible (instrumentBox);
-
-    soundBox.setTooltip ("Where this track is heard: Purrlude's built-in synth, or a MIDI device's own sounds");
-    soundBox.onChange = [this] { soundChosen(); };
-    addAndMakeVisible (soundBox);
+    addTrackButton.setTooltip ("Add an instrument track");
+    addTrackButton.setWantsKeyboardFocus (false);
+    addTrackButton.onClick = [this]
+    {
+        edit.getUndoManager().beginNewTransaction ("Add track");
+        live.addTrack();
+        syncHeaders();
+    };
+    addAndMakeVisible (addTrackButton);
 
     edit.engine.getDeviceManager().addChangeListener (this);
     deviceSettings.addChangeListener (this);
-    updateSoundChoices();
-    updateInstrumentChoices();
+    syncHeaders();
 
     startTimerHz (30);
 }
@@ -46,230 +38,57 @@ ArrangementView::~ArrangementView()
     deviceSettings.removeChangeListener (this);
 }
 
-namespace
+int ArrangementView::getContentHeight() const
 {
-    // Instrument menu item IDs (ComboBox IDs must be non-zero).
-    constexpr int currentToneId = 1;      // device mode: leave the device's tone alone
-    constexpr int firstToneId = 2;        // device mode: learned tones
-    constexpr int renameToneId = 10000;   // device mode: rename the selected tone
+    return rulerHeight + laneHeight * tracktion::getAudioTracks (edit).size() + addButtonArea;
 }
 
-int ArrangementView::getSelectedInstrumentId() const
+void ArrangementView::changeListenerCallback (juce::ChangeBroadcaster*)
 {
-    if (instrument.getSoundSourceID().isEmpty())
-        return instrument.getProgram() + 1;   // GM program + 1
-
-    if (auto tone = instrument.getDeviceTone())
-        for (size_t i = 0; i < toneChoices.size(); ++i)
-            if (toneChoices[i].sameSound (*tone))
-                return firstToneId + (int) i;
-
-    return currentToneId;
+    // MIDI devices or learned tones changed: every header's menus may need it.
+    for (auto& header : headers)
+        header->updateChoices();
 }
 
-void ArrangementView::updateInstrumentChoices()
+void ArrangementView::syncHeaders()
 {
-    instrumentMenuSource = instrument.getSoundSourceID();
-    instrumentBox.clear (juce::dontSendNotification);
-    toneChoices.clear();
+    auto tracks = tracktion::getAudioTracks (edit);
+    bool same = (int) headers.size() == tracks.size();
 
-    if (instrumentMenuSource.isEmpty())
+    for (int i = 0; same && i < tracks.size(); ++i)
+        same = headers[(size_t) i]->getTrackID() == tracks.getUnchecked (i)->itemID;
+
+    if (! same)
     {
-        // Built-in: the 128 General MIDI sounds by family, plus the drum kit. Item ID = program + 1.
-        for (size_t family = 0; family < gm::familyNames.size(); ++family)
-        {
-            instrumentBox.addSectionHeading (gm::familyNames[family]);
+        // Keep headers for tracks that still exist, in the Edit's order.
+        std::vector<std::unique_ptr<TrackHeader>> updated;
 
-            for (int i = 0; i < 8; ++i)
+        for (auto* track : tracks)
+        {
+            auto existing = std::find_if (headers.begin(), headers.end(),
+                                          [track] (const auto& h) { return h != nullptr && h->getTrackID() == track->itemID; });
+
+            if (existing != headers.end())
             {
-                auto program = (int) family * 8 + i;
-                instrumentBox.addItem (gm::getName (program), program + 1);
+                updated.push_back (std::move (*existing));
+            }
+            else
+            {
+                updated.push_back (std::make_unique<TrackHeader> (edit, live, deviceSettings, track->itemID));
+                addAndMakeVisible (*updated.back());
             }
         }
 
-        instrumentBox.addSectionHeading ("Drums");
-        instrumentBox.addItem (gm::getName (gm::drumKit), gm::drumKit + 1);
-    }
-    else
-    {
-        auto deviceName = instrument.getSoundSourceName();
-        auto* definition = DeviceLibrary::findFor (deviceName);
-        auto addTone = [this] (juce::PopupMenu& menu, const DeviceTone& tone)
-        {
-            menu.addItem (firstToneId + (int) toneChoices.size(), tone.name);
-            toneChoices.push_back (tone);
-        };
-
-        instrumentBox.addItem ("Keyboard's current tone", currentToneId);
-
-        // A known device: its whole tone list, by section and category.
-        if (definition != nullptr)
-        {
-            for (const auto& section : definition->sections)
-            {
-                juce::PopupMenu sectionMenu;
-
-                for (const auto& category : section.categories)
-                {
-                    juce::PopupMenu categoryMenu;
-
-                    for (const auto& t : category.tones)
-                        addTone (categoryMenu, t.tone);
-
-                    sectionMenu.addSubMenu (category.name, categoryMenu);
-                }
-
-                instrumentBox.getRootMenu()->addSubMenu (section.name, sectionMenu);
-            }
-        }
-
-        // Tones learned from the device that the built-in list doesn't have (or there's no list),
-        // and a tone saved with the project that isn't known on this computer yet.
-        std::vector<DeviceTone> learned;
-        auto known = [&] (const DeviceTone& tone)
-        {
-            return std::any_of (toneChoices.begin(), toneChoices.end(), [&] (const DeviceTone& t) { return t.sameSound (tone); })
-                || std::any_of (learned.begin(), learned.end(), [&] (const DeviceTone& t) { return t.sameSound (tone); });
-        };
-
-        for (const auto& tone : deviceSettings.getTones (deviceName))
-            if (! known (tone))
-                learned.push_back (tone);
-
-        if (auto tone = instrument.getDeviceTone(); tone && ! known (*tone))
-            learned.push_back (*tone);
-
-        firstLearnedToneId = firstToneId + (int) toneChoices.size();
-
-        if (! learned.empty())
-        {
-            instrumentBox.addSectionHeading ("Learned tones");
-
-            for (const auto& tone : learned)
-                addTone (*instrumentBox.getRootMenu(), tone);
-
-            instrumentBox.addSeparator();
-            instrumentBox.addItem ("Rename this tone...", renameToneId);
-        }
-        else if (definition == nullptr)
-        {
-            instrumentBox.addSectionHeading ("Pick a tone on the keyboard to add it here");
-        }
+        headers = std::move (updated);
+        resized();
     }
 
-    instrumentBox.setSelectedId (getSelectedInstrumentId(), juce::dontSendNotification);
-}
-
-void ArrangementView::instrumentChosen()
-{
-    auto id = instrumentBox.getSelectedId();
-
-    if (instrument.getSoundSourceID().isEmpty())
+    if (auto height = getContentHeight(); height != lastContentHeight)
     {
-        if (id > 0)
-            instrument.setProgram (id - 1);
+        lastContentHeight = height;
 
-        return;
-    }
-
-    if (id == renameToneId)
-    {
-        instrumentBox.setSelectedId (getSelectedInstrumentId(), juce::dontSendNotification);
-
-        // Only learned tones can be renamed; built-in tone lists have the real names.
-        if (getSelectedInstrumentId() >= firstLearnedToneId)
-            renameCurrentTone();
-    }
-    else if (id == currentToneId)
-    {
-        instrument.setDeviceTone (std::nullopt);
-    }
-    else if (juce::isPositiveAndBelow (id - firstToneId, (int) toneChoices.size()))
-    {
-        instrument.setDeviceTone (toneChoices[(size_t) (id - firstToneId)]);
-    }
-}
-
-void ArrangementView::renameCurrentTone()
-{
-    auto tone = instrument.getDeviceTone();
-
-    if (! tone)
-        return;
-
-    auto deviceName = instrument.getSoundSourceName();
-    auto* window = new juce::AlertWindow ("Rename tone", "A name for this " + deviceName + " tone:",
-                                          juce::MessageBoxIconType::NoIcon, this);
-    window->addTextEditor ("name", tone->name);
-    window->addButton ("Rename", 1, juce::KeyPress (juce::KeyPress::returnKey));
-    window->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
-
-    juce::Component::SafePointer<ArrangementView> safe (this);
-
-    window->enterModalState (true, juce::ModalCallbackFunction::create ([safe, window, deviceName, original = *tone] (int result)
-    {
-        auto name = window->getTextEditorContents ("name").trim();
-
-        if (result != 1 || name.isEmpty() || safe == nullptr)
-            return;
-
-        safe->deviceSettings.renameTone (deviceName, original, name);
-
-        // Keep the project's copy of the name in step.
-        auto renamed = original;
-        renamed.name = name;
-        safe->instrument.setDeviceTone (renamed);
-    }), true);
-}
-
-void ArrangementView::updateSoundChoices()
-{
-    soundIDs = { juce::String() };
-    soundNames = { "Built-in synth" };
-
-    auto& devices = edit.engine.getDeviceManager();
-
-    for (int i = 0; i < devices.getNumMidiOutDevices(); ++i)
-    {
-        if (auto* device = devices.getMidiOutDevice (i))
-        {
-            soundIDs.add (device->getDeviceID());
-            soundNames.add (device->getName());
-        }
-    }
-
-    // Keep showing a chosen device while it's disconnected, so the choice isn't lost.
-    auto current = instrument.getSoundSourceID();
-
-    if (current.isNotEmpty() && ! soundIDs.contains (current))
-    {
-        soundIDs.add (current);
-        soundNames.add (instrument.getSoundSourceName() + " (not connected)");
-    }
-
-    soundBox.clear (juce::dontSendNotification);
-
-    for (int i = 0; i < soundNames.size(); ++i)
-        soundBox.addItem (soundNames[i], i + 1);
-
-    soundBox.setSelectedItemIndex (juce::jmax (0, soundIDs.indexOf (current)), juce::dontSendNotification);
-}
-
-void ArrangementView::soundChosen()
-{
-    auto index = soundBox.getSelectedItemIndex();
-
-    if (! juce::isPositiveAndBelow (index, soundIDs.size()) || soundIDs[index] == instrument.getSoundSourceID())
-        return;
-
-    if (soundIDs[index].isEmpty())
-    {
-        instrument.useBuiltInSynth();
-    }
-    else
-    {
-        auto name = soundNames[index].upToLastOccurrenceOf (" (not connected)", false, false);
-        instrument.setSoundSource (soundIDs[index], name, deviceSettings.getOutputChannel (name));
+        if (onContentHeightChanged != nullptr)
+            onContentHeightChanged();
     }
 }
 
@@ -338,12 +157,12 @@ void ArrangementView::paint (juce::Graphics& g)
         g.setColour (juce::Colours::black.withAlpha (0.3f));
         g.drawHorizontalLine (lane.getBottom() - 1, 0.0f, (float) getWidth());
 
-        auto header = lane.withWidth (headerWidth);
-        g.setColour (bg.brighter (0.08f));
-        g.fillRect (header);
-        g.setColour (juce::Colours::white);
-        g.setFont (juce::FontOptions (15.0f, juce::Font::bold));
-        g.drawText (track->getName(), header.reduced (8, 6).removeFromTop (20), juce::Justification::centredLeft);
+        // The selected track's lane is a little lighter (its header is a child component).
+        if (track->itemID == live.getSelectedTrackID())
+        {
+            g.setColour (juce::Colours::white.withAlpha (0.04f));
+            g.fillRect (lane.withTrimmedLeft (headerWidth));
+        }
 
         for (auto* clip : track->getClips())
         {
@@ -395,7 +214,7 @@ void ArrangementView::paint (juce::Graphics& g)
         }
 
         // The take being recorded, until it becomes a clip.
-        if (recordStartBeat && instrument.getTrack() == track && playheadBeat > *recordStartBeat)
+        if (recordStartBeat && live.getTrack() == track && playheadBeat > *recordStartBeat)
         {
             auto area = juce::Rectangle<float> (beatToX (*recordStartBeat), (float) lane.getY() + 4.0f,
                                                 beatToX (playheadBeat) - beatToX (*recordStartBeat),
@@ -418,31 +237,23 @@ void ArrangementView::paint (juce::Graphics& g)
 
 void ArrangementView::resized()
 {
-    // Arm button sits in the instrument track's header.
-    auto tracks = tracktion::getAudioTracks (edit);
-    auto index = tracks.indexOf (instrument.getTrack());
+    for (size_t i = 0; i < headers.size(); ++i)
+        headers[i]->setBounds (0, rulerHeight + (int) i * laneHeight, headerWidth, laneHeight);
 
-    armButton.setVisible (index >= 0);
-
-    if (index >= 0)
-        armButton.setBounds (8, rulerHeight + index * laneHeight + 34, 60, 24);
-
-    soundBox.setVisible (index >= 0);
-    instrumentBox.setVisible (index >= 0);
-
-    if (index >= 0)
-    {
-        auto top = rulerHeight + index * laneHeight;
-        instrumentBox.setBounds (8, top + 64, headerWidth - 16, 24);
-        soundBox.setBounds (8, top + 94, headerWidth - 16, 24);
-    }
+    addTrackButton.setBounds (8, rulerHeight + (int) headers.size() * laneHeight + 8, 90, 26);
 }
 
 void ArrangementView::mouseDown (const juce::MouseEvent& e)
 {
-    // Click the ruler or an empty lane to move the playhead.
+    // Click the ruler or a lane to move the playhead; clicking a lane also selects its track.
     if (e.x < headerWidth)
         return;
+
+    auto tracks = tracktion::getAudioTracks (edit);
+    auto index = (e.y - rulerHeight) / laneHeight;
+
+    if (e.y >= rulerHeight && juce::isPositiveAndBelow (index, tracks.size()))
+        live.selectTrack (tracks.getUnchecked (index)->itemID);
 
     auto beat = xToBeat ((float) e.x);
     edit.getTransport().setPosition (edit.tempoSequence.toTime (tracktion::BeatPosition::fromBeats (beat)));
@@ -477,17 +288,12 @@ void ArrangementView::timerCallback()
         recordStartBeat.reset();
     }
 
-    armButton.setToggleState (instrument.isArmed(), juce::dontSendNotification);
+    // Tracks added, removed or reordered (including by undo).
+    syncHeaders();
 
-    // The sound source, undo, or a tone picked on the keyboard can change the instrument behind the menu's back.
-    if (! instrumentBox.isPopupActive())
-    {
-        if (instrumentMenuSource != instrument.getSoundSourceID())
-            updateInstrumentChoices();
-        else if (instrumentBox.getSelectedId() != getSelectedInstrumentId())
-            instrumentBox.setSelectedId (getSelectedInstrumentId(), juce::dontSendNotification);
-    }
-    resized();
+    for (auto& header : headers)
+        header->refresh();
+
     repaint();
 }
 

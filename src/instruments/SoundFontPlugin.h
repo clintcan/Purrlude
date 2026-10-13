@@ -49,6 +49,11 @@ public:
     void setProgram (int);
     int getProgram() const;
 
+    /** Plays or releases a note now, outside the track's own MIDI (e.g. previewing while
+        editing). Lock-free; call from one thread (the message thread).
+    */
+    void queuePreview (int noteNumber, bool on);
+
     //==============================================================================
     /** Where the bundled SoundFont is: next to the app, or the source tree in development builds. */
     static juce::File findSoundFont();
@@ -64,6 +69,10 @@ private:
 
     juce::CachedValue<int> program;
     std::atomic<int> pendingProgram { -1 };
+
+    // Preview notes, message thread -> audio thread: note number, +128 for note-on.
+    juce::AbstractFifo previewFifo { 64 };
+    std::array<int, 64> previewQueue {};
 
     juce::SpinLock synthLock;          // guards swapping the synth in initialise/deinitialise
     tsf* synth = nullptr;

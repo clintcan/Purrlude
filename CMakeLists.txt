@@ -70,6 +70,8 @@ target_sources(purrlude_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/instruments/GeneralMidi.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/instruments/SoundFontPlugin.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/instruments/SoundFontPlugin.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/TrackInstrument.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/TrackInstrument.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/LiveInstrument.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/LiveInstrument.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/NoteEditing.h
@@ -99,6 +101,8 @@ target_sources(purrlude_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/PianoRoll.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/TransportBar.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/TransportBar.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/TrackHeader.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/TrackHeader.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/ArrangementView.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/ArrangementView.cpp
 )

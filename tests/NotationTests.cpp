@@ -221,6 +221,38 @@ TEST_CASE ("Grand staff MusicXML backs up for the second staff", "[notation]")
     REQUIRE (measure->getChildByName ("attributes")->getChildByName ("staves")->getAllSubText() == "2");
 }
 
+TEST_CASE ("A multi-part score shares one key and length", "[notation]")
+{
+    // A two-bar melody in G and a one-bar bass line.
+    auto melody = scale ({ 67, 69, 71, 72, 74, 76, 78, 79 });
+    std::vector<NoteEvent> bass { { 0.0, 4.0, 43, 100 } };
+
+    auto score = buildMultiPartScore ({ { "Melody", melody }, { "Bass", bass } }, {}, {}, "Duet");
+
+    REQUIRE (score.parts.size() == 2);
+    REQUIRE (score.parts[0].name == "Melody");
+    REQUIRE (score.parts[1].name == "Bass");
+    REQUIRE (score.key.fifths == 1);                                   // G major, from both parts
+    REQUIRE (score.parts[0].measures.size() == 2);
+    REQUIRE (score.parts[1].measures.size() == 2);                     // padded
+    REQUIRE (score.parts[1].measures[1].staves[0][0].wholeMeasureRest);
+    REQUIRE (score.parts[1].clefs == std::vector<Clef> { Clef::bass });
+
+    auto doc = juce::parseXML (toMusicXml (score));
+    REQUIRE (doc != nullptr);
+    REQUIRE (doc->getChildByName ("part-list")->getNumChildElements() == 2);
+
+    int partCount = 0;
+
+    for (auto* part : doc->getChildWithTagNameIterator ("part"))
+    {
+        ++partCount;
+        REQUIRE (part->getNumChildElements() == 2);
+    }
+
+    REQUIRE (partCount == 2);
+}
+
 //==============================================================================
 #include "model/Project.h"
 #include "notation/ScorePdf.h"
@@ -295,8 +327,8 @@ TEST_CASE ("Export a saved project's instrument track as MusicXML", "[.][takes]"
     if (auto dump = juce::SystemStats::getEnvironmentVariable ("PURRLUDE_SVG_DUMP", {}); juce::File::isAbsolutePath (dump))
     {
         purrlude::notation::ScoreRenderer renderer (purrlude::notation::ScoreRenderer::findResourceDirectory());
-        juce::String error;
-        auto pages = renderer.renderPages (toMusicXml (score, { .tempoMark = false }), 595.28f, 841.89f, 36, error);
+        juce::String renderError;
+        auto pages = renderer.renderPages (toMusicXml (score, { .tempoMark = false }), 595.28f, 841.89f, 36, renderError);
 
         for (int i = 0; i < pages.size(); ++i)
             juce::File (dump).getSiblingFile (juce::File (dump).getFileNameWithoutExtension() + "-" + juce::String (i + 1) + ".svg")
@@ -314,8 +346,8 @@ TEST_CASE ("Export a saved project's instrument track as MusicXML", "[.][takes]"
             purrlude::notation::drawScore (g, *drawable, *prepared, {});
             auto png = juce::File (dump).withFileExtension (".png");
             png.deleteFile();
-            juce::FileOutputStream out (png);
-            juce::PNGImageFormat().writeImageToStream (image, out);
+            juce::FileOutputStream pngStream (png);
+            juce::PNGImageFormat().writeImageToStream (image, pngStream);
         }
     }
 }

@@ -49,6 +49,7 @@ MainComponent::MainComponent (tracktion::Engine& e, BluetoothMidiManager& blueto
     editorTabs.setTabBarDepth (28);
     editorTabs.setOutline (0);
     addAndMakeVisible (editorsButton);
+    addAndMakeVisible (arrangementViewport);
     addAndMakeVisible (editorTabs);
     addAndMakeVisible (audioSettingsButton);
     addAndMakeVisible (devicesButton);
@@ -112,7 +113,9 @@ void MainComponent::setProject (std::unique_ptr<Project> newProject)
     scoreView = std::make_unique<ScoreView> (project->getEdit(), project->getInstrument());
     pianoRoll = std::make_unique<PianoRoll> (project->getEdit(), project->getInstrument());
     addAndMakeVisible (*transportBar);
-    addAndMakeVisible (*arrangement);
+    arrangementViewport.setViewedComponent (arrangement.get(), false);
+    arrangementViewport.setScrollBarsShown (true, false);
+    arrangement->onContentHeightChanged = [this] { resized(); };
 
     auto tabColour = getLookAndFeel().findColour (juce::ResizableWindow::backgroundColourId);
     editorTabs.addTab ("Score", tabColour, scoreView.get(), false);
@@ -356,10 +359,11 @@ void MainComponent::saveProjectAs (std::function<void (bool)> callback)
 
 void MainComponent::exportScore (ExportFormat format)
 {
-    auto* track = project->getInstrument().getTrack();
-
-    if (track == nullptr)
+    if (format == ExportFormat::partPdfs)
+    {
+        exportParts();
         return;
+    }
 
     auto extension = format == ExportFormat::pdf ? juce::String (".pdf") : juce::String (".musicxml");
     auto dir = project->getFile() != juce::File() ? project->getFile().getParentDirectory() : getDefaultProjectDirectory();
@@ -379,12 +383,8 @@ void MainComponent::exportScore (ExportFormat format)
 
         file = file.withFileExtension (extension);
 
-        auto* instrumentTrack = safe->project->getInstrument().getTrack();
-
-        if (instrumentTrack == nullptr)
-            return;
-
-        auto score = notation::buildTrackScore (*instrumentTrack, safe->project->getName().toStdString());
+        // The whole song: a part for every track with notes.
+        auto score = notation::buildEditScore (safe->project->getEdit(), safe->project->getName().toStdString());
         juce::String error;
         bool ok = false;
 
@@ -404,6 +404,55 @@ void MainComponent::exportScore (ExportFormat format)
             file.revealToUser();
         else
             safe->showError ("Couldn't export the score", error);
+    });
+}
+
+void MainComponent::exportParts()
+{
+    auto dir = project->getFile() != juce::File() ? project->getFile().getParentDirectory() : getDefaultProjectDirectory();
+    dir.createDirectory();
+
+    fileChooser = std::make_unique<juce::FileChooser> ("Choose a folder for the part PDFs", dir);
+
+    fileChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
+                              [safe = juce::WeakReference<MainComponent> (this)] (const juce::FileChooser& chooser)
+    {
+        auto folder = chooser.getResult();
+
+        if (safe == nullptr || ! folder.isDirectory())
+            return;
+
+        // One PDF per track with notes: "<song> - <track>.pdf".
+        auto songName = safe->project->getName();
+        juce::String error;
+        juce::File last;
+        int written = 0;
+
+        juce::MouseCursor::showWaitCursor();
+
+        for (auto* track : tracktion::getAudioTracks (safe->project->getEdit()))
+        {
+            if (notation::getTrackNotes (*track).empty())
+                continue;
+
+            auto title = songName + " - " + track->getName();
+            auto file = folder.getChildFile (juce::File::createLegalFileName (title) + ".pdf");
+
+            if (! notation::exportScorePdf (notation::buildTrackScore (*track, title.toStdString()), file, error))
+                break;
+
+            last = file;
+            ++written;
+        }
+
+        juce::MouseCursor::hideWaitCursor();
+
+        if (error.isNotEmpty())
+            safe->showError ("Couldn't export the parts", error);
+        else if (written == 0)
+            safe->showError ("Nothing to export", "No track has any notes yet.");
+        else
+            last.revealToUser();
     });
 }
 
@@ -438,11 +487,14 @@ void MainComponent::changeListenerCallback (juce::ChangeBroadcaster* source)
         return;
     }
 
-    // A device's channel changed: apply it if the instrument plays through that device.
-    auto& instrument = project->getInstrument();
+    // A device's channel changed: apply it to every track that plays through that device.
+    for (auto* track : tracktion::getAudioTracks (project->getEdit()))
+    {
+        TrackInstrument instrument (project->getEdit(), *track);
 
-    if (instrument.getSoundSourceID().isNotEmpty())
-        instrument.setOutputChannel (deviceSettings.getOutputChannel (instrument.getSoundSourceName()));
+        if (instrument.getSoundSourceID().isNotEmpty())
+            instrument.setOutputChannel (deviceSettings.getOutputChannel (instrument.getSoundSourceName()));
+    }
 }
 
 void MainComponent::timerCallback()
@@ -484,8 +536,12 @@ void MainComponent::resized()
     if (editorTabs.isVisible())
         editorTabs.setBounds (r.removeFromBottom (juce::jmax (0, juce::jmin (r.getHeight() - 180, (int) (r.getHeight() * 0.6f)))));
 
+    // The arrangement scrolls when its tracks don't fit.
+    arrangementViewport.setBounds (r);
+
     if (arrangement != nullptr)
-        arrangement->setBounds (r);
+        arrangement->setSize (arrangementViewport.getMaximumVisibleWidth(),
+                              juce::jmax (arrangement->getContentHeight(), arrangementViewport.getMaximumVisibleHeight()));
 }
 
 void MainComponent::toggleDevicesPanel()
@@ -547,6 +603,7 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
         addItem (saveAsId, "Save As...", "command + shift + S");
         menu.addSeparator();
         addItem (exportPdfId, "Export Score as PDF...", "command + E");
+        addItem (exportPartsId, "Export Parts as PDF...", "");
         addItem (exportMusicXmlId, "Export MusicXML...", "");
     }
     else
@@ -568,6 +625,7 @@ void MainComponent::menuItemSelected (int id, int)
         case saveId:    saveProject();                      break;
         case saveAsId:  saveProjectAs();                    break;
         case exportPdfId:       exportScore (ExportFormat::pdf);        break;
+        case exportPartsId:     exportScore (ExportFormat::partPdfs);   break;
         case exportMusicXmlId:  exportScore (ExportFormat::musicXml);   break;
         case undoId:    project->getEdit().undo();          break;
         case redoId:    project->getEdit().redo();          break;
