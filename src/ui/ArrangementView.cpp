@@ -206,17 +206,17 @@ void ArrangementView::renameCurrentTone()
 
     juce::Component::SafePointer<ArrangementView> safe (this);
 
-    window->enterModalState (true, juce::ModalCallbackFunction::create ([safe, window, deviceName, tone = *tone] (int result)
+    window->enterModalState (true, juce::ModalCallbackFunction::create ([safe, window, deviceName, original = *tone] (int result)
     {
         auto name = window->getTextEditorContents ("name").trim();
 
         if (result != 1 || name.isEmpty() || safe == nullptr)
             return;
 
-        safe->deviceSettings.renameTone (deviceName, tone, name);
+        safe->deviceSettings.renameTone (deviceName, original, name);
 
         // Keep the project's copy of the name in step.
-        auto renamed = tone;
+        auto renamed = original;
         renamed.name = name;
         safe->instrument.setDeviceTone (renamed);
     }), true);
@@ -446,6 +446,21 @@ void ArrangementView::mouseDown (const juce::MouseEvent& e)
 
     auto beat = xToBeat ((float) e.x);
     edit.getTransport().setPosition (edit.tempoSequence.toTime (tracktion::BeatPosition::fromBeats (beat)));
+}
+
+void ArrangementView::mouseDoubleClick (const juce::MouseEvent& e)
+{
+    auto tracks = tracktion::getAudioTracks (edit);
+    auto index = (e.y - rulerHeight) / laneHeight;
+
+    if (e.x < headerWidth || e.y < rulerHeight || ! juce::isPositiveAndBelow (index, tracks.size()))
+        return;
+
+    auto beat = xToBeat ((float) e.x);
+
+    for (auto* clip : tracks.getUnchecked (index)->getClips())
+        if (beat >= clip->getStartBeat().inBeats() && beat < clip->getEndBeat().inBeats() && onClipDoubleClicked != nullptr)
+            onClipDoubleClicked (clip->itemID);
 }
 
 void ArrangementView::timerCallback()

@@ -118,6 +118,12 @@ The app talks to `purrlude::BluetoothMidiManager` (`src/devices/BluetoothMidiMan
   - The GO:KEYS 3/5 list (1,228 tones) comes from Roland's tone list PDF.
   - Bank and program are derived from the tone number, because three printed entries are wrong.
 
+**Piano roll:**
+- **Editor:** `PianoRoll` (`src/ui/`) edits one MIDI clip of the instrument track. It's the Piano Roll tab of the lower panel; double-click a clip in the arrangement to open it there.
+- **Edits:** they go through `notes::` operations in `src/model/NoteEditing.h` (add, move, resize, remove, quantize; all undoable). These are what's tested.
+- **No stale pointers:** the editor holds the clip by `EditItemID` and notes by their `ValueTree` state, resolving them on each use.
+- **Previews:** `LiveInstrument::previewNote` injects into "All MIDI Ins" for the built-in synth, stamped with `getMillisecondCounterHiRes() * 0.001`; Tracktion drops 0-stamped input. For an external sound source it sends straight to the device, since live echo may be off.
+
 Live playing: `purrlude::LiveInstrument` (`src/model/LiveInstrument.h`) puts the built-in 4OSC synth on the first track and routes Tracktion's "All MIDI Ins" virtual device to it, so any connected keyboard, Bluetooth included, plays it with no per-device routing.
 
 - macOS (`src/devices/BleMidiService_mac.mm`, implemented, macOS 13+): CoreBluetooth scans and connects, subscribes to the MIDI I/O characteristic, then calls `MIDIBluetoothDriverActivateAllConnections()` (on the message thread; it fails with -304 from a background queue) so Apple's Bluetooth MIDI driver takes over the link and publishes a CoreMIDI device. CoreMIDI devices are matched to peripherals by advertised name. No public API removes a pairing, so `forget()` only disconnects. The test runner embeds `tests/PurrludeTests-Info.plist` for Bluetooth permission. Tested with a Roland GO:KEYS 5: it sends on channel 1 but only plays incoming notes on channel 4 (run the hardware test with `PURRLUDE_BLE_CHANNEL=4`), and it can wedge (CoreMIDI shows it online with no ports, no advertising) after a quick disconnect/reconnect; power-cycling the keyboard recovers it. Its "pairing" mode is for Bluetooth audio; BLE MIDI connects without it, and leaving it in pairing mode may make the wedge more likely.
@@ -145,7 +151,7 @@ src/instruments/        Built-in instruments (SoundFont GM synth)
 content/                Bundled content: LICENSES.md manifest, devices/*.json definitions
 src/model/              Project model on top of tracktion::Edit (Project, LiveInstrument)
 src/notation/           Notation layer: performed notes -> Score -> MusicXML (no UI)
-src/ui/                 UI components (TransportBar, ArrangementView, MidiDevicesPanel)
+src/ui/                 UI components (TransportBar, ArrangementView, ScoreView, PianoRoll, MidiDevicesPanel)
 tests/                  Catch2 test runner (PurrludeTests)
 .github/workflows/      CI for Windows, macOS, Linux
 ```

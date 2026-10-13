@@ -25,6 +25,10 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
     void mouseDown (const juce::MouseEvent&) override;
+    void mouseDoubleClick (const juce::MouseEvent&) override;
+
+    /** Called when a clip is double-clicked (to open it in an editor). */
+    std::function<void (tracktion::EditItemID)> onClipDoubleClicked;
 
 private:
     void timerCallback() override;

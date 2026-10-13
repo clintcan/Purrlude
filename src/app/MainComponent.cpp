@@ -37,18 +37,19 @@ MainComponent::MainComponent (tracktion::Engine& e, BluetoothMidiManager& blueto
     devicesButton.setToggleState (true, juce::dontSendNotification);
     devicesButton.onClick = [this] { toggleDevicesPanel(); };
 
-    scoreButton.setClickingTogglesState (true);
-    scoreButton.setToggleState (true, juce::dontSendNotification);
-    scoreButton.setTooltip ("Show the Instrument track as sheet music");
-    scoreButton.onClick = [this]
+    editorsButton.setClickingTogglesState (true);
+    editorsButton.setToggleState (true, juce::dontSendNotification);
+    editorsButton.setTooltip ("Show the score and piano roll below the arrangement");
+    editorsButton.onClick = [this]
     {
-        if (scoreView != nullptr)
-            scoreView->setVisible (scoreButton.getToggleState());
-
+        editorTabs.setVisible (editorsButton.getToggleState());
         resized();
     };
 
-    addAndMakeVisible (scoreButton);
+    editorTabs.setTabBarDepth (28);
+    editorTabs.setOutline (0);
+    addAndMakeVisible (editorsButton);
+    addAndMakeVisible (editorTabs);
     addAndMakeVisible (audioSettingsButton);
     addAndMakeVisible (devicesButton);
     addAndMakeVisible (devicesPanel);
@@ -74,6 +75,8 @@ MainComponent::~MainComponent()
     deviceSettings.removeChangeListener (this);
     engine.getDeviceManager().removeChangeListener (this);
     stopTimer();
+    editorTabs.clearTabs();
+    pianoRoll = nullptr;
     scoreView = nullptr;
     arrangement = nullptr;
     transportBar = nullptr;
@@ -96,6 +99,9 @@ void MainComponent::setProject (std::unique_ptr<Project> newProject)
     jassert (newProject != nullptr);
 
     // UI that references the old Edit must go before it does.
+    auto currentTab = editorTabs.getCurrentTabIndex();
+    editorTabs.clearTabs();
+    pianoRoll = nullptr;
     scoreView = nullptr;
     arrangement = nullptr;
     transportBar = nullptr;
@@ -104,10 +110,24 @@ void MainComponent::setProject (std::unique_ptr<Project> newProject)
     transportBar = std::make_unique<TransportBar> (project->getEdit());
     arrangement = std::make_unique<ArrangementView> (project->getEdit(), project->getInstrument(), deviceSettings);
     scoreView = std::make_unique<ScoreView> (project->getEdit(), project->getInstrument());
+    pianoRoll = std::make_unique<PianoRoll> (project->getEdit(), project->getInstrument());
     addAndMakeVisible (*transportBar);
     addAndMakeVisible (*arrangement);
-    addChildComponent (*scoreView);
-    scoreView->setVisible (scoreButton.getToggleState());
+
+    auto tabColour = getLookAndFeel().findColour (juce::ResizableWindow::backgroundColourId);
+    editorTabs.addTab ("Score", tabColour, scoreView.get(), false);
+    editorTabs.addTab ("Piano Roll", tabColour, pianoRoll.get(), false);
+    editorTabs.setCurrentTabIndex (juce::jmax (0, currentTab));
+
+    // Double-click a clip to edit its notes.
+    arrangement->onClipDoubleClicked = [this] (tracktion::EditItemID clipID)
+    {
+        pianoRoll->showClip (clipID);
+        editorTabs.setCurrentTabIndex (1);
+        editorTabs.setVisible (true);
+        editorsButton.setToggleState (true, juce::dontSendNotification);
+        resized();
+    };
 
     // Keep keyboard focus here so Space/R always reach the transport rather
     // than "clicking" whichever button was pressed last.
@@ -359,12 +379,12 @@ void MainComponent::exportScore (ExportFormat format)
 
         file = file.withFileExtension (extension);
 
-        auto* track = safe->project->getInstrument().getTrack();
+        auto* instrumentTrack = safe->project->getInstrument().getTrack();
 
-        if (track == nullptr)
+        if (instrumentTrack == nullptr)
             return;
 
-        auto score = notation::buildTrackScore (*track, safe->project->getName().toStdString());
+        auto score = notation::buildTrackScore (*instrumentTrack, safe->project->getName().toStdString());
         juce::String error;
         bool ok = false;
 
@@ -452,7 +472,7 @@ void MainComponent::resized()
 
     devicesButton.setBounds (toolbar.removeFromRight (136).reduced (6));
     audioSettingsButton.setBounds (toolbar.removeFromRight (186).reduced (6));
-    scoreButton.setBounds (toolbar.removeFromRight (86).reduced (6));
+    editorsButton.setBounds (toolbar.removeFromRight (90).reduced (6));
 
     if (transportBar != nullptr)
         transportBar->setBounds (toolbar);
@@ -460,9 +480,9 @@ void MainComponent::resized()
     if (devicesPanel.isVisible())
         devicesPanel.setBounds (r.removeFromRight (MidiDevicesPanel::preferredWidth));
 
-    // The score takes the lower part of the window; the arrangement keeps at least a lane or two.
-    if (scoreView != nullptr && scoreView->isVisible())
-        scoreView->setBounds (r.removeFromBottom (juce::jmax (0, juce::jmin (r.getHeight() - 160, (int) (r.getHeight() * 0.6f)))));
+    // The editors take the lower part of the window; the arrangement keeps at least a lane or two.
+    if (editorTabs.isVisible())
+        editorTabs.setBounds (r.removeFromBottom (juce::jmax (0, juce::jmin (r.getHeight() - 180, (int) (r.getHeight() * 0.6f)))));
 
     if (arrangement != nullptr)
         arrangement->setBounds (r);

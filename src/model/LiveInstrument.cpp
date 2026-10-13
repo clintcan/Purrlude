@@ -282,6 +282,36 @@ void LiveInstrument::sendToneToDevice()
     }
 }
 
+void LiveInstrument::previewNote (int noteNumber, bool on)
+{
+    // Never inject into a take being recorded.
+    if (edit.getTransport().isRecording())
+        return;
+
+    // Playing through a device: send straight to it on its channel. Live echo may be off
+    // (see isEchoingLiveInput), so going through the track's input would stay silent.
+    if (auto id = getSoundSourceID(); id.isNotEmpty())
+    {
+        if (auto* device = dynamic_cast<tracktion::MidiOutputDevice*> (edit.engine.getDeviceManager().findOutputDeviceForID (id)))
+            if (device->isEnabled())
+                device->fireMessage (on ? juce::MidiMessage::noteOn (getOutputChannel(), noteNumber, (juce::uint8) 100)
+                                        : juce::MidiMessage::noteOff (getOutputChannel(), noteNumber));
+
+        return;
+    }
+
+    if (auto allIns = findAllMidiIns (edit.engine))
+    {
+        auto message = on ? juce::MidiMessage::noteOn (1, noteNumber, (juce::uint8) 100)
+                          : juce::MidiMessage::noteOff (1, noteNumber);
+
+        // Stamped like real MIDI input (seconds on the hi-res clock); a 0 timestamp
+        // reads as long past and the note is dropped.
+        message.setTimeStamp (juce::Time::getMillisecondCounterHiRes() * 0.001);
+        allIns->handleIncomingMidiMessage (message, allIns->getMPESourceID());
+    }
+}
+
 bool LiveInstrument::isEchoingLiveInput() const
 {
     auto sourceName = getSoundSourceName();

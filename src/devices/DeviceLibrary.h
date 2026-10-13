@@ -5,7 +5,7 @@
 namespace purrlude
 {
 
-/** Built-in knowledge about specific MIDI devices (content/devices/*.json, compiled in):
+/** Built-in knowledge about specific MIDI devices (the JSON files in content/devices, compiled in):
     which channel they play their own sounds on, and their full tone lists, so tones
     can be chosen by name instead of having to be learned first.
 */

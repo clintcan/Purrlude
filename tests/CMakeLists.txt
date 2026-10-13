@@ -11,6 +11,7 @@ target_sources(PurrludeTests PRIVATE
     NotationTests.cpp
     ScoreRenderTests.cpp
     PdfTests.cpp
+    NoteEditingTests.cpp
     $<$<PLATFORM_ID:Windows>:BleMidiGattProbe_windows.cpp>
 )
 

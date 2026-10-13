@@ -68,6 +68,12 @@ public:
     /** False if the GM SoundFont wasn't found and the placeholder synth plays instead. */
     bool hasGeneralMidiSynth() const;
 
+    /** Plays or releases a note on the track's sound now, e.g. to preview a note while
+        editing. Not recorded. The built-in synth gets it as if from a MIDI keyboard; an
+        external sound source gets it directly on its channel.
+    */
+    void previewNote (int noteNumber, bool on);
+
     /** False while playing through a keyboard that is also an input: it already sounds
         what you play, so echoing it back would double every note. Recording is unaffected.
     */

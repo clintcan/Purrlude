@@ -6,6 +6,7 @@
 #include "model/Project.h"
 #include "ui/ArrangementView.h"
 #include "ui/MidiDevicesPanel.h"
+#include "ui/PianoRoll.h"
 #include "ui/ScoreView.h"
 #include "ui/TransportBar.h"
 
@@ -78,11 +79,13 @@ private:
     std::unique_ptr<TransportBar> transportBar;
     std::unique_ptr<ArrangementView> arrangement;
     std::unique_ptr<ScoreView> scoreView;
+    std::unique_ptr<PianoRoll> pianoRoll;
+    juce::TabbedComponent editorTabs { juce::TabbedButtonBar::TabsAtTop };
     std::unique_ptr<juce::FileChooser> fileChooser;
 
     juce::TextButton audioSettingsButton { "Audio/MIDI Settings" };
     juce::TextButton devicesButton { "MIDI Devices" };
-    juce::TextButton scoreButton { "Score" };
+    juce::TextButton editorsButton { "Editors" };
     MidiDevicesPanel devicesPanel;
     ToneListener toneListener { deviceSettings };
 
