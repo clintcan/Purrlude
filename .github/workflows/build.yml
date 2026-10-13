@@ -27,16 +27,27 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install ninja
 
+      # Ninja + MSVC on Windows too: works with whichever Visual Studio the image ships,
+      # unlike the "Visual Studio 17 2022" generator.
+      - name: Set up MSVC (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install Ninja (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: if (-not (Get-Command ninja -ErrorAction SilentlyContinue)) { choco install ninja -y }
+
       - uses: actions/cache@v4
         with:
           path: .cpm-cache
-          key: cpm-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt') }}
+          key: cpm-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt', 'cmake/*.cmake') }}
 
       - name: Configure
-        run: cmake --preset ${{ runner.os == 'Windows' && 'vs2022' || 'ninja' }}
+        run: cmake --preset ninja
 
       - name: Build
-        run: cmake --build --preset ${{ runner.os == 'Windows' && 'vs2022-debug' || 'ninja-debug' }}
+        run: cmake --build --preset ninja-debug
 
       - name: Test
-        run: ctest --preset ${{ runner.os == 'Windows' && 'vs2022-debug' || 'ninja-debug' }}
+        run: ctest --preset ninja-debug

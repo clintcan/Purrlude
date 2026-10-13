@@ -39,7 +39,7 @@ public:
 
     bool isVectorDevice() const override                    { return true; }
     float getPhysicalPixelScaleFactor() const override       { return 1.0f; }
-    juce::uint64 getFrameId() const override                 { return 0; }
+    uint64_t getFrameId() const override                     { return 0; }
 
     void setOrigin (juce::Point<int> o) override             { addTransform (juce::AffineTransform::translation (o.toFloat())); }
 
