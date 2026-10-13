@@ -1,0 +1,22 @@
+# Normalize all text files to LF in the repo and working tree
+* text=auto eol=lf
+
+# Windows-only scripts keep CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary assets
+*.wav  binary
+*.flac binary
+*.mp3  binary
+*.ogg  binary
+*.mid  binary
+*.midi binary
+*.sf2  binary
+*.png  binary
+*.jpg  binary
+*.ico  binary
+*.icns binary
+*.pdf  binary
+*.onnx binary
