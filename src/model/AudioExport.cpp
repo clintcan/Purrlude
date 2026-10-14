@@ -1,4 +1,5 @@
 #include "AudioExport.h"
+#include "model/SharedReverb.h"
 
 namespace purrlude
 {
@@ -41,7 +42,7 @@ AudioExport::AudioExport (tracktion::Edit& e, AudioExportOptions o, const juce::
         auto allTracks = tracktion::getAllTracks (edit);
         juce::StringArray usedNames;
 
-        for (auto* track : tracktion::getAudioTracks (edit))
+        for (auto* track : getSongTracks (edit))
         {
             if (track->getClips().isEmpty() || track->isMuted (true))
                 continue;
@@ -55,6 +56,12 @@ AudioExport::AudioExport (tracktion::Edit& e, AudioExportOptions o, const juce::
 
             Job job { destination.getChildFile (name + options.getExtension()), {} };
             job.tracks.setBit (allTracks.indexOf (track));
+
+            // With its share of the shared reverb, so the stems still add up to the mix.
+            if (auto* bus = shared_reverb::findBus (edit))
+                if (auto* send = shared_reverb::findSend (*track); send != nullptr && send->isEnabled() && send->getGainDb() > -90.0f)
+                    job.tracks.setBit (allTracks.indexOf (bus));
+
             jobs.push_back (job);
         }
     }
@@ -122,7 +129,7 @@ tracktion::TimeRange AudioExport::getSongRange (tracktion::Edit& edit)
 {
     tracktion::TimePosition end;
 
-    for (auto* track : tracktion::getAudioTracks (edit))
+    for (auto* track : getSongTracks (edit))
         for (auto* clip : track->getClips())
             end = std::max (end, clip->getPosition().getEnd());
 

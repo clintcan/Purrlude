@@ -1,5 +1,7 @@
 #include "TrackEffects.h"
 
+#include "SharedReverb.h"
+
 namespace purrlude::track_effects
 {
 
@@ -82,19 +84,23 @@ tracktion::Plugin* add (tracktion::Edit& edit, tracktion::AudioTrack& track, Kin
     auto index = volume != nullptr ? track.pluginList.indexOf (volume) : -1;
     track.pluginList.insertPlugin (plugin, index, nullptr);
 
-    // Starting points that make the effect clearly heard without overwhelming the track.
+    // Starting points that make the effect clearly heard without overwhelming the track. On
+    // the shared reverb's bus, reverbs and delays are fully wet: the dry sound comes from the
+    // tracks.
+    auto onBus = shared_reverb::isBus (track);
+
     switch (kind)
     {
         case Kind::reverb:
             setParameter (*plugin, "room size", 0.5f);
             setParameter (*plugin, "damping", 0.5f);
-            setParameter (*plugin, "wet level", 0.25f);
-            setParameter (*plugin, "dry level", 1.0f);
+            setParameter (*plugin, "wet level", onBus ? 0.5f : 0.25f);
+            setParameter (*plugin, "dry level", onBus ? 0.0f : 1.0f);
             break;
 
         case Kind::delay:
             setParameter (*plugin, "feedback", -12.0f);
-            setParameter (*plugin, "mix proportion", 0.25f);
+            setParameter (*plugin, "mix proportion", onBus ? 1.0f : 0.25f);
             setDelayTime (edit, *plugin, 0.75);   // dotted eighth
             break;
 
@@ -147,6 +153,56 @@ std::vector<Control> getControls (tracktion::Plugin& plugin)
             controls.push_back ({ label, parameter, juce::String (id) == "ratio" });
 
     return controls;
+}
+
+void setControl (tracktion::Edit& edit, tracktion::AutomatableParameter& parameter, float value)
+{
+    edit.getUndoManager().beginNewTransaction ("Change " + parameter.getParameterName());
+    parameter.setParameter (value, juce::sendNotification);
+}
+
+ControlDrag::ControlDrag (tracktion::Edit& edit, const juce::String& undoName)
+    : inhibitor (edit)
+{
+    edit.getUndoManager().beginNewTransaction (undoName);
+}
+
+ParameterSync::ParameterSync (tracktion::Edit& e)
+    : edit (e), state (e.state)
+{
+    state.addListener (this);
+}
+
+ParameterSync::~ParameterSync()
+{
+    state.removeListener (this);
+    cancelPendingUpdate();
+}
+
+void ParameterSync::valueTreePropertyChanged (juce::ValueTree& tree, const juce::Identifier&)
+{
+    // Not now: this may be in the middle of an undo, and setting a parameter can write state.
+    if (tree.hasType (tracktion::IDs::PLUGIN))
+        triggerAsyncUpdate();
+}
+
+void ParameterSync::syncNow()
+{
+    for (auto* track : tracktion::getAudioTracks (edit))
+        for (auto* plugin : track->pluginList.getPlugins())
+            if (getKind (*plugin) || dynamic_cast<tracktion::AuxSendPlugin*> (plugin) != nullptr)
+                for (auto* parameter : plugin->getAutomatableParameters())
+                    parameter->updateFromAttachedValue();
+}
+
+tracktion::Plugin* findPlugin (tracktion::Edit& edit, tracktion::EditItemID id)
+{
+    for (auto* track : tracktion::getAudioTracks (edit))
+        for (auto* plugin : track->pluginList.getPlugins())
+            if (plugin->itemID == id)
+                return plugin;
+
+    return nullptr;
 }
 
 void setDelayTime (tracktion::Edit& edit, tracktion::Plugin& delay, double quarterNotes)

@@ -1,6 +1,7 @@
 #include "PianoRoll.h"
 
 #include "model/NoteEditing.h"
+#include "model/SharedReverb.h"
 
 namespace purrlude
 {
@@ -511,7 +512,7 @@ PianoRoll::~PianoRoll()
 tracktion::MidiClip* PianoRoll::getClip() const
 {
     // The chosen clip, on whichever track it is.
-    for (auto* track : tracktion::getAudioTracks (edit))
+    for (auto* track : getSongTracks (edit))
         for (auto* clip : track->getClips())
             if (auto* midi = dynamic_cast<tracktion::MidiClip*> (clip); midi != nullptr && midi->itemID == clipID)
                 return midi;
@@ -530,7 +531,7 @@ tracktion::MidiClip* PianoRoll::getClip() const
     if (auto* clip = firstOn (instrument.getTrack()))
         return clip;
 
-    for (auto* track : tracktion::getAudioTracks (edit))
+    for (auto* track : getSongTracks (edit))
         if (auto* clip = firstOn (track))
             return clip;
 

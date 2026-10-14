@@ -1,5 +1,7 @@
 #include "EffectsPanel.h"
 
+#include "model/SharedReverb.h"
+
 namespace purrlude
 {
 
@@ -187,6 +189,7 @@ private:
         tracktion::AutomatableParameter::Ptr parameter;
         juce::Slider slider { juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::TextBoxBelow };
         juce::Label label;
+        std::unique_ptr<track_effects::ControlDrag> drag;
     };
 
     void addKnob (tracktion::Plugin& plugin, const track_effects::Control& control)
@@ -208,13 +211,20 @@ private:
         if (control.reversed)
             knob->slider.setRotaryParameters (juce::MathConstants<float>::pi * 2.8f, juce::MathConstants<float>::pi * 1.2f, true);
 
-        // One undo step per turn: Tracktion keeps a step open while the mouse is down.
-        auto effectName = name.getText(), label = control.label;
-        knob->slider.onDragStart = [this, effectName, label]
+        // A drag (or a double-click reset) is one undo step, however long it pauses.
+        knob->slider.onDragStart = [this, knob]
         {
-            edit.getUndoManager().beginNewTransaction ("Change " + effectName + " " + label.toLowerCase());
+            knob->drag = std::make_unique<track_effects::ControlDrag> (edit, "Change " + name.getText() + " "
+                                                                               + knob->label.getText().toLowerCase());
         };
-        knob->slider.onValueChange = [knob] { knob->parameter->setParameter ((float) knob->slider.getValue(), juce::sendNotification); };
+        knob->slider.onDragEnd = [knob] { knob->drag.reset(); };
+        knob->slider.onValueChange = [this, knob]
+        {
+            if (knob->drag != nullptr)
+                knob->parameter->setParameter ((float) knob->slider.getValue(), juce::sendNotification);
+            else
+                track_effects::setControl (edit, *knob->parameter, (float) knob->slider.getValue());
+        };
 
         knob->label.setText (control.label, juce::dontSendNotification);
         knob->label.setJustificationType (juce::Justification::centred);
@@ -226,15 +236,7 @@ private:
         juce::ignoreUnused (plugin);
     }
 
-    tracktion::Plugin* getPlugin() const
-    {
-        for (auto* track : tracktion::getAudioTracks (edit))
-            for (auto* p : track->pluginList.getPlugins())
-                if (p->itemID == pluginID)
-                    return p;
-
-        return nullptr;
-    }
+    tracktion::Plugin* getPlugin() const      { return track_effects::findPlugin (edit, pluginID); }
 
     tracktion::Edit& edit;
     const tracktion::EditItemID pluginID;
@@ -249,8 +251,81 @@ private:
 
 //==============================================================================
 EffectsPanel::EffectsPanel (tracktion::Edit& e, tracktion::EditItemID id)
-    : edit (e), trackID (id)
+    : edit (e), trackID (id),
+      isBus ([&]
+             {
+                 auto* track = tracktion::findAudioTrackForID (e, id);
+                 return track != nullptr && shared_reverb::isBus (*track);
+             }()),
+      knobLook (std::make_unique<KnobLook>())
 {
+    if (! isBus)
+    {
+        sendTitle.setText ("Shared reverb", juce::dontSendNotification);
+        sendTitle.setFont (juce::FontOptions (15.0f, juce::Font::bold));
+        addAndMakeVisible (sendTitle);
+
+        sendHelp.setText ("One reverb for the whole song: send each track to it, a little or a lot, "
+                          "and they sound like they're in the same room.", juce::dontSendNotification);
+        sendHelp.setFont (juce::FontOptions (13.0f));
+        sendHelp.setColour (juce::Label::textColourId, juce::Colours::lightgrey);
+        sendHelp.setJustificationType (juce::Justification::topLeft);
+        addAndMakeVisible (sendHelp);
+
+        // Fader positions (0-1), like Tracktion's send level; off at the bottom.
+        sendKnob.setLookAndFeel (knobLook.get());
+        sendKnob.setRange (0.0, 1.0, 0.0);
+        sendKnob.setDoubleClickReturnValue (true, 0.0);
+        sendKnob.setTextBoxStyle (juce::Slider::TextBoxBelow, true, 86, 18);
+        sendKnob.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+        sendKnob.textFromValueFunction = [] (double position)
+        {
+            auto db = tracktion::volumeFaderPositionToDB ((float) position);
+            return db <= -90.0f ? juce::String ("Off") : juce::String (db, 1) + " dB";
+        };
+        sendKnob.updateText();   // the text box was filled before the function was set
+        sendKnob.setTooltip ("How much of this track goes to the shared reverb (double-click for none)");
+
+        sendLabel.setText ("Send", juce::dontSendNotification);
+        sendLabel.setJustificationType (juce::Justification::centred);
+        sendLabel.setFont (juce::FontOptions (13.0f));
+        sendLabel.setColour (juce::Label::textColourId, juce::Colours::lightgrey);
+        addAndMakeVisible (sendLabel);
+        sendKnob.setWantsKeyboardFocus (false);
+
+        // A drag is one undo step. The first one makes the send (and, the first time, the
+        // reverb) in that same step.
+        sendKnob.onDragStart = [this]
+        {
+            sendDrag = std::make_unique<track_effects::ControlDrag> (edit, "Change reverb send");
+
+            if (auto* track = getTrack())
+                shared_reverb::getOrCreateSend (edit, *track);
+        };
+        sendKnob.onDragEnd = [this] { sendDrag.reset(); };
+        sendKnob.onValueChange = [this]
+        {
+            auto* track = getTrack();
+            auto* send = track != nullptr ? shared_reverb::findSend (*track) : nullptr;
+
+            if (send == nullptr)
+                return;
+
+            if (sendDrag != nullptr)
+                send->gain->setParameter ((float) sendKnob.getValue(), juce::sendNotification);
+            else
+                track_effects::setControl (edit, *send->gain, (float) sendKnob.getValue());
+        };
+        addAndMakeVisible (sendKnob);
+
+        reverbSettingsButton.setTooltip ("The shared reverb's size, damping and level, for every track");
+        reverbSettingsButton.setWantsKeyboardFocus (false);
+        reverbSettingsButton.onClick = [this] { showReverbSettings(); };
+        addAndMakeVisible (reverbSettingsButton);
+
+        refreshSend();
+    }
+
     title.setFont (juce::FontOptions (16.0f, juce::Font::bold));
     addAndMakeVisible (title);
 
@@ -272,6 +347,38 @@ EffectsPanel::EffectsPanel (tracktion::Edit& e, tracktion::EditItemID id)
 EffectsPanel::~EffectsPanel()
 {
     stopTimer();
+    sendKnob.setLookAndFeel (nullptr);
+}
+
+void EffectsPanel::refreshSend()
+{
+    if (isBus || sendKnob.isMouseButtonDown())
+        return;
+
+    auto* track = getTrack();
+    auto* send = track != nullptr ? shared_reverb::findSend (*track) : nullptr;
+    sendKnob.setValue (send != nullptr ? send->gain->getCurrentValue() : 0.0f, juce::dontSendNotification);
+    sendKnob.updateText();
+}
+
+void EffectsPanel::showReverbSettings()
+{
+    // The reverb's own panel replaces this one (call-outs close when another opens).
+    if (shared_reverb::findBus (edit) == nullptr)
+        edit.getUndoManager().beginNewTransaction ("Add the shared reverb");
+
+    auto* bus = shared_reverb::getOrCreateBus (edit);
+
+    if (bus == nullptr)
+        return;
+
+    auto area = getScreenBounds();
+    auto panel = std::make_unique<EffectsPanel> (edit, bus->itemID);
+
+    if (auto* box = findParentComponentOfClass<juce::CallOutBox>())
+        box->dismiss();
+
+    juce::CallOutBox::launchAsynchronously (std::move (panel), area.withHeight (40), nullptr);
 }
 
 tracktion::AudioTrack* EffectsPanel::getTrack() const
@@ -286,7 +393,8 @@ void EffectsPanel::rebuild()
 
     if (auto* track = getTrack())
     {
-        title.setText ("Effects on " + track->getName(), juce::dontSendNotification);
+        title.setText (isBus ? juce::String ("Shared reverb")
+                             : "Effects on " + track->getName(), juce::dontSendNotification);
 
         for (auto* plugin : track_effects::getEffects (*track))
         {
@@ -296,7 +404,7 @@ void EffectsPanel::rebuild()
     }
 
     emptyLabel.setVisible (rows.isEmpty());
-    setSize (width, headerHeight + juce::jmax (1, rows.size()) * (rows.isEmpty() ? 60 : rowHeight) + footerHeight);
+    setSize (width, headerHeight + (isBus ? 0 : sendHeight) + juce::jmax (1, rows.size()) * (rows.isEmpty() ? 60 : rowHeight) + footerHeight);
     resized();
 }
 
@@ -318,6 +426,8 @@ void EffectsPanel::timerCallback()
 
     for (auto* row : rows)
         row->refresh();
+
+    refreshSend();
 }
 
 void EffectsPanel::showAddMenu()
@@ -345,6 +455,13 @@ void EffectsPanel::showAddMenu()
 void EffectsPanel::paint (juce::Graphics& g)
 {
     g.fillAll (getLookAndFeel().findColour (juce::ResizableWindow::backgroundColourId).brighter (0.08f));
+
+    // A line under the send, above the track's own effects.
+    if (! isBus)
+    {
+        g.setColour (juce::Colours::black.withAlpha (0.25f));
+        g.drawHorizontalLine (headerHeight - 4 + sendHeight, 14.0f, (float) getWidth() - 14.0f);
+    }
 }
 
 void EffectsPanel::resized()
@@ -354,6 +471,18 @@ void EffectsPanel::resized()
 
     auto footer = r.removeFromBottom (footerHeight - 8);
     addButton.setBounds (footer.removeFromLeft (120).reduced (0, 4));
+
+    if (! isBus)
+    {
+        auto send = r.removeFromTop (sendHeight).reduced (8, 0);
+        auto knobArea = send.removeFromRight (92);
+        sendLabel.setBounds (knobArea.removeFromTop (18));
+        sendKnob.setBounds (knobArea.withTrimmedBottom (4));
+        send.removeFromRight (8);
+        sendTitle.setBounds (send.removeFromTop (22).withTrimmedLeft (-4));
+        reverbSettingsButton.setBounds (send.removeFromBottom (36).removeFromLeft (150).reduced (0, 4));
+        sendHelp.setBounds (send.withTrimmedLeft (-4));
+    }
 
     if (rows.isEmpty())
         emptyLabel.setBounds (r);

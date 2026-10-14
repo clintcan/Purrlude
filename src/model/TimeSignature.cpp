@@ -1,6 +1,7 @@
 #include "TimeSignature.h"
 
 #include "ClipOrder.h"
+#include "model/SharedReverb.h"
 
 namespace purrlude
 {
@@ -26,7 +27,7 @@ bool changeTimeSignature (tracktion::Edit& edit, int numerator, int denominator)
 
     std::vector<Placed> clips;
 
-    for (auto* track : tracktion::getAudioTracks (edit))
+    for (auto* track : getSongTracks (edit))
         for (auto* clip : track->getClips())
             clips.push_back ({ clip, clip->getPosition() });
 

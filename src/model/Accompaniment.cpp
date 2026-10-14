@@ -4,6 +4,7 @@
 
 #include "notation/NotationBuilder.h"
 #include "notation/TrackNotation.h"
+#include "model/SharedReverb.h"
 
 #include <PurrludeContent.h>
 
@@ -322,7 +323,7 @@ Key detectKey (tracktion::Edit& edit)
 
     std::vector<notation::NoteEvent> notes;
 
-    for (auto* track : tracktion::getAudioTracks (edit))
+    for (auto* track : getSongTracks (edit))
     {
         if (TrackInstrument (edit, *track).playsDrumKit())
             continue;
@@ -425,7 +426,7 @@ tracktion::MidiClip* insert (tracktion::Edit& edit, LiveInstrument& live, const 
     // The pattern's own track: a built-in one playing its instrument for this part.
     tracktion::AudioTrack* track = nullptr;
 
-    for (auto* t : tracktion::getAudioTracks (edit))
+    for (auto* t : getSongTracks (edit))
     {
         TrackInstrument instrument (edit, *t);
 

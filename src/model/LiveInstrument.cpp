@@ -1,6 +1,7 @@
 #include "LiveInstrument.h"
 
 #include "AudioInputs.h"
+#include "model/SharedReverb.h"
 
 namespace purrlude
 {
@@ -30,7 +31,7 @@ LiveInstrument::LiveInstrument (tracktion::Edit& e)
     tracktion::TrackList::sortTracksByType (edit.state, nullptr);
 
     edit.ensureNumberOfAudioTracks (1);
-    auto tracks = tracktion::getAudioTracks (edit);
+    auto tracks = getSongTracks (edit);
 
     // A brand-new project's track ("Track 1") becomes the instrument track.
     if (tracks.size() == 1 && tracks[0]->getName().startsWith ("Track"))
@@ -87,7 +88,7 @@ juce::Array<tracktion::AudioTrack*> LiveInstrument::getInstrumentTracks() const
 {
     juce::Array<tracktion::AudioTrack*> instruments;
 
-    for (auto* track : tracktion::getAudioTracks (edit))
+    for (auto* track : getSongTracks (edit))
         if (! TrackInstrument::isAudioTrack (*track))
             instruments.add (track);
 
@@ -125,7 +126,7 @@ tracktion::AudioTrack* LiveInstrument::addTrack (bool select, tracktion::Track* 
     if (track == nullptr)
         return nullptr;
 
-    track->setName ("Instrument " + juce::String (tracktion::getAudioTracks (edit).size()));
+    track->setName ("Instrument " + juce::String (getSongTracks (edit).size()));
     TrackInstrument::setUp (edit, *track);
     tracktion::TrackList::sortTracksByType (edit.state, &edit.getUndoManager());
 
@@ -144,7 +145,7 @@ tracktion::AudioTrack* LiveInstrument::addAudioTrack()
 
     int audioTracks = 0;
 
-    for (auto* t : tracktion::getAudioTracks (edit))
+    for (auto* t : getSongTracks (edit))
         if (TrackInstrument::isAudioTrack (*t))
             ++audioTracks;
 
@@ -259,7 +260,7 @@ void LiveInstrument::changeListenerCallback (juce::ChangeBroadcaster* source)
         auto playing = edit.getTransport().isPlaying();
 
         if (playing && ! wasPlaying)
-            for (auto* track : tracktion::getAudioTracks (edit))
+            for (auto* track : getSongTracks (edit))
             {
                 TrackInstrument instrument (edit, *track);
                 instrument.sendToneToDevice();
@@ -290,7 +291,7 @@ void LiveInstrument::timerCallback()
     }
 
     // Tracks restored by undo, or a track's sound source changed: keep everything in step.
-    for (auto* track : tracktion::getAudioTracks (edit))
+    for (auto* track : getSongTracks (edit))
         TrackInstrument::setUp (edit, *track);
 
     // Audio tracks that lost their input when the audio device changed get it back.

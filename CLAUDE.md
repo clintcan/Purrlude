@@ -143,7 +143,16 @@ The app talks to `purrlude::BluetoothMidiManager` (`src/devices/BluetoothMidiMan
   - They sit before the track's volume plugin, so the fader and meter show the final level. Add, remove and on/off are one undo step each.
   - `add` sets starting values (e.g. reverb wet 0.25, EQ bands at 150/500/2.5k/8k Hz, compressor attack 10 ms). The compressor's ratio is stored inverted (0.5 = 2:1), so its knob is reversed.
   - Delay times are note values at the song's tempo (`setDelayTime`), stored as `lengthMs`.
-  - **UI:** the FX button on the header's name row (lit when the track has effects, disabled for external sound sources) opens `EffectsPanel` (`src/ui/`) in a CallOutBox. It holds the track by id, polls for changes (undo), and starts an undo step when a knob drag begins.
+  - **Knob undo:** Tracktion records a parameter change in the song's state (through the UndoManager), but undo restores only the state, not the parameter that's heard. `track_effects::ParameterSync` (owned by `LiveInstrument`) listens to the Edit and, after any plugin state change, sets effects' and sends' parameters from their state (asynchronously: setting a parameter writes state, which isn't allowed during an undo). A test checks the undone value is heard.
+  - **One step per drag:** `track_effects::ControlDrag` starts an undo step and holds a `tracktion::Edit::UndoTransactionInhibitor`, so a pause mid-drag doesn't split it (Tracktion closes a step 350 ms after the last change). A click uses `setControl`. Don't add custom UndoableActions that set parameters: setting one writes state through the UndoManager, which asserts during undo.
+  - **UI:** the FX button on the header's name row (lit when the track has effects or a reverb send, disabled for external sound sources) opens `EffectsPanel` (`src/ui/`) in a CallOutBox. It holds the track by id and polls for changes (undo).
+- **Shared reverb** (`src/model/SharedReverb.h`, namespace `shared_reverb`): one reverb for the whole song, fed by per-track sends.
+  - **The bus** is a hidden audio track (`purrludeTrackKind="reverbBus"`) with an aux return, a fully wet reverb, volume and a meter, made with the first send. It's solo-isolated, so a soloed track keeps its reverb. `TrackInstrument::setUp` leaves it alone.
+  - **Song tracks:** the bus is not a song track. Code that means "the user's tracks" (arrangement, score, live input, import, loops, export) uses `purrlude::getSongTracks`, never `tracktion::getAudioTracks`.
+  - **Sends** are aux sends (bus 0) after the track's volume, so the fader turns the reverb down too. They start at -inf; the first drag of the send knob makes the send (and bus) in the same undo step.
+  - **Stems** render each track with the bus, so each stem has its own share of the reverb and the stems still add up to the mix.
+  - **UI:** the top of each track's FX panel has the send knob and Reverb Settings..., which opens the same panel for the bus (its reverb's controls; Amount is the reverb's level). Effects added on the bus are fully wet.
+  - **Level:** at a 0 dB send the reverb is nearly as loud as the direct sound and rings for about 1.5 s (room size 0.6).
 - **UI:** the arrangement has one `TrackHeader` per track and scrolls vertically in a Viewport.
   - **Zoom and horizontal scroll:** `TimelineView` (`src/ui/`, pure maths, tested) holds the beat at the left edge and the pixels per beat.
     - **Fit mode** (the default) shows the whole song as it grows. Zooming leaves it, and zooming out past the song or Cmd-0 returns to it.

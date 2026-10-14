@@ -2,6 +2,7 @@
 
 #include "instruments/GeneralMidi.h"
 #include "instruments/SoundFontPlugin.h"
+#include "model/SharedReverb.h"
 
 namespace purrlude
 {
@@ -74,6 +75,10 @@ void TrackInstrument::makeAudioTrack (tracktion::AudioTrack& track, juce::UndoMa
 
 void TrackInstrument::setUp (tracktion::Edit& edit, tracktion::AudioTrack& track)
 {
+    // The shared reverb's bus has its own plugins, and no instrument.
+    if (shared_reverb::isBus (track))
+        return;
+
     TrackInstrument instrument (edit, track);
     auto* existing = findSynth (track);
 

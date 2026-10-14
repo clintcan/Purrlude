@@ -47,6 +47,52 @@ namespace track_effects
 
     std::vector<Control> getControls (tracktion::Plugin&);
 
+    /** Changes a control (a click, not a drag) as one undo step. */
+    void setControl (tracktion::Edit&, tracktion::AutomatableParameter&, float value);
+
+    /** Keeps a knob drag in one undo step: starts the step, and while it's held, stops
+        Tracktion closing the step when the knob pauses. Set the parameter as the knob
+        moves (setParameter with sendNotification records the change).
+    */
+    class ControlDrag
+    {
+    public:
+        ControlDrag (tracktion::Edit&, const juce::String& undoName);
+
+    private:
+        tracktion::Edit::UndoTransactionInhibitor inhibitor;
+    };
+
+    /** Keeps effects' parameters (what's heard) in step with the song's state.
+
+        Tracktion records a parameter change in the song's state, so undo restores the
+        state, but it doesn't pass that on to the parameter. This listens to the Edit and,
+        after an effect's state changes, sets its parameters from the state. Changes made
+        through the parameters already match, so nothing happens then.
+    */
+    class ParameterSync final : private juce::ValueTree::Listener,
+                                private juce::AsyncUpdater
+    {
+    public:
+        explicit ParameterSync (tracktion::Edit&);
+        ~ParameterSync() override;
+
+        /** Sets every effect's parameters from its state now. */
+        void syncNow();
+
+    private:
+        void valueTreePropertyChanged (juce::ValueTree&, const juce::Identifier&) override;
+        void handleAsyncUpdate() override       { syncNow(); }
+
+        tracktion::Edit& edit;
+        juce::ValueTree state;
+
+        JUCE_DECLARE_NON_COPYABLE (ParameterSync)
+    };
+
+    /** The effect plugin with this id, on any track (nullptr if it's gone). */
+    tracktion::Plugin* findPlugin (tracktion::Edit&, tracktion::EditItemID);
+
     //==============================================================================
     /** Delay times as note values, synced to the tempo. */
     struct DelayTime

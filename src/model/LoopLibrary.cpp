@@ -4,6 +4,7 @@
 
 #include "instruments/GeneralMidi.h"
 #include "notation/TrackNotation.h"
+#include "model/SharedReverb.h"
 
 #include <PurrludeContent.h>
 
@@ -114,7 +115,7 @@ juce::StringArray LoopLibrary::getAttributions()
 
 tracktion::AudioTrack* LoopLibrary::findOrCreateDrumTrack (tracktion::Edit& edit, LiveInstrument& live)
 {
-    for (auto* track : tracktion::getAudioTracks (edit))
+    for (auto* track : getSongTracks (edit))
     {
         if (TrackInstrument (edit, *track).playsDrumKit())
             return track;
@@ -138,7 +139,7 @@ tracktion::MidiClip* LoopLibrary::insertLoop (tracktion::Edit& edit, LiveInstrum
     um.beginNewTransaction ("Add " + loop.name);
 
     // A song with no notes yet takes the loop's tempo, so it sounds as it was played.
-    auto tracks = tracktion::getAudioTracks (edit);
+    auto tracks = getSongTracks (edit);
     auto hasNotes = std::any_of (tracks.begin(), tracks.end(), [] (auto* t) { return ! notation::getTrackNotes (*t).empty(); });
 
     if (! hasNotes)

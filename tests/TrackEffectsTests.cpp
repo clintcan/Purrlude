@@ -113,6 +113,43 @@ TEST_CASE ("Effects go before the volume, and can be removed and undone", "[effe
     REQUIRE (purrlude::track_effects::getEffects (track).size() == 2);
 }
 
+TEST_CASE ("A knob drag is one undo step, and undo is heard", "[effects]")
+{
+    Song song;
+    auto& um = song.edit->getUndoManager();
+    auto* reverb = purrlude::track_effects::add (*song.edit, song.track(), Kind::reverb);
+    auto amount = purrlude::track_effects::getControls (*reverb)[2].parameter;   // wet level
+    REQUIRE_THAT (amount->getCurrentValue(), WithinAbs (0.25, 1.0e-6));
+
+    // A drag, right after adding, with a pause longer than Tracktion's 350 ms: still one step.
+    {
+        purrlude::track_effects::ControlDrag drag (*song.edit, "Change amount");
+        amount->setParameter (0.3f, juce::sendNotification);
+        pump (600);
+        amount->setParameter (0.5f, juce::sendNotification);
+        amount->setParameter (0.7f, juce::sendNotification);
+    }
+
+    REQUIRE_THAT (amount->getCurrentValue(), WithinAbs (0.7, 1.0e-6));
+    pump (500);
+
+    REQUIRE (um.undo());
+    pump (100);
+    REQUIRE_THAT (amount->getCurrentValue(), WithinAbs (0.25, 1.0e-6));   // the parameter, not only the state
+    REQUIRE (purrlude::track_effects::getEffects (song.track()).size() == 1);   // and the effect is still there
+
+    REQUIRE (um.redo());
+    pump (100);
+    REQUIRE_THAT (amount->getCurrentValue(), WithinAbs (0.7, 1.0e-6));
+
+    // A click is a step of its own.
+    pump (500);
+    purrlude::track_effects::setControl (*song.edit, *amount, 0.1f);
+    REQUIRE (um.undo());
+    pump (100);
+    REQUIRE_THAT (amount->getCurrentValue(), WithinAbs (0.7, 1.0e-6));
+}
+
 TEST_CASE ("Delay times follow the tempo", "[effects]")
 {
     Song song;

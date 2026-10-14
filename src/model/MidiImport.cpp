@@ -4,6 +4,7 @@
 
 #include "instruments/GeneralMidi.h"
 #include "notation/TrackNotation.h"
+#include "model/SharedReverb.h"
 
 namespace purrlude::midi_import
 {
@@ -24,7 +25,7 @@ namespace
 
     bool isEmptySong (tracktion::Edit& edit)
     {
-        for (auto* track : tracktion::getAudioTracks (edit))
+        for (auto* track : getSongTracks (edit))
             if (! track->getClips().isEmpty())
                 return false;
 
@@ -156,8 +157,8 @@ Result importMidi (tracktion::Edit& edit, LiveInstrument& live, const juce::Midi
         ++nameCounts[part.trackName];
 
     Result result;
-    auto reuseFirstTrack = emptySong && tracktion::getAudioTracks (edit).size() == 1
-                            && ! TrackInstrument::isAudioTrack (*tracktion::getAudioTracks (edit)[0]);
+    auto reuseFirstTrack = emptySong && getSongTracks (edit).size() == 1
+                            && ! TrackInstrument::isAudioTrack (*getSongTracks (edit)[0]);
 
     for (const auto& part : parts)
     {
@@ -174,7 +175,7 @@ Result importMidi (tracktion::Edit& edit, LiveInstrument& live, const juce::Midi
 
         if (reuseFirstTrack)
         {
-            track = tracktion::getAudioTracks (edit)[0];
+            track = getSongTracks (edit)[0];
             reuseFirstTrack = false;
         }
         else

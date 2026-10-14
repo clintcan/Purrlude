@@ -1,6 +1,7 @@
 #include "TrackNotation.h"
 
 #include "model/TrackInstrument.h"
+#include "model/SharedReverb.h"
 
 namespace purrlude::notation
 {
@@ -117,7 +118,7 @@ bool EditScoreInput::isEmpty() const
 EditScoreInput getEditScoreInput (tracktion::Edit& edit, const BuildOptions& options)
 {
     std::vector<PartNotes> parts;
-    auto tracks = tracktion::getAudioTracks (edit);
+    auto tracks = getSongTracks (edit);
 
     for (auto* track : tracks)
         if (auto notes = getTrackNotes (*track); ! notes.empty())

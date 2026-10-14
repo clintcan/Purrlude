@@ -1,4 +1,5 @@
 #include "AudioInputs.h"
+#include "model/SharedReverb.h"
 
 namespace purrlude::audio_inputs
 {
@@ -144,7 +145,7 @@ void restoreInputs (tracktion::Edit& edit)
 {
     auto available = getNames (edit);
 
-    for (auto* track : tracktion::getAudioTracks (edit))
+    for (auto* track : getSongTracks (edit))
     {
         auto wanted = track->state[inputProperty].toString();
 

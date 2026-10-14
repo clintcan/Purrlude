@@ -7,6 +7,7 @@
 #include "model/TrackMix.h"
 #include "ui/EffectsPanel.h"
 #include "instruments/GeneralMidi.h"
+#include "model/SharedReverb.h"
 
 namespace purrlude
 {
@@ -274,11 +275,14 @@ void TrackHeader::refresh()
     // through them, so they can't be used there.
     auto* track = instrument.getTrack();
     auto external = ! audio && instrument.getSoundSourceID().isNotEmpty();
-    effectsButton.setToggleState (track != nullptr && ! track_effects::getEffects (*track).isEmpty(), juce::dontSendNotification);
+    auto* send = track != nullptr ? shared_reverb::findSend (*track) : nullptr;
+    auto hasEffects = track != nullptr && (! track_effects::getEffects (*track).isEmpty()
+                                            || (send != nullptr && send->getGainDb() > -90.0f));
+    effectsButton.setToggleState (hasEffects, juce::dontSendNotification);
     effectsButton.setEnabled (! external);
     effectsButton.setTooltip (external ? "Effects work on Purrlude's built-in sounds; this track plays on "
                                              + instrument.getSoundSourceName() + "."
-                                       : "Effects: reverb, delay, EQ and compressor");
+                                       : "Effects: the shared reverb, and this track's reverb, delay, EQ and compressor");
 
     if (! volumeSlider.isMouseButtonDown())
         volumeSlider.setValue (juce::jmax (-60.0f, instrument.getVolumeDb()), juce::dontSendNotification);
@@ -331,7 +335,7 @@ void TrackHeader::armAudio (bool armed)
     {
         juce::StringArray used;
 
-        for (auto* track : tracktion::getAudioTracks (edit))
+        for (auto* track : getSongTracks (edit))
             if (track->itemID != trackID)
                 used.add (audio_inputs::getInput (edit, track->itemID));
 

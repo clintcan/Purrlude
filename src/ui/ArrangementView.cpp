@@ -4,6 +4,7 @@
 #include "model/ClipEditing.h"
 #include "model/LoopRange.h"
 #include "notation/TrackNotation.h"
+#include "model/SharedReverb.h"
 
 namespace purrlude
 {
@@ -381,7 +382,7 @@ ArrangementView::~ArrangementView()
 
 int ArrangementView::getContentHeight() const
 {
-    return rulerHeight + laneHeight * tracktion::getAudioTracks (edit).size() + addButtonArea;
+    return rulerHeight + laneHeight * getSongTracks (edit).size() + addButtonArea;
 }
 
 void ArrangementView::changeListenerCallback (juce::ChangeBroadcaster*)
@@ -393,7 +394,7 @@ void ArrangementView::changeListenerCallback (juce::ChangeBroadcaster*)
 
 void ArrangementView::syncHeaders()
 {
-    auto tracks = tracktion::getAudioTracks (edit);
+    auto tracks = getSongTracks (edit);
     bool same = (int) headers.size() == tracks.size();
 
     for (int i = 0; same && i < tracks.size(); ++i)
@@ -545,7 +546,7 @@ void ArrangementView::paint (juce::Graphics& g)
 
     auto& tempo = edit.tempoSequence;
     auto beatsPerBar = tempo.getTimeSig (0)->numerator.get();
-    auto tracks = tracktion::getAudioTracks (edit);
+    auto tracks = getSongTracks (edit);
     auto lanesBottom = rulerHeight + laneHeight * tracks.size();
     auto [firstBeat, lastBeat] = getVisibleBeatRange();
 
@@ -762,7 +763,7 @@ juce::Rectangle<float> ArrangementView::getClipArea (int laneIndex, double start
 
 ArrangementView::ClipHit ArrangementView::findClipAt (juce::Point<int> position) const
 {
-    auto tracks = tracktion::getAudioTracks (edit);
+    auto tracks = getSongTracks (edit);
     auto index = laneIndexAt (position.y);
 
     if (position.x < headerWidth || ! juce::isPositiveAndBelow (index, tracks.size()))
@@ -788,7 +789,7 @@ void ArrangementView::mouseDown (const juce::MouseEvent& e)
     if (e.x < headerWidth)
         return;
 
-    auto tracks = tracktion::getAudioTracks (edit);
+    auto tracks = getSongTracks (edit);
     auto index = laneIndexAt (e.y);
 
     // Clicking a lane selects its track.
@@ -860,7 +861,7 @@ void ArrangementView::mouseDrag (const juce::MouseEvent& e)
         drag.newStart = juce::jmax (0.0, drag.startBeat + delta);
         drag.newEnd = drag.newStart + (drag.endBeat - drag.startBeat);
         // Onto another lane only if that track can hold the clip (MIDI or audio).
-        auto tracks = tracktion::getAudioTracks (edit);
+        auto tracks = getSongTracks (edit);
         auto lane = juce::jlimit (0, tracks.size() - 1, laneIndexAt (juce::jmax (rulerHeight, e.y)));
         auto* clip = tracktion::findClipForID (edit, drag.clipID);
 
@@ -889,7 +890,7 @@ void ArrangementView::mouseUp (const juce::MouseEvent&)
         }
         else if (! juce::approximatelyEqual (drag.newStart, drag.startBeat) || drag.newLaneIndex != drag.laneIndex || drag.copying)
         {
-            auto tracks = tracktion::getAudioTracks (edit);
+            auto tracks = getSongTracks (edit);
 
             if (juce::isPositiveAndBelow (drag.newLaneIndex, tracks.size()))
             {
@@ -968,7 +969,7 @@ bool ArrangementView::deleteSelectedClip()
 
 void ArrangementView::mouseDoubleClick (const juce::MouseEvent& e)
 {
-    auto tracks = tracktion::getAudioTracks (edit);
+    auto tracks = getSongTracks (edit);
     auto index = (e.y - rulerHeight) / laneHeight;
 
     if (e.x < headerWidth || e.y < rulerHeight || ! juce::isPositiveAndBelow (index, tracks.size()))

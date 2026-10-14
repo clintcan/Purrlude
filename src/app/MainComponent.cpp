@@ -5,6 +5,7 @@
 #include "notation/MusicXmlWriter.h"
 #include "notation/ScorePdf.h"
 #include "notation/TrackNotation.h"
+#include "model/SharedReverb.h"
 
 namespace purrlude
 {
@@ -720,7 +721,7 @@ void MainComponent::exportParts()
 
         juce::MouseCursor::showWaitCursor();
 
-        for (auto* track : tracktion::getAudioTracks (safe->project->getEdit()))
+        for (auto* track : getSongTracks (safe->project->getEdit()))
         {
             if (notation::getTrackNotes (*track).empty())
                 continue;
@@ -783,7 +784,7 @@ void MainComponent::changeListenerCallback (juce::ChangeBroadcaster* source)
     }
 
     // A device's channel changed: apply it to every track that plays through that device.
-    for (auto* track : tracktion::getAudioTracks (project->getEdit()))
+    for (auto* track : getSongTracks (project->getEdit()))
     {
         TrackInstrument instrument (project->getEdit(), *track);
 

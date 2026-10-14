@@ -3,6 +3,7 @@
 #include "model/AudioExport.h"
 #include "model/EngineSetup.h"
 #include "model/LiveInstrument.h"
+#include "model/SharedReverb.h"
 
 namespace
 {
@@ -147,6 +148,52 @@ TEST_CASE ("Stems are one file per track that's heard", "[export][render]")
 
     REQUIRE (files[0].getFileName().endsWith ("Instrument.wav"));
     REQUIRE (files[1].getFileName().endsWith ("Instrument 2.wav"));
+    folder.deleteRecursively();
+}
+
+TEST_CASE ("A stem has its share of the shared reverb", "[export][render][reverb]")
+{
+    Song song;
+    auto shortChord = [] (tracktion::AudioTrack& track, int root)
+    {
+        auto clip = track.insertMIDIClip ({ tracktion::TimePosition(), tracktion::TimePosition::fromSeconds (2.0) }, nullptr);
+
+        for (int note : { root, root + 4, root + 7 })
+            clip->getSequence().addNote (note, tracktion::BeatPosition(), tracktion::BeatDuration::fromBeats (0.5), 110, 0, nullptr);
+    };
+
+    auto& wet = *song.live.getTrack();
+    shortChord (wet, 60);
+    auto* dry = song.live.addTrack (false);
+    shortChord (*dry, 67);
+
+    song.edit->getUndoManager().beginNewTransaction();
+    purrlude::shared_reverb::getOrCreateSend (*song.edit, wet)->setGainDb (0.0f);
+
+    auto folder = juce::File::createTempFile ("");
+    juce::Array<juce::File> files;
+    purrlude::AudioExportOptions options;
+    options.stems = true;
+    REQUIRE (song.run (options, folder, files).isEmpty());
+    REQUIRE (files.size() == 2);   // the bus isn't a stem of its own
+
+    // After the chords end (0.25 s), only the reverb rings on.
+    auto tail = [] (const juce::File& file)
+    {
+        juce::AudioFormatManager formats;
+        formats.registerBasicFormats();
+        std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (file));
+        REQUIRE (reader != nullptr);
+        auto start = (juce::int64) (0.6 * reader->sampleRate);
+        auto length = (int) (0.6 * reader->sampleRate);
+        juce::AudioBuffer<float> audio ((int) reader->numChannels, length);
+        reader->read (&audio, 0, length, start, true, true);
+        return audio.getRMSLevel (0, 0, length);
+    };
+
+    auto wetTail = tail (files[0]), dryTail = tail (files[1]);
+    INFO ("wet " << wetTail << ", dry " << dryTail);
+    REQUIRE (wetTail > juce::jmax (0.01f, dryTail * 4.0f));
     folder.deleteRecursively();
 }
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "TrackEffects.h"
 #include "TrackInstrument.h"
 
 #include <tracktion_engine/tracktion_engine.h>
@@ -101,6 +102,7 @@ private:
     void timerCallback() override;
 
     tracktion::Edit& edit;
+    track_effects::ParameterSync parameterSync { edit };   ///< Undo of an effect's knob is heard
     tracktion::EditItemID trackID;
     bool wasPlaying = false;
 

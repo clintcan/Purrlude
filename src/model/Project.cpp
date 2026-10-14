@@ -1,4 +1,5 @@
 #include "Project.h"
+#include "model/SharedReverb.h"
 
 namespace purrlude
 {
@@ -184,7 +185,7 @@ void Project::gatherAudio()
     // touched), and is referred to relative to the project file.
     auto folder = getAudioFolder();
 
-    for (auto* track : tracktion::getAudioTracks (*edit))
+    for (auto* track : getSongTracks (*edit))
     {
         for (auto* clip : track->getClips())
         {
