@@ -1,5 +1,7 @@
 #include "Accompaniment.h"
 
+#include "model/ClipOrder.h"
+
 #include "notation/NotationBuilder.h"
 #include "notation/TrackNotation.h"
 
@@ -472,7 +474,8 @@ tracktion::MidiClip* insert (tracktion::Edit& edit, LiveInstrument& live, const 
     auto loopBeats = (double) progression.bars.size() * beatsPerBar;
     clip->setLoopRangeBeats ({ tracktion::BeatPosition(), tracktion::BeatDuration::fromBeats (loopBeats) });
 
-    // Left open, like other arrangement edits: Tracktion's asynchronous re-sorting joins it.
+    // Left open, like other arrangement edits, with the clips in Tracktion's order (ClipOrder.h).
+    sortAllClipsLikeTracktion (edit);   // see ClipOrder.h
     return clip.get();
 }
 

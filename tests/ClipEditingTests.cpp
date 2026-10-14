@@ -183,3 +183,29 @@ TEST_CASE ("Clips can be deleted", "[model][clips]")
     f.undo().undo();
     REQUIRE (f.track (0).getClips().size() == 1);
 }
+
+TEST_CASE ("Edits leave Tracktion's own clip re-sort nothing to do", "[model][clips]")
+{
+    // If Tracktion's asynchronous re-sort had anything to move, it would record undo actions
+    // after the edit, and on a slow machine those can land in an undo step of their own.
+    Fixture f;
+    addClip (f.track (0), 0.0, 16.0, 60);
+    auto id = addClip (f.track (1), 0.0, 4.0, 72)->itemID;
+    pump();
+
+    auto actionsAfterSettling = [&]
+    {
+        auto before = f.undo().getNumActionsInCurrentTransaction();
+        pump (100);
+        return f.undo().getNumActionsInCurrentTransaction() - before;
+    };
+
+    purrlude::clips::move (*f.edit, id, 4.0, f.track (0));   // splits the long clip around it
+    REQUIRE (actionsAfterSettling() == 0);
+
+    purrlude::clips::move (*f.edit, id, 12.0, f.track (0), true);
+    REQUIRE (actionsAfterSettling() == 0);
+
+    purrlude::clips::setEnd (*f.edit, id, 10.0);
+    REQUIRE (actionsAfterSettling() == 0);
+}

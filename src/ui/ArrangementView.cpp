@@ -619,10 +619,17 @@ void ArrangementView::mouseDown (const juce::MouseEvent& e)
     if (juce::isPositiveAndBelow (index, tracks.size()))
         live.selectTrack (tracks.getUnchecked (index)->itemID);
 
-    // A clip: select it, ready to drag.
+    // A clip: select it, ready to drag (or right-click for what can be done with it).
     if (auto hit = findClipAt (e.getPosition()); hit.clip != nullptr)
     {
         selectedClipID = hit.clip->itemID;
+
+        if (e.mods.isPopupMenu())
+        {
+            showClipMenu (hit.clip->itemID, dynamic_cast<tracktion::MidiClip*> (hit.clip) != nullptr);
+            repaint();
+            return;
+        }
 
         ClipDrag drag;
         drag.clipID = hit.clip->itemID;
@@ -731,6 +738,33 @@ void ArrangementView::mouseMove (const juce::MouseEvent& e)
     setMouseCursor (hit.clip == nullptr ? juce::MouseCursor::NormalCursor
                                         : hit.onRightEdge ? juce::MouseCursor::LeftRightResizeCursor
                                                           : juce::MouseCursor::DraggingHandCursor);
+}
+
+void ArrangementView::showClipMenu (tracktion::EditItemID clipID, bool isMidi)
+{
+    enum { editNotes = 1, convert, remove };
+    juce::PopupMenu menu;
+
+    if (isMidi)
+        menu.addItem (editNotes, "Edit Notes");
+    else
+        menu.addItem (convert, "Convert Melody to MIDI...", onConvertMelodyToMidi != nullptr);
+
+    menu.addSeparator();
+    menu.addItem (remove, "Delete");
+
+    menu.showMenuAsync (juce::PopupMenu::Options(), [safe = juce::Component::SafePointer<ArrangementView> (this), clipID] (int result)
+    {
+        if (safe == nullptr)
+            return;
+
+        if (result == editNotes && safe->onClipDoubleClicked != nullptr)
+            safe->onClipDoubleClicked (clipID);
+        else if (result == convert && safe->onConvertMelodyToMidi != nullptr)
+            safe->onConvertMelodyToMidi (clipID);
+        else if (result == remove)
+            safe->deleteSelectedClip();
+    });
 }
 
 bool ArrangementView::deleteSelectedClip()

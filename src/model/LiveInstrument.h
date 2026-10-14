@@ -46,8 +46,10 @@ public:
     /** False for the last instrument track. */
     bool canDeleteTrack (tracktion::EditItemID) const;
 
-    /** Adds an instrument track after the last one (and selects it, unless asked not to). Undoable. */
-    tracktion::AudioTrack* addTrack (bool select = true);
+    /** Adds an instrument track after the last one, or after a given track (and selects it,
+        unless asked not to). Undoable.
+    */
+    tracktion::AudioTrack* addTrack (bool select = true, tracktion::Track* after = nullptr);
 
     /** Deletes a track (never the last instrument track); if it was selected, another
         instrument track is. Undoable.

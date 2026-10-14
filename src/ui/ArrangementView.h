@@ -18,7 +18,8 @@ namespace purrlude
 
     Clips: click to select, drag to move (snapping to bars, or beats with Shift; onto
     another lane to change track), Option/Alt-drag to copy, drag the right edge to
-    change the length, double-click to edit the notes. Clicking an empty lane or the
+    change the length, double-click to edit the notes, right-click for a menu (an audio
+    clip's melody can be converted to MIDI). Clicking an empty lane or the
     ruler moves the playhead.
 
     Reads the Edit afresh on every paint and keeps no pointers into it, so it can't go
@@ -42,6 +43,9 @@ public:
 
     /** Called when a clip is double-clicked (to open it in an editor). */
     std::function<void (tracktion::EditItemID)> onClipDoubleClicked;
+
+    /** Called when "Convert Melody to MIDI" is chosen for an audio clip. */
+    std::function<void (tracktion::EditItemID)> onConvertMelodyToMidi;
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -74,6 +78,7 @@ private:
     double getPlayheadBeat() const;
 
     void movePlayheadTo (double beat);
+    void showClipMenu (tracktion::EditItemID, bool isMidi);
     void positionOverlays();
 
     class PlayheadOverlay;

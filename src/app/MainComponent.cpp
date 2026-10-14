@@ -84,6 +84,7 @@ MainComponent::~MainComponent()
     engine.getDeviceManager().removeChangeListener (this);
     stopTimer();
     stopAudioExport();
+    stopMelodyConversion();
     editorTabs.clearTabs();
     loopsPanel = nullptr;
     pianoRoll = nullptr;
@@ -108,8 +109,9 @@ void MainComponent::setProject (std::unique_ptr<Project> newProject)
 {
     jassert (newProject != nullptr);
 
-    // UI (and an export) that references the old Edit must go before it does.
+    // UI (and an export or conversion) that references the old Edit must go before it does.
     stopAudioExport();
+    stopMelodyConversion();
     auto currentTab = editorTabs.getCurrentTabIndex();
     editorTabs.clearTabs();
     loopsPanel = nullptr;
@@ -136,6 +138,8 @@ void MainComponent::setProject (std::unique_ptr<Project> newProject)
     editorTabs.addTab ("Score", tabColour, scoreView.get(), false);
     editorTabs.addTab ("Piano Roll", tabColour, pianoRoll.get(), false);
     editorTabs.setCurrentTabIndex (juce::jmax (0, currentTab));
+
+    arrangement->onConvertMelodyToMidi = [this] (tracktion::EditItemID clipID) { convertMelodyToMidi (clipID); };
 
     // Double-click a clip to edit its notes.
     arrangement->onClipDoubleClicked = [this] (tracktion::EditItemID clipID)
@@ -423,6 +427,66 @@ void MainComponent::exportScore (ExportFormat format)
 }
 
 //==============================================================================
+void MainComponent::convertMelodyToMidi (tracktion::EditItemID audioClip)
+{
+    if (melodyConversion != nullptr)
+        return;
+
+    auto source = melody_to_midi::getSource (project->getEdit(), audioClip);
+
+    if (! source)
+    {
+        showError ("Couldn't convert the melody", "This clip's audio file can't be read.");
+        return;
+    }
+
+    conversionProgress = 0.0;
+    conversionWindow = std::make_unique<juce::AlertWindow> ("Converting " + source->name + " to MIDI",
+                                                            "Listening for the melody...", juce::MessageBoxIconType::NoIcon);
+    conversionWindow->addProgressBarComponent (conversionProgress);
+    conversionWindow->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+
+    // Cancel closes the window with 0; a finished conversion closes it with 1.
+    conversionWindow->enterModalState (true, juce::ModalCallbackFunction::create ([safe = juce::WeakReference<MainComponent> (this)] (int result)
+    {
+        if (safe != nullptr && result == 0)
+            juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->stopMelodyConversion(); });
+    }), false);
+
+    auto safe = juce::WeakReference<MainComponent> (this);
+    melodyConversion = std::make_unique<melody_to_midi::Conversion> (engine, *source,
+        [safe, src = *source] (std::vector<analysis::TranscribedNote> notes, const juce::String& error)
+    {
+        if (safe == nullptr)
+            return;
+
+        // Closing the window and releasing the conversion can't happen inside its callback.
+        juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->stopMelodyConversion(); });
+
+        if (error.isNotEmpty())
+        {
+            safe->showError ("Couldn't convert the melody", error);
+            return;
+        }
+
+        if (melody_to_midi::insertNotes (safe->project->getEdit(), safe->project->getInstrument(), src, notes) == nullptr)
+            safe->showError ("Couldn't convert the melody", "The audio clip has gone.");
+    });
+
+    conversionProgressTimer.startTimerHz (10);
+}
+
+void MainComponent::stopMelodyConversion()
+{
+    conversionProgressTimer.stopTimer();
+    melodyConversion = nullptr;   // cancels it if it's still running
+
+    if (conversionWindow != nullptr && conversionWindow->isCurrentlyModal())
+        conversionWindow->exitModalState (1);
+
+    conversionWindow = nullptr;
+}
+
 void MainComponent::showAudioSettings()
 {
     // MIDI devices have their own panel; this is the audio interface: which device plays and

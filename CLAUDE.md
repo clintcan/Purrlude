@@ -85,7 +85,7 @@ These are what set Purrlude apart. Treat them as first-class, not add-ons.
 | PDF export | In-house `notation::PdfDocument`: a JUCE `LowLevelGraphicsContext` that writes vector PDF | — |
 | Notation cleanup | In-house (`src/notation/`): quantize, key estimate, spelling, staves, ties; MusicXML export | — |
 | Audio → MIDI (polyphonic) | Spotify basic-pitch model on ONNX Runtime _(planned)_ | Apache 2.0 / MIT |
-| Audio → MIDI (monophonic) | In-house pYIN _(planned)_ | — |
+| Audio → MIDI (monophonic) | In-house pYIN (`src/analysis/`) | — |
 | Audio → MIDI (drums) | Onset detection + small ONNX classifier _(planned)_ | — |
 | Built-in instruments | TinySoundFont (SF2) + GeneralUser GS v2.0.3 GM bank; sfizz (SFZ) _(planned)_ | MIT / GeneralUser GS License v2.0 |
 | Time-stretch | Signalsmith Stretch _(planned)_; Tracktion's SoundTouch is used until then | MIT / LGPL |
@@ -198,7 +198,9 @@ The app talks to `purrlude::BluetoothMidiManager` (`src/devices/BluetoothMidiMan
 
 **Clip editing** (`src/model/ClipEditing.h`, `ArrangementView`):
 - **Operations:** `clips::move` (also copies), `setEnd` and `remove`. A clip put over others replaces what it covers, splitting them if needed.
-- **Undo:** each operation starts its own undo step and leaves it open, because Tracktion re-sorts a track's clips asynchronously and that re-sort has to join the step.
+- **Undo:** each operation starts its own undo step. Tracktion re-sorts a track's clips asynchronously and records that as undo actions. It also closes the undo step 350 ms after a change (`UndoTransactionTimer`), so on a slow machine the re-sort could become a step of its own, and undo would revert only that.
+  - So every edit that adds, moves or splits clips calls `sortAllClipsLikeTracktion` (`src/model/ClipOrder.h`, a copy of Tracktion's private sort) inside its step, leaving Tracktion nothing to move.
+  - A test checks that no undo actions arrive after an edit.
 
 **Piano roll:**
 - **Editor:** `PianoRoll` (`src/ui/`) edits one MIDI clip of the instrument track. It's the Piano Roll tab of the lower panel; double-click a clip in the arrangement to open it there.
@@ -233,13 +235,30 @@ src/instruments/        Built-in instruments (SoundFont GM synth)
 content/                Bundled content: LICENSES.md manifest, devices/*.json definitions, loops/*.json drum loops
 src/model/              Project model on top of tracktion::Edit (Project, LiveInstrument)
 src/notation/           Notation layer: performed notes -> Score -> MusicXML (no UI)
+src/analysis/           Analysis layer: pitch tracking and melody transcription (no UI, no Tracktion)
 src/ui/                 UI components (TransportBar, ArrangementView, ScoreView, PianoRoll, MidiDevicesPanel, LoopsPanel)
 tools/content/          Scripts that generate bundled content (run by hand; output is committed)
 tests/                  Catch2 test runner (PurrludeTests)
 .github/workflows/      CI for Windows, macOS, Linux
 ```
 
-Planned directories as the architecture layers land: `src/analysis/`.
+### Audio → MIDI (melody)
+
+`src/analysis/` has no Tracktion dependency; it works on plain audio buffers.
+
+- **`trackPitch`** is pYIN. Per frame (1024 samples, hop 128, at 22.05 kHz), it computes YIN's difference function by FFT and scores its cumulative mean normalised difference against 100 thresholds with a Beta(2,18) prior, which gives pitch candidates.
+  - A Viterbi pass over 321 pitch bins (fifths of a semitone, E1 to G#6) × voiced/unvoiced picks a smooth path: jumps of up to 5 semitones, voicing switching with probability 0.01.
+  - Frames quieter than about -50 dBFS are unvoiced. Loudness is measured over 256 samples at the frame's centre, to follow attacks.
+- **`segmentNotes`:** it bridges unvoiced gaps under 30 ms. A note starts where pitched sound starts, where the pitch settles over 0.7 semitones away for 50 ms (so vibrato and slides stay one note), or at a re-attack (loudness falls below half the note's peak, then rises 1.8×).
+  - **Pitch and velocity:** a note's pitch is the median of its middle frames; its velocity comes from its peak loudness.
+  - **Minimum length:** notes under 60 ms are dropped.
+- **`transcribeMelody`:** mixes to mono, low-passes at 5 kHz, resamples to 22.05 kHz, then tracks and segments. It's about 2.8 s per minute of audio in a debug build.
+- **Model** (`src/model/MelodyToMidi.h`):
+  - `getSource` reads, on the message thread, the part of the file a clip plays.
+  - `Conversion` reads and transcribes it on its own thread; deleting it cancels.
+  - `insertNotes` puts the notes on a new piano track under the audio track, over the clip's span, as one undo step.
+- **UI:** right-click an audio clip → Convert Melody to MIDI, with progress and Cancel from `MainComponent`.
+- **Tests:** synthesized tones (`tests/MelodyTranscriptionTests.cpp`) cover pitches, timing, vibrato, legato, repeated notes, silence and velocity. `[.bench]` times a minute of audio.
 
 ### Projects
 

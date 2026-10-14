@@ -1,5 +1,7 @@
 #include "TimeSignature.h"
 
+#include "ClipOrder.h"
+
 namespace purrlude
 {
 
@@ -63,6 +65,7 @@ bool changeTimeSignature (tracktion::Edit& edit, int numerator, int denominator)
     for (auto& placed : clips)
         placed.clip->setPosition (placed.position);
 
+    sortAllClipsLikeTracktion (edit);   // see ClipOrder.h
     return true;
 }
 

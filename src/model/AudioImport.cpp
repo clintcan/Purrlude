@@ -1,5 +1,7 @@
 #include "AudioImport.h"
 
+#include "ClipOrder.h"
+
 namespace purrlude::audio_import
 {
 
@@ -56,7 +58,8 @@ Result importFile (tracktion::Edit& edit, LiveInstrument& live, const juce::File
     if (clip == nullptr)
         return { "Couldn't add " + file.getFileName() + " to the song.", {}, {} };
 
-    // Left open, like other arrangement edits: Tracktion's asynchronous re-sorting joins it.
+    // Left open, like other arrangement edits, with the clips in Tracktion's order (ClipOrder.h).
+    sortAllClipsLikeTracktion (edit);   // see ClipOrder.h
     return { {}, track->itemID, clip->itemID };
 }
 

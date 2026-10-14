@@ -1,5 +1,6 @@
 #include "ClipEditing.h"
 
+#include "ClipOrder.h"
 #include "TrackInstrument.h"
 
 namespace purrlude
@@ -63,7 +64,7 @@ tracktion::Clip* clips::move (tracktion::Edit& edit, tracktion::EditItemID clipI
     auto range = tracktion::TimeRange (beatToTime (edit, startBeat), beatToTime (edit, startBeat + lengthBeats));
     clip->setPosition ({ range, clip->getPosition().offset });
     clearUnder (destination, range, *clip);
-
+    sortAllClipsLikeTracktion (edit);   // see ClipOrder.h
     return clip.get();
 }
 
@@ -84,6 +85,9 @@ void clips::setEnd (tracktion::Edit& edit, tracktion::EditItemID clipID, double 
 
     if (auto* track = dynamic_cast<tracktion::AudioTrack*> (clip->getClipTrack()); track != nullptr && newEnd > oldEnd)
         clearUnder (*track, { oldEnd, newEnd }, *clip);
+
+    sortAllClipsLikeTracktion (edit);   // see ClipOrder.h
+
 }
 
 void clips::remove (tracktion::Edit& edit, tracktion::EditItemID clipID)

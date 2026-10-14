@@ -1,5 +1,7 @@
 #include "LoopLibrary.h"
 
+#include "ClipOrder.h"
+
 #include "instruments/GeneralMidi.h"
 #include "notation/TrackNotation.h"
 
@@ -179,8 +181,9 @@ tracktion::MidiClip* LoopLibrary::insertLoop (tracktion::Edit& edit, LiveInstrum
 
     clip->setLoopRangeBeats ({ tracktion::BeatPosition(), tracktion::BeatDuration::fromBeats (loopBeats) });
 
-    // The transaction is left open: Tracktion re-sorts the track's clips asynchronously,
-    // and that has to be part of this step, or Cmd+Z would undo only the re-sort.
+    // The transaction is left open, and the clips are put in Tracktion's order now, so its
+    // own asynchronous re-sort doesn't become an undo step of its own.
+    sortAllClipsLikeTracktion (edit);   // see ClipOrder.h
     return clip.get();
 }
 

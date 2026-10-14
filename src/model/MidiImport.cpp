@@ -1,5 +1,7 @@
 #include "MidiImport.h"
 
+#include "ClipOrder.h"
+
 #include "instruments/GeneralMidi.h"
 #include "notation/TrackNotation.h"
 
@@ -265,7 +267,8 @@ Result importMidi (tracktion::Edit& edit, LiveInstrument& live, const juce::Midi
         result.tracks.add (track->itemID);
     }
 
-    // Left open, like other arrangement edits: Tracktion's asynchronous re-sorting joins it.
+    // Left open, like other arrangement edits, with the clips in Tracktion's order (ClipOrder.h).
+    sortAllClipsLikeTracktion (edit);   // see ClipOrder.h
     return result;
 }
 

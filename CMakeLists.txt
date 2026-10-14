@@ -84,6 +84,8 @@ target_sources(purrlude_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/LoopLibrary.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/ClipEditing.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/ClipEditing.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/ClipOrder.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/ClipOrder.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/Accompaniment.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/Accompaniment.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/AudioExport.h
@@ -96,6 +98,12 @@ target_sources(purrlude_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/AudioImport.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/AudioInputs.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/AudioInputs.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/PitchTracker.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/PitchTracker.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/MelodyTranscriber.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/MelodyTranscriber.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/MelodyToMidi.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/MelodyToMidi.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/NoteEditing.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/NoteEditing.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/Project.h

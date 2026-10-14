@@ -5,6 +5,7 @@
 #include "devices/ToneListener.h"
 #include "model/AudioExport.h"
 #include "model/AudioImport.h"
+#include "model/MelodyToMidi.h"
 #include "model/MidiImport.h"
 #include "model/Project.h"
 #include "ui/ArrangementView.h"
@@ -81,6 +82,9 @@ private:
     bool isInterestedInFileDrag (const juce::StringArray&) override;
     void filesDropped (const juce::StringArray&, int, int) override;
 
+    void convertMelodyToMidi (tracktion::EditItemID audioClip);
+    void stopMelodyConversion();
+
     void exportAudio();
     void chooseAudioDestination (AudioExportOptions);
     void startAudioExport (AudioExportOptions, const juce::File& destination);
@@ -119,6 +123,11 @@ private:
     ToneListener toneListener { deviceSettings };
 
     int ticksSinceAutosave = 0;
+
+    std::unique_ptr<melody_to_midi::Conversion> melodyConversion;
+    std::unique_ptr<juce::AlertWindow> conversionWindow;
+    double conversionProgress = 0.0;   ///< Read by the progress bar
+    juce::TimedCallback conversionProgressTimer { [this] { if (melodyConversion != nullptr) conversionProgress = melodyConversion->getProgress(); } };
 
     std::unique_ptr<AudioExport> audioExport;
     std::unique_ptr<juce::AlertWindow> exportWindow;
