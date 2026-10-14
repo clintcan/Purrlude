@@ -299,6 +299,7 @@ A note quantized past the end of the performance moves back onto the last grid s
 
 **On-screen score:** `ScoreView` (`src/ui/`) reads the song's notes twice a second on the message thread (`notation::getEditScoreInput`), skipping while recording. When they or the width change, its render thread builds the score and MusicXML (`buildEditScore (EditScoreInput)`), and, if the MusicXML changed, engraves it with `notation::ScoreRenderer` (Verovio) and builds the Drawable. Verovio has global state, so it is only ever used from that one thread.
 - **Keep the message thread light:** for a long song (12 parts, 6 minutes, 35k notes, Release build) building the score takes about 1 s, engraving 30 s, and making the 110k-shape Drawable 4.5 s. Only reading the notes (a few ms) and indexing the drawing's note ids happen on the message thread. Drawables may be built off it because they aren't on screen.
+- **Closing mid-engrave:** Verovio can't be interrupted, so a closed `ScoreView` doesn't join its render thread. It hands it to a registry that lets it finish and deletes it later. `ScoreView::waitForClosedRenderThreads()` joins what's left; the app calls it in `shutdown()` after the window is gone and before the engine.
 
 JUCE's SVG parser can't draw Verovio's output directly. `prepareVerovioSvg` fixes it:
 - Glyph `<use>` references become inline copies of their definitions.

@@ -1,6 +1,7 @@
 #include "ScoreView.h"
 #include <optional>
 #include <map>
+#include <mutex>
 #include <set>
 
 #include "notation/ScoreSvg.h"
@@ -15,6 +16,54 @@ namespace
 {
     constexpr int paperMargin = 12;
     const auto highlightColour = juce::Colour (0xff0072b2);   // blue: the notes sounding now
+
+    /** The render threads of closed score views. Verovio can't be interrupted, and a long score
+        takes many seconds to engrave, so they're told to stop and left to finish the engraving
+        they're in rather than joined on the message thread. waitForAll joins what's left.
+    */
+    class ClosedRenderThreads
+    {
+    public:
+        ~ClosedRenderThreads()
+        {
+            jassert (threads.empty());   // ScoreView::waitForClosedRenderThreads wasn't called
+        }
+
+        void add (std::unique_ptr<juce::Thread> thread)
+        {
+            thread->signalThreadShouldExit();
+            thread->notify();
+
+            const std::scoped_lock sl (mutex);
+
+            // Ones that have finished since are deleted now; that doesn't wait.
+            std::erase_if (threads, [] (const auto& t) { return ! t->isThreadRunning(); });
+            threads.push_back (std::move (thread));
+        }
+
+        void waitForAll()
+        {
+            std::vector<std::unique_ptr<juce::Thread>> toJoin;
+
+            {
+                const std::scoped_lock sl (mutex);
+                toJoin.swap (threads);
+            }
+
+            for (auto& t : toJoin)
+                t->stopThread (-1);
+        }
+
+    private:
+        std::mutex mutex;
+        std::vector<std::unique_ptr<juce::Thread>> threads;
+    };
+
+    ClosedRenderThreads& getClosedRenderThreads()
+    {
+        static ClosedRenderThreads threads;
+        return threads;
+    }
 }
 
 //==============================================================================
@@ -32,7 +81,8 @@ public:
 
     ~RenderThread() override
     {
-        stopThread (10000);
+        // Only deleted once it has finished or when the app quits (see ClosedRenderThreads).
+        stopThread (-1);
     }
 
     void request (int id, notation::EditScoreInput input, int width)
@@ -299,7 +349,13 @@ ScoreView::~ScoreView()
 {
     stopTimer();
     playheadFollower.stopTimer();
-    renderThread = nullptr;   // waits for any render in progress
+    // Don't wait for an engraving in progress: closing a long song would hang until it's done.
+    getClosedRenderThreads().add (std::move (renderThread));
+}
+
+void ScoreView::waitForClosedRenderThreads()
+{
+    getClosedRenderThreads().waitForAll();
 }
 
 void ScoreView::paint (juce::Graphics& g)

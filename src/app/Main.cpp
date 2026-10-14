@@ -78,6 +78,7 @@ public:
     {
         // The window (and the Edit it owns) must go before the engine.
         mainWindow = nullptr;
+        ScoreView::waitForClosedRenderThreads();   // an engraving left running by the closed score view
         deviceSettings = nullptr;
         bluetooth = nullptr;
         engine = nullptr;

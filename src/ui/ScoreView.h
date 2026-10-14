@@ -29,6 +29,11 @@ public:
     ScoreView (tracktion::Edit&, LiveInstrument&);
     ~ScoreView() override;
 
+    /** A closed score view's engraving finishes in the background. Call this at shutdown, after
+        the views are gone, to wait for those.
+    */
+    static void waitForClosedRenderThreads();
+
     void paint (juce::Graphics&) override;
     void resized() override;
 
