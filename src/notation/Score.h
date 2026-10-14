@@ -25,7 +25,14 @@ struct NoteEvent
     int pitch = 60;
     int velocity = 100;
 
+   #if defined (__clang__)
+    #pragma clang diagnostic push
+    #pragma clang diagnostic ignored "-Wfloat-equal"   // exactly equal is the point: did anything change?
+   #endif
     bool operator== (const NoteEvent&) const = default;
+   #if defined (__clang__)
+    #pragma clang diagnostic pop
+   #endif
 };
 
 /** A note after quantizing, in ticks. */

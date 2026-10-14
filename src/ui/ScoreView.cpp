@@ -107,8 +107,8 @@ private:
     {
         // Verovio's state is global: create and use it only on this thread.
         notation::ScoreRenderer renderer (notation::ScoreRenderer::findResourceDirectory());
-        juce::String lastMusicXml;
-        int lastWidth = 0;
+        juce::String engravedMusicXml;
+        int engravedWidth = 0;
 
         while (! threadShouldExit())
         {
@@ -128,7 +128,7 @@ private:
             auto musicXml = notation::toMusicXml (notation::buildEditScore (job->input, {}), { .tempoMark = false });
 
             // Changes that don't show in the notation (e.g. velocities) needn't be engraved again.
-            if (musicXml == lastMusicXml && job->width == lastWidth)
+            if (musicXml == engravedMusicXml && job->width == engravedWidth)
             {
                 juce::MessageManager::callAsync ([o = owner, id = job->id]
                 {
@@ -139,8 +139,8 @@ private:
                 continue;
             }
 
-            lastMusicXml = musicXml;
-            lastWidth = job->width;
+            engravedMusicXml = musicXml;
+            engravedWidth = job->width;
 
             juce::String error, timemap;
             auto svg = renderer.renderMusicXml (musicXml, job->width, error, 45, &timemap);

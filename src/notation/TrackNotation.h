@@ -49,7 +49,14 @@ struct EditScoreInput
     /** True if no part has any notes. */
     bool isEmpty() const;
 
+   #if defined (__clang__)
+    #pragma clang diagnostic push
+    #pragma clang diagnostic ignored "-Wfloat-equal"   // exactly equal is the point: did anything change?
+   #endif
     bool operator== (const EditScoreInput&) const = default;
+   #if defined (__clang__)
+    #pragma clang diagnostic pop
+   #endif
 };
 
 /** Reads what buildEditScore needs: one part per track that has notes (named after the
