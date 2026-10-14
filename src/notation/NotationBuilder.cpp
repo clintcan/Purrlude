@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <map>
 
 namespace purrlude::notation
 {
@@ -102,14 +103,52 @@ int chooseGrid (const std::vector<NoteEvent>& notes)
     return usesSixteenths ? ticksPerQuarter / 4 : ticksPerQuarter / 2;
 }
 
-std::vector<QuantizedNote> quantize (const std::vector<NoteEvent>& notes, int gridTicks)
+std::set<int> chooseTripletBeats (const std::vector<NoteEvent>& notes, int gridTicks)
 {
+    constexpr double tolerance = 0.07;   // in beats
+    auto grid = (double) gridTicks / ticksPerQuarter;
+    std::map<int, int> votes;            // beat -> triplet onsets minus straight off-beat onsets
+
+    for (const auto& n : notes)
+    {
+        auto beat = (int) std::floor (n.start);
+        auto f = n.start - beat;
+
+        auto toTriplet = std::min (std::abs (f - 1.0 / 3.0), std::abs (f - 2.0 / 3.0));
+        auto toGrid = std::abs (f - std::round (f / grid) * grid);
+        auto onGridOffBeat = toGrid < tolerance && std::round (f / grid) > 0.0 && std::round (f / grid) * grid < 1.0 - 1.0e-9;
+
+        if (toTriplet < tolerance && toTriplet < toGrid)
+            ++votes[beat];
+        else if (onGridOffBeat)
+            --votes[beat];
+    }
+
+    std::set<int> beats;
+
+    for (auto [beat, vote] : votes)
+        if (vote > 0 && beat >= 0)
+            beats.insert (beat);
+
+    return beats;
+}
+
+std::vector<QuantizedNote> quantize (const std::vector<NoteEvent>& notes, int gridTicks, const std::set<int>& tripletBeats)
+{
+    constexpr int tripletTicks = ticksPerQuarter / 3;
     std::vector<QuantizedNote> result;
     result.reserve (notes.size());
 
-    auto snap = [gridTicks] (double beats)
+    // Each time snaps to the grid of the beat it falls in.
+    auto stepAt = [&] (double beats)
     {
-        return (int) std::lround (beats * ticksPerQuarter / gridTicks) * gridTicks;
+        return tripletBeats.count ((int) std::floor (beats)) > 0 ? tripletTicks : gridTicks;
+    };
+
+    auto snap = [&] (double beats)
+    {
+        auto step = stepAt (beats);
+        return (int) std::lround (beats * ticksPerQuarter / step) * step;
     };
 
     for (const auto& n : notes)
@@ -118,7 +157,7 @@ std::vector<QuantizedNote> quantize (const std::vector<NoteEvent>& notes, int gr
         auto end = snap (n.start + n.length);
 
         if (end <= start)
-            end = start + gridTicks;
+            end = start + stepAt (n.start);
 
         result.push_back ({ start, end - start, n.pitch });
     }
@@ -341,6 +380,60 @@ std::vector<NoteValue> splitIntoNoteValues (int startInMeasure, int length)
     return values;
 }
 
+std::vector<NoteValue> splitIntoNoteValues (int startInMeasure, int length, int measureStart, const std::set<int>& tripletBeats)
+{
+    constexpr int q = ticksPerQuarter, tripletTicks = q / 3;
+    std::vector<NoteValue> values;
+    auto position = startInMeasure, end = startInMeasure + length;
+
+    auto beatOf = [&] (int tick)        { return (measureStart + tick) / q; };
+    auto beatStart = [&] (int tick)     { return beatOf (tick) * q - measureStart; };
+    auto isTriplet = [&] (int tick)     { return tripletBeats.count (beatOf (tick)) > 0; };
+
+    while (position < end)
+    {
+        auto beatEnd = beatStart (position) + q;
+
+        // Part of a triplet beat: triplet quarters and eighths up to the end of the beat.
+        if (isTriplet (position) && ! (position == beatStart (position) && end >= beatEnd))
+        {
+            auto chunkEnd = std::min (end, beatEnd);
+
+            while (position < chunkEnd)
+            {
+                auto remaining = chunkEnd - position;
+
+                if (remaining >= 2 * tripletTicks)       values.push_back ({ 2 * tripletTicks, "quarter", 0, true });
+                else if (remaining >= tripletTicks)      values.push_back ({ tripletTicks, "eighth", 0, true });
+                else                                     values.push_back ({ remaining, "16th", 0, true });   // off the triplet grid
+
+                position += values.back().ticks;
+            }
+
+            continue;
+        }
+
+        // Otherwise ordinary values, up to the next triplet beat that the span only partly covers.
+        auto runEnd = end;
+
+        for (auto b = beatEnd; b < end; b += q)
+        {
+            if (isTriplet (b) && b + q > end)
+            {
+                runEnd = b;
+                break;
+            }
+        }
+
+        for (const auto& v : splitIntoNoteValues (position, runEnd - position))
+            values.push_back (v);
+
+        position = runEnd;
+    }
+
+    return values;
+}
+
 //==============================================================================
 Score buildScore (const std::vector<NoteEvent>& performed, TimeSignature time, const BuildOptions& options,
                   const std::string& title, const std::string& partName, double tempoBpm)
@@ -386,7 +479,8 @@ Part buildPart (const std::vector<NoteEvent>& performed, TimeSignature time, Key
                 const BuildOptions& options, const std::string& partName, int minMeasures, bool percussion)
 {
     auto grid = options.gridTicks > 0 ? options.gridTicks : chooseGrid (performed);
-    auto notes = quantize (performed, grid);
+    auto tripletBeats = options.triplets ? chooseTripletBeats (performed, grid) : std::set<int>();
+    auto notes = quantize (performed, grid, tripletBeats);
     auto measureTicks = time.getMeasureTicks();
 
     // A note played just before the music ends stays inside it, rather than rounding up
@@ -518,13 +612,15 @@ Part buildPart (const std::vector<NoteEvent>& performed, TimeSignature time, Key
 
                 auto position = from;
 
-                for (const auto& value : splitIntoNoteValues (from, to - from))
+                for (const auto& value : splitIntoNoteValues (from, to - from, measureStart, tripletBeats))
                 {
                     Event e;
                     e.start = position;
                     e.duration = value.ticks;
                     e.type = value.type;
                     e.dots = value.dots;
+                    e.triplet = value.triplet;
+
                     // A drum hit isn't held: whatever its value doesn't cover becomes rests.
                     if (! percussion || firstPiece)
                         e.pitches = pitches;

@@ -3,6 +3,7 @@
 #include "Score.h"
 
 #include <optional>
+#include <set>
 
 namespace purrlude::notation
 {
@@ -12,6 +13,7 @@ struct BuildOptions
     int gridTicks = 0;                          ///< Quantize grid in ticks; 0 chooses one (see chooseGrid)
     int splitPitch = 60;                        ///< Grand staff: this note and above go on the treble staff
     std::optional<KeySignature> key;            ///< Estimated from the notes if not given
+    bool triplets = true;                       ///< Write beats played in triplets as triplets
 };
 
 /** Builds a one-part score from performed notes. */
@@ -49,8 +51,15 @@ Part buildPart (const std::vector<NoteEvent>&, TimeSignature, KeySignature, cons
 */
 int chooseGrid (const std::vector<NoteEvent>&);
 
-/** Snaps starts and ends to the grid. Every note keeps at least one grid step. */
-std::vector<QuantizedNote> quantize (const std::vector<NoteEvent>&, int gridTicks);
+/** The beats (quarter notes from the start, 0-based) played in triplets: those where more
+    onsets sit on a third of the beat than on the grid's own off-beats.
+*/
+std::set<int> chooseTripletBeats (const std::vector<NoteEvent>&, int gridTicks);
+
+/** Snaps starts and ends to the grid, or to thirds of a beat in triplet beats. Every note
+    keeps at least one grid step.
+*/
+std::vector<QuantizedNote> quantize (const std::vector<NoteEvent>&, int gridTicks, const std::set<int>& tripletBeats = {});
 
 /** Drops repeated notes of the same pitch that start together, and cuts a note
     short where the same pitch is played again before it ends.
@@ -73,11 +82,18 @@ struct NoteValue
     int ticks = 0;
     std::string type;
     int dots = 0;
+    bool triplet = false;   ///< Three in the time of two
 };
 
 /** Splits a span within a measure into readable note values, each aligned to its own length
     (e.g. a dotted quarter only on a beat), so ties fall where a reader expects them.
 */
 std::vector<NoteValue> splitIntoNoteValues (int startInMeasure, int length);
+
+/** The same, where some beats are in triplets: the part of a span inside a triplet beat
+    (unless it fills the whole beat) becomes triplet eighths and quarters.
+    measureStart is in ticks from the start; tripletBeats as from chooseTripletBeats.
+*/
+std::vector<NoteValue> splitIntoNoteValues (int startInMeasure, int length, int measureStart, const std::set<int>& tripletBeats);
 
 } // namespace purrlude::notation

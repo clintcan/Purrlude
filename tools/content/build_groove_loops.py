@@ -240,7 +240,7 @@ def main():
             if len(chosen) == LOOPS_PER_STYLE:
                 break
 
-        # Straight loops first: shuffles can't be notated until triplets are supported.
+        # Straight loops first; shuffles after them.
         chosen.sort(key=lambda loop: loop.pop("shuffle"))
 
         for i, loop in enumerate(chosen):

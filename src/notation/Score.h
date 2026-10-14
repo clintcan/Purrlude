@@ -67,6 +67,7 @@ struct Event
 
     std::string type = "quarter";   ///< MusicXML note type: whole, half, quarter, eighth, 16th, 32nd
     int dots = 0;
+    bool triplet = false;           ///< Three in the time of two; each beat's triplets are one group
 
     bool tieStart = false;          ///< tied to the next event on this staff
     bool tieStop = false;           ///< tied from the previous event

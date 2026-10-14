@@ -253,6 +253,109 @@ TEST_CASE ("A multi-part score shares one key and length", "[notation]")
     REQUIRE (partCount == 2);
 }
 
+TEST_CASE ("Beats played in triplets are found", "[notation][triplets]")
+{
+    // Beat 0: triplet eighths. Beat 1: straight eighths. Beat 2: swung eighths. Beat 3: one note.
+    std::vector<NoteEvent> notes { { 0.0, 0.3, 60, 100 }, { 0.34, 0.3, 62, 100 }, { 0.66, 0.3, 64, 100 },
+                                   { 1.0, 0.5, 65, 100 }, { 1.52, 0.5, 67, 100 },
+                                   { 2.0, 0.6, 69, 100 }, { 2.68, 0.3, 71, 100 },
+                                   { 3.0, 1.0, 72, 100 } };
+
+    REQUIRE (chooseTripletBeats (notes, q / 2) == std::set<int> { 0, 2 });
+    REQUIRE (chooseTripletBeats (scale ({ 60, 62, 64 }, 0.5), q / 2).empty());
+
+    // Starts and ends snap to thirds of the beat in triplet beats only.
+    auto quantized = quantize (notes, q / 2, { 0, 2 });
+    REQUIRE (quantized[1].start == q / 3);
+    REQUIRE (quantized[2].start == 2 * q / 3);
+    REQUIRE (quantized[4].start == q + q / 2);
+    REQUIRE (quantized[6].start == 2 * q + 2 * q / 3);
+}
+
+TEST_CASE ("Triplet note values", "[notation][triplets]")
+{
+    auto describe = [] (const std::vector<NoteValue>& values)
+    {
+        std::vector<std::string> result;
+
+        for (const auto& v : values)
+            result.push_back (v.type + (v.dots > 0 ? "." : "") + (v.triplet ? "(3)" : ""));
+
+        return result;
+    };
+
+    using V = std::vector<std::string>;
+    std::set<int> beat1 { 1 };
+
+    REQUIRE (describe (splitIntoNoteValues (0, q + q / 3, 0, beat1)) == V { "quarter", "eighth(3)" });
+    REQUIRE (describe (splitIntoNoteValues (q, 2 * q / 3, 0, beat1)) == V { "quarter(3)" });
+    REQUIRE (describe (splitIntoNoteValues (q + q / 3, 2 * q / 3, 0, beat1)) == V { "quarter(3)" });
+    REQUIRE (describe (splitIntoNoteValues (0, 2 * q, 0, beat1)) == V { "half" });                 // the whole triplet beat
+    REQUIRE (describe (splitIntoNoteValues (q + 2 * q / 3, q / 3 + q, 0, beat1)) == V { "eighth(3)", "quarter" });
+
+    // Beats count from the start of the song, not the measure.
+    REQUIRE (describe (splitIntoNoteValues (q, q / 3, 4 * q, { 5 })) == V { "eighth(3)" });
+}
+
+TEST_CASE ("Triplets are written with brackets", "[notation][triplets]")
+{
+    // Triplet eighths, then two straight eighths, then a swung pair, then a quarter.
+    std::vector<NoteEvent> notes { { 0.0, 0.3, 72, 100 }, { 0.34, 0.3, 74, 100 }, { 0.66, 0.3, 76, 100 },
+                                   { 1.0, 0.45, 77, 100 }, { 1.5, 0.45, 79, 100 },
+                                   { 2.0, 0.6, 81, 100 }, { 2.68, 0.3, 79, 100 },
+                                   { 3.0, 0.9, 77, 100 } };
+
+    auto score = buildScore (notes, {});
+    const auto& events = score.parts[0].measures[0].staves[0];
+
+    REQUIRE (events.size() == 8);
+
+    for (size_t i : { 0u, 1u, 2u })
+    {
+        REQUIRE (events[i].triplet);
+        REQUIRE (events[i].type == "eighth");
+    }
+
+    REQUIRE_FALSE (events[3].triplet);
+    REQUIRE (events[5].triplet);
+    REQUIRE (events[5].type == "quarter");   // swing: a triplet quarter and eighth
+    REQUIRE (events[6].type == "eighth");
+    REQUIRE_FALSE (events[7].triplet);
+
+    auto doc = juce::parseXML (toMusicXml (score));
+    std::vector<juce::XmlElement*> xmlNotes;
+
+    for (auto* note : doc->getChildByName ("part")->getChildByName ("measure")->getChildWithTagNameIterator ("note"))
+        xmlNotes.push_back (note);
+
+    auto tuplets = [] (juce::XmlElement* note)
+    {
+        juce::StringArray types;
+
+        if (auto* notations = note->getChildByName ("notations"))
+            for (auto* t : notations->getChildWithTagNameIterator ("tuplet"))
+                types.add (t->getStringAttribute ("type"));
+
+        return types;
+    };
+
+    REQUIRE (xmlNotes[0]->getChildByName ("time-modification")->getChildByName ("actual-notes")->getAllSubText() == "3");
+    REQUIRE (xmlNotes[3]->getChildByName ("time-modification") == nullptr);
+    REQUIRE (tuplets (xmlNotes[0]) == juce::StringArray { "start" });
+    REQUIRE (tuplets (xmlNotes[1]).isEmpty());
+    REQUIRE (tuplets (xmlNotes[2]) == juce::StringArray { "stop" });
+    REQUIRE (tuplets (xmlNotes[5]) == juce::StringArray { "start" });
+    REQUIRE (tuplets (xmlNotes[6]) == juce::StringArray { "stop" });
+
+    // Triplet eighths are beamed together.
+    REQUIRE (xmlNotes[0]->getChildByName ("beam")->getAllSubText() == "begin");
+    REQUIRE (xmlNotes[2]->getChildByName ("beam")->getAllSubText() == "end");
+
+    // Straight playing is unaffected.
+    REQUIRE_FALSE (toMusicXml (buildScore (scale ({ 60, 62, 64, 65 }, 0.5), {})).contains ("time-modification"));
+    REQUIRE_FALSE (toMusicXml (buildScore (notes, {}, { .triplets = false })).contains ("time-modification"));
+}
+
 TEST_CASE ("Drum parts are written as drum notation", "[notation]")
 {
     // Kick, snare and closed hi-hats on 8ths, with an open hi-hat on the last 8th.

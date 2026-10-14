@@ -78,7 +78,15 @@ TEST_CASE ("Verovio's SVG becomes a JUCE drawable", "[notation][render]")
 TEST_CASE ("Verovio engraves drum notation", "[notation][render]")
 {
     ScoreRenderer renderer (ScoreRenderer::findResourceDirectory());
-    const auto& loop = purrlude::LoopLibrary::getAll().front();
+    // PURRLUDE_DRUM_LOOP picks a loop by name (e.g. "Blues & Shuffle 1") to look at its SVG.
+    auto wanted = juce::SystemStats::getEnvironmentVariable ("PURRLUDE_DRUM_LOOP", {});
+    const auto* chosen = &purrlude::LoopLibrary::getAll().front();
+
+    for (const auto& l : purrlude::LoopLibrary::getAll())
+        if (l.name == wanted)
+            chosen = &l;
+
+    const auto& loop = *chosen;
 
     std::vector<NoteEvent> notes;
 

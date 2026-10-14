@@ -130,7 +130,7 @@ The app talks to `purrlude::BluetoothMidiManager` (`src/devices/BluetoothMidiMan
 **Drum loops:**
 - **Content:** `content/loops/groove.json` holds 37 4-bar loops in 14 styles from the Groove MIDI Dataset (CC BY 4.0). They're MIDI on the GM drum map, timed in quarter notes.
   - `tools/content/build_groove_loops.py <download-dir>` regenerates the file: it downloads the dataset (SHA-256 checked), picks the steadiest 4 bars of up to 3 beats per style, and maps the TD-11 kit to GM.
-  - Hits just before a downbeat count as on it. Loops with a triplet feel are labelled "shuffle" and listed last, since triplets can't be notated yet.
+  - Hits just before a downbeat count as on it. Loops with a triplet feel are labelled "shuffle" and listed after the straight ones.
 - **Model:** `LoopLibrary` (`src/model/`) loads the compiled-in loops. `insertLoop` puts one on the Drums track (a built-in drum-kit track, created if needed, without moving the keyboard's track), repeated to fill the bars, as one clip and one undo step. An empty song takes the loop's tempo.
 - **UI:** `LoopsPanel` (`src/ui/`), the Loops toolbar button, shares the side with MIDI Devices. It has Drums / Bass / Chords modes, adds at the playhead's bar, and shows the drum loops' required credit.
 - **Looping clips:** a loop is stored once in a looping clip, so lengthening the clip repeats it. `notation::getClipNotes` unrolls looping clips for the score and the arrangement.
@@ -231,7 +231,14 @@ MusicXML uses 48 divisions per quarter and writes accidentals explicitly, once p
 
 A note quantized past the end of the performance moves back onto the last grid step, so it can't create a bar of its own.
 
-**Not handled yet:** triplets, multiple voices per staff, tempo or time-signature changes, and transposing instruments.
+**Triplets:** `chooseTripletBeats` decides per beat (quarter notes from the song start).
+- **Detection:** onsets near ⅓ or ⅔ of a beat (and nearer than the grid) vote triplet, and onsets on the grid's off-beats vote straight. A beat is triplet if the triplet votes win.
+- **Quantizing:** in triplet beats, times snap to thirds of a beat (16 ticks).
+- **Note values:** the part of a span inside a triplet beat becomes triplet eighths and quarters, unless the span fills the beat.
+- **MusicXML:** triplet notes get `<time-modification>` 3:2, and each beat's group a `<tuplet>` start and stop. Swing is written literally, as triplet quarter + eighth.
+- `BuildOptions::triplets = false` turns this off.
+
+**Not handled yet:** multiple voices per staff, tempo or time-signature changes, transposing instruments, and other tuplets (quintuplets, triplets spanning two beats).
 
 **On-screen score:** `ScoreView` (`src/ui/`) rebuilds the MusicXML twice a second on the message thread, skipping while recording. When it changes, a background thread engraves it with `notation::ScoreRenderer` (Verovio). Verovio has global state, so it is only ever used from that one thread.
 

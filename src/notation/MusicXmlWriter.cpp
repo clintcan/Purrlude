@@ -204,7 +204,17 @@ juce::String toMusicXml (const Score& score, const MusicXmlOptions& options)
 
                 for (size_t eventIndex = 0; eventIndex < staves[staff].size(); ++eventIndex)
                 {
-                    const auto& event = staves[staff][eventIndex];
+                    const auto& events = staves[staff];
+                    const auto& event = events[eventIndex];
+
+                    // Each beat's triplets are one bracketed group.
+                    auto sameTripletGroup = [&] (size_t other)
+                    {
+                        return events[other].triplet && events[other].start / ticksPerQuarter == event.start / ticksPerQuarter;
+                    };
+
+                    auto tupletStarts = event.triplet && (eventIndex == 0 || ! sameTripletGroup (eventIndex - 1));
+                    auto tupletStops = event.triplet && (eventIndex + 1 == events.size() || ! sameTripletGroup (eventIndex + 1));
 
                     auto addNote = [&] (const Pitch* pitch, bool isChordMember)
                     {
@@ -254,15 +264,8 @@ juce::String toMusicXml (const Score& score, const MusicXmlOptions& options)
                                 note->createNewChildElement ("dot");
                         }
 
-                        if (pitch != nullptr && part.percussion)
-                        {
-                            // One voice for the whole kit: stems up, as drum parts are usually written.
-                            addText (*note, "stem", "up");
-
-                            if (! pitch->notehead.empty())
-                                addText (*note, "notehead", juce::String (pitch->notehead));
-                        }
-                        else if (pitch != nullptr)
+                        // MusicXML's order: accidental, time-modification, stem, notehead.
+                        if (pitch != nullptr && ! part.percussion)
                         {
                             auto key = juce::String::charToString (pitch->step) + juce::String (pitch->octave);
                             auto it = alterInForce.find (key);
@@ -275,6 +278,22 @@ juce::String toMusicXml (const Score& score, const MusicXmlOptions& options)
                             alterInForce[key] = pitch->alter;
                         }
 
+                        if (event.triplet)
+                        {
+                            auto* modification = note->createNewChildElement ("time-modification");
+                            addText (*modification, "actual-notes", "3");
+                            addText (*modification, "normal-notes", "2");
+                        }
+
+                        if (pitch != nullptr && part.percussion)
+                        {
+                            // One voice for the whole kit: stems up, as drum parts are usually written.
+                            addText (*note, "stem", "up");
+
+                            if (! pitch->notehead.empty())
+                                addText (*note, "notehead", juce::String (pitch->notehead));
+                        }
+
                         if (staves.size() > 1)
                             addText (*note, "staff", juce::String ((int) staff + 1));
 
@@ -282,6 +301,19 @@ juce::String toMusicXml (const Score& score, const MusicXmlOptions& options)
                         if (! isChordMember)
                             for (int level = 0; level < beams[eventIndex].size(); ++level)
                                 addText (*note, "beam", beams[eventIndex][level])->setAttribute ("number", level + 1);
+
+                        // The bracket (and its 3) goes on the first note of the group's first chord.
+                        if (! isChordMember && (tupletStarts || tupletStops))
+                        {
+                            if (notations == nullptr)
+                                notations = new juce::XmlElement ("notations");
+
+                            if (tupletStarts)
+                                notations->createNewChildElement ("tuplet")->setAttribute ("type", "start");
+
+                            if (tupletStops)
+                                notations->createNewChildElement ("tuplet")->setAttribute ("type", "stop");
+                        }
 
                         if (pitch != nullptr && pitch->open)
                         {
