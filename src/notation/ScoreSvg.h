@@ -28,4 +28,7 @@ juce::Rectangle<float> getSvgDisplaySize (const juce::XmlElement& svg);
 */
 void drawScore (juce::Graphics&, juce::Drawable&, const juce::XmlElement& svg, juce::Point<float> topLeft);
 
+/** The transform drawScore uses: from the drawable's coordinates (Verovio's units) to pixels. */
+juce::AffineTransform getScoreTransform (const juce::XmlElement& svg, juce::Point<float> topLeft);
+
 } // namespace purrlude::notation

@@ -100,6 +100,36 @@ juce::Rectangle<float> getSvgDisplaySize (const juce::XmlElement& svg)
     return { svg.getStringAttribute ("width").getFloatValue(), svg.getStringAttribute ("height").getFloatValue() };
 }
 
+namespace
+{
+    /** The page's viewBox, on the nested <svg class="definition-scale">; empty if there's none. */
+    juce::Rectangle<float> getViewBox (const juce::XmlElement& svg)
+    {
+        for (auto* child : svg.getChildWithTagNameIterator ("svg"))
+        {
+            auto values = juce::StringArray::fromTokens (child->getStringAttribute ("viewBox"), " ,", {});
+
+            if (values.size() == 4)
+                return { values[0].getFloatValue(), values[1].getFloatValue(), values[2].getFloatValue(), values[3].getFloatValue() };
+        }
+
+        return {};
+    }
+}
+
+juce::AffineTransform getScoreTransform (const juce::XmlElement& svg, juce::Point<float> topLeft)
+{
+    auto size = getSvgDisplaySize (svg);
+    auto viewBox = getViewBox (svg);
+
+    if (viewBox.isEmpty() || size.isEmpty())
+        return juce::AffineTransform::translation (topLeft);
+
+    return juce::AffineTransform::translation (-viewBox.getX(), -viewBox.getY())
+               .scaled (size.getWidth() / viewBox.getWidth())
+               .translated (topLeft);
+}
+
 void drawScore (juce::Graphics& g, juce::Drawable& drawable, const juce::XmlElement& svg, juce::Point<float> topLeft)
 {
     auto size = getSvgDisplaySize (svg);

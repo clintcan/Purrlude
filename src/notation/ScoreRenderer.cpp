@@ -1,5 +1,7 @@
 #include "ScoreRenderer.h"
 
+#include <map>
+
 #include <toolkit.h>
 
 namespace purrlude::notation
@@ -64,7 +66,7 @@ bool ScoreRenderer::load (const juce::String& musicXml, const juce::var& options
 }
 
 juce::String ScoreRenderer::renderMusicXml (const juce::String& musicXml, int widthInPixels, juce::String& error,
-                                            int scalePercent)
+                                            int scalePercent, juce::String* timemap)
 {
     const juce::ScopedLock sl (getVerovioLock());
 
@@ -83,7 +85,46 @@ juce::String ScoreRenderer::renderMusicXml (const juce::String& musicXml, int wi
     if (! load (musicXml, juce::var (o), error))
         return {};
 
-    return juce::String::fromUTF8 (toolkit->RenderToSVG (1).c_str());
+    auto svg = juce::String::fromUTF8 (toolkit->RenderToSVG (1).c_str());
+
+    // When each note sounds, keyed by the same ids as the SVG's note elements.
+    if (timemap != nullptr)
+        *timemap = juce::String::fromUTF8 (toolkit->RenderToTimemap ("{}").c_str());
+
+    return svg;
+}
+
+std::vector<ScoreRenderer::TimedNote> ScoreRenderer::parseTimemap (const juce::String& json)
+{
+    // [{ "qstamp": quarters, "tstamp": ms, "on": [ids], "off": [ids] }, ...], in time order.
+    std::vector<TimedNote> notes;
+    std::map<juce::String, size_t> sounding;
+    auto parsed = juce::JSON::parse (json);
+
+    if (auto* entries = parsed.getArray())
+    {
+        for (auto& entry : *entries)
+        {
+            auto quarters = (double) entry.getProperty ("qstamp", 0.0);
+
+            if (auto* off = entry["off"].getArray())
+                for (auto& id : *off)
+                    if (auto it = sounding.find (id.toString()); it != sounding.end())
+                    {
+                        notes[it->second].end = quarters;
+                        sounding.erase (it);
+                    }
+
+            if (auto* on = entry["on"].getArray())
+                for (auto& id : *on)
+                {
+                    sounding[id.toString()] = notes.size();
+                    notes.push_back ({ id.toString(), quarters, quarters });
+                }
+        }
+    }
+
+    return notes;
 }
 
 juce::StringArray ScoreRenderer::renderPages (const juce::String& musicXml, float pageWidth, float pageHeight,

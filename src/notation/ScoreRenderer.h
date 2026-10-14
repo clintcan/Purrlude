@@ -3,6 +3,7 @@
 #include <juce_core/juce_core.h>
 
 #include <memory>
+#include <vector>
 
 namespace vrv { class Toolkit; }
 
@@ -29,13 +30,25 @@ public:
         about 0.72 px per percent). Returns an empty string and sets error on failure.
     */
     juce::String renderMusicXml (const juce::String& musicXml, int widthInPixels, juce::String& error,
-                                 int scalePercent = 45);
+                                 int scalePercent = 45, juce::String* timemap = nullptr);
 
     /** The score laid out on pages of the given size in points (e.g. A4 for PDF), one SVG
         per page, with the title as a header. Each SVG's display size is the page size.
     */
     juce::StringArray renderPages (const juce::String& musicXml, float pageWidth, float pageHeight,
                                    int scalePercent, juce::String& error);
+
+    /** A note in an engraved score: its SVG element's id, and when it sounds, in quarter
+        notes from the start (see parseTimemap).
+    */
+    struct TimedNote
+    {
+        juce::String id;
+        double start = 0.0, end = 0.0;
+    };
+
+    /** Reads Verovio's timemap (from renderMusicXml) into when each note sounds. */
+    static std::vector<TimedNote> parseTimemap (const juce::String& json);
 
     /** Looks for Verovio's data next to the app (bundled), then in the source tree (development builds). */
     static juce::File findResourceDirectory();

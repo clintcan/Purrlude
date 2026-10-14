@@ -1,6 +1,7 @@
 #pragma once
 
 #include "model/LiveInstrument.h"
+#include "notation/ScoreRenderer.h"
 
 #include <tracktion_engine/tracktion_engine.h>
 
@@ -15,6 +16,9 @@ namespace purrlude
     result is shown on a white "paper" area that scrolls vertically.
 
     Transposing instruments are shown as written, or as they sound with Concert pitch on.
+
+    While the song plays, the notes being played are coloured (Verovio's timemap says when
+    each engraved note sounds) and the view scrolls to keep them in sight.
 */
 class ScoreView final : public juce::Component,
                         private juce::Timer
@@ -31,7 +35,12 @@ private:
     class Page;
 
     void timerCallback() override;
-    void handleRendered (int requestId, std::shared_ptr<juce::XmlElement> svg, const juce::String& error);
+    void handleRendered (int requestId, std::shared_ptr<juce::XmlElement> svg, const juce::String& error,
+                         std::vector<notation::ScoreRenderer::TimedNote>);
+
+    /** While playing, colours the notes being played and keeps them in view. */
+    void followPlayhead();
+    juce::TimedCallback playheadFollower { [this] { followPlayhead(); } };
 
     tracktion::Edit& edit;
     LiveInstrument& instrument;

@@ -103,3 +103,56 @@ TEST_CASE ("Verovio engraves drum notation", "[notation][render]")
     if (auto dump = juce::SystemStats::getEnvironmentVariable ("PURRLUDE_DRUM_SVG_DUMP", {}); juce::File::isAbsolutePath (dump))
         juce::File (dump).replaceWithText (svg);
 }
+
+namespace
+{
+    juce::Component* findByID (juce::Component& root, const juce::String& id)
+    {
+        if (root.getComponentID() == id)
+            return &root;
+
+        for (auto* child : root.getChildren())
+            if (auto* found = findByID (*child, id))
+                return found;
+
+        return nullptr;
+    }
+}
+
+TEST_CASE ("The timemap says when each engraved note sounds", "[notation][render]")
+{
+    juce::ScopedJuceInitialiser_GUI juceInit;
+    ScoreRenderer renderer (ScoreRenderer::findResourceDirectory());
+
+    // C D E F in quarters, then a half-note chord.
+    std::vector<NoteEvent> notes { { 0, 1, 60, 100 }, { 1, 1, 62, 100 }, { 2, 1, 64, 100 }, { 3, 1, 65, 100 },
+                                   { 4, 2, 67, 100 }, { 4, 2, 72, 100 } };
+
+    juce::String error, timemap;
+    auto svg = renderer.renderMusicXml (toMusicXml (buildScore (notes, {}), { .tempoMark = false }), 900, error, 45, &timemap);
+    REQUIRE (svg.isNotEmpty());
+
+    auto timed = ScoreRenderer::parseTimemap (timemap);
+    REQUIRE (timed.size() == 6);
+
+    std::vector<std::pair<double, double>> spans;
+
+    for (auto& n : timed)
+        spans.push_back ({ n.start, n.end });
+
+    REQUIRE (spans[0] == std::pair<double, double> { 0.0, 1.0 });
+    REQUIRE (spans[3] == std::pair<double, double> { 3.0, 4.0 });
+    REQUIRE (spans[4] == std::pair<double, double> { 4.0, 6.0 });
+    REQUIRE (spans[5] == std::pair<double, double> { 4.0, 6.0 });
+
+    // Every note can be found in the drawing by its id, to be highlighted.
+    auto prepared = prepareVerovioSvg (svg, juce::Colours::black);
+    auto drawable = juce::Drawable::createFromSVG (*prepared);
+    REQUIRE (drawable != nullptr);
+
+    for (auto& n : timed)
+    {
+        INFO (n.id);
+        REQUIRE (findByID (*drawable, n.id) != nullptr);
+    }
+}
