@@ -86,6 +86,10 @@ target_sources(purrlude_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/Accompaniment.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/AudioExport.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/AudioExport.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/MidiImport.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/MidiImport.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/TimeSignature.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/TimeSignature.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/NoteEditing.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/NoteEditing.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/Project.h
@@ -113,6 +117,8 @@ target_sources(purrlude_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/ExportAudioDialog.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/LevelMeter.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/LevelMeter.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/TimelineView.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/TimelineView.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/ScoreView.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/ScoreView.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/PianoRoll.h

@@ -42,8 +42,8 @@ namespace
 
         // Drum parts have no key signature.
         auto* key = attributes->createNewChildElement ("key");
-        addText (*key, "fifths", juce::String (part.percussion ? 0 : score.key.fifths));
-        addText (*key, "mode", score.key.minor && ! part.percussion ? "minor" : "major");
+        addText (*key, "fifths", juce::String (part.key.fifths));
+        addText (*key, "mode", part.key.minor ? "minor" : "major");
 
         auto* time = attributes->createNewChildElement ("time");
         addText (*time, "beats", juce::String (score.time.numerator));
@@ -65,6 +65,17 @@ namespace
                 case Clef::bass:        addText (*clef, "sign", "F"); addText (*clef, "line", "4"); break;
                 case Clef::percussion:  addText (*clef, "sign", "percussion"); break;
             }
+        }
+
+        // A transposing part's pitches are written ones: say how they sound.
+        if (! part.transposition.isNone())
+        {
+            auto* transpose = attributes->createNewChildElement ("transpose");
+            addText (*transpose, "diatonic", juce::String (part.transposition.diatonic));
+            addText (*transpose, "chromatic", juce::String (part.transposition.chromatic));
+
+            if (part.transposition.octaveChange != 0)
+                addText (*transpose, "octave-change", juce::String (part.transposition.octaveChange));
         }
     }
 
@@ -269,7 +280,7 @@ juce::String toMusicXml (const Score& score, const MusicXmlOptions& options)
                         {
                             auto key = juce::String::charToString (pitch->step) + juce::String (pitch->octave);
                             auto it = alterInForce.find (key);
-                            auto expected = it != alterInForce.end() ? it->second : keyAlterationFor (pitch->step, score.key);
+                            auto expected = it != alterInForce.end() ? it->second : keyAlterationFor (pitch->step, part.key);
 
                             // A tied continuation never repeats its accidental.
                             if (pitch->alter != expected && ! event.tieStop)

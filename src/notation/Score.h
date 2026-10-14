@@ -76,6 +76,19 @@ struct Event
     bool isRest() const            { return pitches.empty(); }
 };
 
+/** How a part is written relative to how it sounds, as MusicXML's <transpose>: the
+    interval from written to sounding pitch. A B-flat trumpet is diatonic -1, chromatic -2
+    (it sounds a major second lower than written); a bass guitar is octaveChange -1.
+*/
+struct Transposition
+{
+    int diatonic = 0, chromatic = 0, octaveChange = 0;
+
+    /** How many semitones the written pitch is above the sounding one. */
+    int getWrittenSemitones() const     { return -(chromatic + 12 * octaveChange); }
+    bool isNone() const                 { return diatonic == 0 && chromatic == 0 && octaveChange == 0; }
+};
+
 struct Measure
 {
     std::vector<std::vector<Event>> staves;   ///< One event list per staff
@@ -85,6 +98,8 @@ struct Part
 {
     std::string name;
     bool percussion = false;                  ///< Drum notation: unpitched notes, no key signature
+    KeySignature key;                         ///< Its written key (differs from the score's when transposed)
+    Transposition transposition;              ///< Written pitches are this far from sounding ones
     std::vector<Clef> clefs;                  ///< One per staff (1 or 2 staves)
     std::vector<Measure> measures;
 };

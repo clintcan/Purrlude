@@ -1,6 +1,7 @@
 #pragma once
 
 #include "LevelMeter.h"
+#include "TimelineView.h"
 #include "TrackHeader.h"
 
 #include <tracktion_engine/tracktion_engine.h>
@@ -10,6 +11,10 @@ namespace purrlude
 
 /** The arrangement: bar ruler, one lane per instrument track (header, clips with their
     notes drawn in), the take being recorded, the playhead, and "+ Track".
+
+    Zoom: pinch, Cmd + scroll, zoomIn/zoomOut/zoomToFit or the zoom bar's buttons. Scroll
+    sideways with a horizontal swipe, Shift + scroll or the zoom bar's scrollbar; a plain
+    scroll moves through the tracks. In fit mode (the default) the whole song is shown.
 
     Clips: click to select, drag to move (snapping to bars, or beats with Shift; onto
     another lane to change track), Option/Alt-drag to copy, drag the right edge to
@@ -50,6 +55,18 @@ public:
     /** Deletes the selected clip, if there is one (Delete/Backspace). */
     bool deleteSelectedClip();
 
+    void zoomIn();
+    void zoomOut();
+    void zoomToFit();
+    void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
+    void mouseMagnify (const juce::MouseEvent&, float scaleFactor) override;
+
+    /** The zoom buttons and horizontal scrollbar: show it below the arrangement's viewport,
+        zoomBarHeight tall, the full width of the arrangement.
+    */
+    juce::Component& getZoomBar();
+    static constexpr int zoomBarHeight = 22;
+
 private:
     void timerCallback() override;
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
@@ -57,15 +74,27 @@ private:
     double getPlayheadBeat() const;
 
     void movePlayheadTo (double beat);
+    void positionOverlays();
 
     class PlayheadOverlay;
     class RulerOverlay;
     std::unique_ptr<RulerOverlay> rulerOverlay;
     std::unique_ptr<PlayheadOverlay> playheadOverlay;
 
-    double getVisibleBeats() const;
+    double getSongBeats() const;      ///< How far the timeline goes: the song and a little after
+    double getLaneWidth() const;
+    std::pair<double, double> getVisibleBeatRange() const;
     float beatToX (double beat) const;
     double xToBeat (float x) const;
+
+    void updateTimeline();
+    void zoomAround (double factor, double anchorBeat);
+    double getZoomAnchor() const;
+    void scrollTo (double startBeat);
+
+    TimelineView timeline;
+    class ZoomBar;
+    std::unique_ptr<ZoomBar> zoomBar;
     int laneIndexAt (int y) const;
     juce::Rectangle<float> getClipArea (int laneIndex, double startBeat, double endBeat) const;
 

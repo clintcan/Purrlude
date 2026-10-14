@@ -124,7 +124,14 @@ The app talks to `purrlude::BluetoothMidiManager` (`src/devices/BluetoothMidiMan
 - **Mixer:** each track has volume, pan, mute and solo. Volume and pan come from its `VolumeAndPanPlugin`, which `TrackInstrument::setUp` adds to every track; for external sources they're also sent as CC 7/10.
   - **Undo:** mixer changes go through `TrackMix` (`src/model/TrackMix.h`). Tracktion keeps mute/solo out of undo, and the plugin's setters would record every fader move. `TrackInstrument` therefore writes volume/pan to the plugin state without the UndoManager (and reads them back from the state, since the parameter updates asynchronously). `TrackMix::change` records one undo step per click or drag.
 - **UI:** the arrangement has one `TrackHeader` per track and scrolls vertically in a Viewport.
+  - **Zoom and horizontal scroll:** `TimelineView` (`src/ui/`, pure maths, tested) holds the beat at the left edge and the pixels per beat.
+    - **Fit mode** (the default) shows the whole song as it grows. Zooming leaves it, and zooming out past the song or Cmd-0 returns to it.
+    - **Controls:** pinch, Cmd+scroll and Cmd +/- zoom around the mouse or playhead. Sideways swipes and Shift+scroll scroll.
+    - **Zoom bar:** the arrangement's `ZoomBar` (− + Fit and a scrollbar) is laid out by `MainComponent` under the viewport, so it doesn't scroll away.
+    - **Playback:** the view pages forward when the playhead leaves it.
   - **Sticky ruler:** the ruler is an overlay kept at the top of the visible area. The viewport scrolls by moving the arrangement, so `ArrangementView::moved` repositions it.
+    - It uses `-getY()`: during that move, `Viewport::getViewPositionY()` still has the old value.
+    - `positionOverlays` also keeps the ruler and playhead above track headers added later.
   - **Meters:** `TrackInstrument::setUp` gives every track a `LevelMeterPlugin` after its volume. `LevelMeter` (`src/ui/`) shows it in the header, and the master level (`EditPlaybackContext::masterLevels`) on the ruler.
   - **Meter references:** `LevelMeter` looks the measurer up on every update and holds only a weak reference, since plugins and playback contexts come and go.
   - **External sources:** tracks played on an external device show no level.
@@ -152,8 +159,24 @@ The app talks to `purrlude::BluetoothMidiManager` (`src/devices/BluetoothMidiMan
 - **What's rendered:** the mix, or stems (one file per track that has clips and isn't muted). The range runs from the start to the end of the last clip, plus up to 2 s of tail. The metronome isn't included.
 - **Rendering:** it uses `tracktion::EditRenderer::render` on a background thread.
   - Its finished callback runs on the render thread, so results are posted to the message thread.
-  - Cancelling (deleting the `AudioExport`) can't join the render thread on the message thread, because the thread may need the message thread first. It's joined, and the partial file deleted, on a detached thread.
+  - **Never join a render thread on the message thread.** Tracktion sets renders up and tears them down there with `callBlocking`, which waits without a timeout, so a join can deadlock. Finished or cancelled handles go to helper threads instead.
+  - **Cancelling** (deleting the `AudioExport`) runs the message loop until those helpers finish, then joins them, so nothing outlives the export.
+  - **Don't detach:** a detached thread crashed the Windows test runner at exit.
 - **UI:** `ExportAudioDialog` (`src/ui/`) remembers the last choices in the settings file. `MainComponent` shows a progress window with Cancel and reveals the file when done.
+
+**MIDI import** (`src/model/MidiImport.h`, File > Import MIDI File, Cmd-I, or drop files on the window):
+- **Parts:** each track/channel pair with notes becomes an instrument track with one clip. The first Program Change picks the GM instrument, channel 10 is the drum kit, and tracks take the file's track names or the instrument.
+- **Content:** notes, CCs (not bank select), pitch bend, channel pressure and aftertouch come in. Ticks convert straight to beats, so placement doesn't depend on tempo.
+- **Placement:** parts start at the playhead's bar.
+- **Empty song:** it reuses the empty track and takes the file's first tempo, time signature and key signature. Later changes are ignored, and SMPTE-timed files are refused.
+- **Song key:** the key is stored on the Edit (`notation::get/setKeySignature`). Scores and the accompaniment's key use it instead of estimating, since jazz ii–V material fools the estimate.
+- **Checking a real file:** `PURRLUDE_MIDI_FILE=/path/song.mid PurrludeTests "[.midi-file]" -s` imports it, prints its tracks and writes the score PDF next to it.
+- **Undo:** the import is one undo step, left open like other arrangement edits.
+
+**Time signature** (`src/model/TimeSignature.h`, the "4/4" button in the transport bar):
+- **What changes:** `changeTimeSignature` changes the song's one time signature as one undo step, keeping how the song sounds. Clips stay at their times and notes in place; only the barring changes.
+- **Rescaling:** Tracktion counts beats in the signature's unit (quarters in x/4, eighths in x/8; BPM stays in quarters). So when the lower number changes, notes, controllers and loop ranges are rescaled, and clip positions are restored afterwards.
+- **Not yet adapted:** drum loops and accompaniment patterns are 4/4 material, so they don't fit other meters.
 
 **Clip editing** (`src/model/ClipEditing.h`, `ArrangementView`):
 - **Operations:** `clips::move` (also copies), `setEnd` and `remove`. A clip put over others replaces what it covers, splitting them if needed.
@@ -242,7 +265,19 @@ A note quantized past the end of the performance moves back onto the last grid s
 - **MusicXML:** triplet notes get `<time-modification>` 3:2, and each beat's group a `<tuplet>` start and stop. Swing is written literally, as triplet quarter + eighth.
 - `BuildOptions::triplets = false` turns this off.
 
-**Not handled yet:** multiple voices per staff, tempo or time-signature changes, transposing instruments, and other tuplets (quintuplets, triplets spanning two beats).
+**Transposing instruments:** `transpositionForProgram` maps GM programs to how they're written.
+- **The table:**
+  - Bass and guitar are written an octave up.
+  - Tenor sax is a ninth up and baritone sax an octave and a sixth up.
+  - Trumpet, clarinet and soprano sax are in B♭, and alto sax in E♭.
+  - Horn and English horn are in F.
+  - Piccolo, celesta, xylophone and glockenspiel are written lower.
+- **Building:** `buildMultiPartScore` builds a transposing part from its written pitches, in its written key (`transposeKey`, preferring the simpler enharmonic). Staves and spelling then follow the written notes.
+- **MusicXML:** the part gets `<transpose>` (diatonic, chromatic, octave-change), so other programs play it right.
+- **Concert pitch:** `BuildOptions::concertPitch` writes everything as it sounds, and the Score tab has a toggle for it. Exports are transposed.
+- **What's known:** only the built-in GM instrument (`notation::getTransposition`). Tracks played on an external device are written as they sound.
+
+**Not handled yet:** multiple voices per staff, tempo or time-signature changes, and other tuplets (quintuplets, triplets spanning two beats).
 
 **On-screen score:** `ScoreView` (`src/ui/`) rebuilds the MusicXML twice a second on the message thread, skipping while recording. When it changes, a background thread engraves it with `notation::ScoreRenderer` (Verovio). Verovio has global state, so it is only ever used from that one thread.
 

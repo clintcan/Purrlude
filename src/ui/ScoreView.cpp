@@ -135,6 +135,12 @@ ScoreView::ScoreView (tracktion::Edit& e, LiveInstrument& i)
     statusLabel.setJustificationType (juce::Justification::centredRight);
     addAndMakeVisible (statusLabel);
 
+    concertPitchButton.setTooltip ("Show transposing instruments (saxophones, trumpet, clarinet, horn, bass, guitar) as they sound, "
+                                   "instead of as their players read them");
+    concertPitchButton.setWantsKeyboardFocus (false);
+    concertPitchButton.onClick = [this] { timerCallback(); };
+    addAndMakeVisible (concertPitchButton);
+
     renderThread = std::make_unique<RenderThread> (juce::WeakReference<ScoreView> (this));
     startTimerHz (2);
 }
@@ -153,7 +159,9 @@ void ScoreView::paint (juce::Graphics& g)
 void ScoreView::resized()
 {
     auto r = getLocalBounds();
-    statusLabel.setBounds (r.removeFromTop (20).reduced (8, 0));
+    auto top = r.removeFromTop (24).reduced (8, 0);
+    concertPitchButton.setBounds (top.removeFromLeft (130));
+    statusLabel.setBounds (top);
     viewport.setBounds (r.reduced (8, 0).withTrimmedBottom (8));
     page->setSize (viewport.getMaximumVisibleWidth(), page->getHeight());
 }
@@ -164,7 +172,9 @@ void ScoreView::timerCallback()
     if (edit.getTransport().isRecording())
         return;
 
-    auto score = notation::buildEditScore (edit, {});
+    notation::BuildOptions options;
+    options.concertPitch = concertPitchButton.getToggleState();
+    auto score = notation::buildEditScore (edit, {}, options);
     auto musicXml = notation::toMusicXml (score, { .tempoMark = false });
     auto width = viewport.getMaximumVisibleWidth() - paperMargin * 2;
 

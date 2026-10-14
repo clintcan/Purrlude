@@ -4,6 +4,7 @@
 #include "devices/MidiDeviceSettings.h"
 #include "devices/ToneListener.h"
 #include "model/AudioExport.h"
+#include "model/MidiImport.h"
 #include "model/Project.h"
 #include "ui/ArrangementView.h"
 #include "ui/LoopsPanel.h"
@@ -26,10 +27,13 @@ namespace purrlude
     Shortcuts: Space play/stop, R record, Home return to start,
     Cmd/Ctrl+Z undo, Cmd/Ctrl+Shift+Z redo, Cmd/Ctrl+N/O/S new/open/save,
     Cmd/Ctrl+Shift+S save as, Cmd/Ctrl+E export the score as PDF, Cmd/Ctrl+Shift+E
-    export audio, Delete/Backspace delete the selected clip.
+    export audio, Cmd/Ctrl+I import a MIDI file (or drop one on the window),
+    Cmd/Ctrl + = / - / 0 zoom the arrangement in / out / to fit,
+    Delete/Backspace delete the selected clip.
 */
 class MainComponent final : public juce::Component,
                             public juce::MenuBarModel,
+                            public juce::FileDragAndDropTarget,
                             private juce::Timer,
                             private juce::ChangeListener
 {
@@ -50,7 +54,7 @@ public:
     void menuItemSelected (int, int) override;
 
 private:
-    enum MenuIds { newId = 1, openId, saveId, saveAsId, exportPdfId, exportPartsId, exportMusicXmlId, exportAudioId, undoId, redoId };
+    enum MenuIds { newId = 1, openId, saveId, saveAsId, exportPdfId, exportPartsId, exportMusicXmlId, exportAudioId, importMidiId, undoId, redoId };
 
     void setProject (std::unique_ptr<Project>);
     void startUp();
@@ -65,6 +69,12 @@ private:
     enum class ExportFormat { pdf, partPdfs, musicXml };
     void exportScore (ExportFormat);
     void exportParts();
+
+    void chooseMidiFileToImport();
+    void importMidiFiles (const juce::Array<juce::File>&);
+
+    bool isInterestedInFileDrag (const juce::StringArray&) override;
+    void filesDropped (const juce::StringArray&, int, int) override;
 
     void exportAudio();
     void chooseAudioDestination (AudioExportOptions);

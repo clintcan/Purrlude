@@ -64,7 +64,9 @@ namespace accompaniment
     /** Parses one numeral (e.g. "V7", "bVII", "ii7", "iiø7", "Imaj7") in a key; nullopt if malformed. */
     std::optional<Chord> parseNumeral (const juce::String&, Key);
 
-    /** The key of what's been played (all tracks but drums), or C major if nothing has. */
+    /** The song's key: its key signature if it has one (see notation::getKeySignature),
+        otherwise estimated from what's been played (all tracks but drums), or C major.
+    */
     Key detectKey (tracktion::Edit&);
 
     juce::String getKeyName (Key);   ///< e.g. "F# minor"

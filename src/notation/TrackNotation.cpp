@@ -5,6 +5,41 @@
 namespace purrlude::notation
 {
 
+namespace
+{
+    const juce::Identifier keySignatureProperty ("purrludeKeySignature");   ///< "fifths major|minor"
+}
+
+std::optional<KeySignature> getKeySignature (tracktion::Edit& edit)
+{
+    auto text = edit.state[keySignatureProperty].toString();
+
+    if (text.isEmpty())
+        return std::nullopt;
+
+    return KeySignature { juce::jlimit (-7, 7, text.upToFirstOccurrenceOf (" ", false, false).getIntValue()),
+                          text.endsWith ("minor") };
+}
+
+void setKeySignature (tracktion::Edit& edit, std::optional<KeySignature> key, juce::UndoManager* um)
+{
+    if (key)
+        edit.state.setProperty (keySignatureProperty, juce::String (key->fifths) + (key->minor ? " minor" : " major"), um);
+    else
+        edit.state.removeProperty (keySignatureProperty, um);
+}
+
+Transposition getTransposition (tracktion::AudioTrack& track)
+{
+    // Only the built-in GM instrument is known; a keyboard's own tones could be anything.
+    TrackInstrument instrument (track.edit, track);
+
+    if (instrument.getSoundSourceID().isNotEmpty() || instrument.playsDrumKit())
+        return {};
+
+    return transpositionForProgram (instrument.getProgram());
+}
+
 TimeSignature getTimeSignature (tracktion::Edit& edit)
 {
     auto* sig = edit.tempoSequence.getTimeSig (0);
@@ -81,13 +116,19 @@ Score buildEditScore (tracktion::Edit& edit, const std::string& title, const Bui
 
     for (auto* track : tracks)
         if (auto notes = getTrackNotes (*track); ! notes.empty())
-            parts.push_back ({ track->getName().toStdString(), std::move (notes), TrackInstrument (edit, *track).playsDrumKit() });
+            parts.push_back ({ track->getName().toStdString(), std::move (notes), TrackInstrument (edit, *track).playsDrumKit(),
+                               getTransposition (*track) });
 
     if (parts.empty() && ! tracks.isEmpty())
         parts.push_back ({ tracks[0]->getName().toStdString(), {} });
 
     auto bpm = edit.tempoSequence.getTempo (0) != nullptr ? edit.tempoSequence.getTempo (0)->getBpm() : 120.0;
-    return buildMultiPartScore (parts, getTimeSignature (edit), options, title, bpm);
+    auto withKey = options;
+
+    if (! withKey.key)
+        withKey.key = getKeySignature (edit);
+
+    return buildMultiPartScore (parts, getTimeSignature (edit), withKey, title, bpm);
 }
 
 Score buildTrackScore (tracktion::AudioTrack& track, const std::string& title, const BuildOptions& options)
@@ -95,8 +136,14 @@ Score buildTrackScore (tracktion::AudioTrack& track, const std::string& title, c
     auto& edit = track.edit;
     auto bpm = edit.tempoSequence.getTempo (0) != nullptr ? edit.tempoSequence.getTempo (0)->getBpm() : 120.0;
 
-    return buildMultiPartScore ({ { track.getName().toStdString(), getTrackNotes (track), TrackInstrument (edit, track).playsDrumKit() } },
-                                getTimeSignature (edit), options, title, bpm);
+    auto withKey = options;
+
+    if (! withKey.key)
+        withKey.key = getKeySignature (edit);
+
+    return buildMultiPartScore ({ { track.getName().toStdString(), getTrackNotes (track), TrackInstrument (edit, track).playsDrumKit(),
+                                    getTransposition (track) } },
+                                getTimeSignature (edit), withKey, title, bpm);
 }
 
 } // namespace purrlude::notation

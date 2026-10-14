@@ -18,13 +18,25 @@ std::vector<NoteEvent> getClipNotes (tracktion::MidiClip&);
 */
 std::vector<NoteEvent> getTrackNotes (tracktion::AudioTrack&);
 
+/** The song's key signature, if one has been set (e.g. from an imported MIDI file);
+    otherwise scores estimate it from the notes.
+*/
+std::optional<KeySignature> getKeySignature (tracktion::Edit&);
+void setKeySignature (tracktion::Edit&, std::optional<KeySignature>, juce::UndoManager*);
+
+/** How the track's instrument is written (see transpositionForProgram): known for the
+    built-in GM instrument, none otherwise.
+*/
+Transposition getTransposition (tracktion::AudioTrack&);
+
 /** The Edit's first time signature. Tempo or time-signature changes aren't notated yet. */
 TimeSignature getTimeSignature (tracktion::Edit&);
 
 /** A one-part score for the track, using the Edit's tempo and time signature. */
 Score buildTrackScore (tracktion::AudioTrack&, const std::string& title, const BuildOptions& = {});
 
-/** The whole song: one part per track that has notes (named after the track), in one key.
+/** The whole song: one part per track that has notes (named after the track), in one key
+    (the song's key signature if it has one, otherwise estimated).
     If no track has notes, the first track as an empty part.
 */
 Score buildEditScore (tracktion::Edit&, const std::string& title, const BuildOptions& = {});

@@ -311,6 +311,13 @@ juce::String Chord::getName (Key key) const
 
 Key detectKey (tracktion::Edit& edit)
 {
+    // A key the song has been given (e.g. by an imported MIDI file) wins.
+    if (auto signature = notation::getKeySignature (edit))
+    {
+        auto majorTonic = ((signature->fifths * 7) % 12 + 12) % 12;
+        return { signature->minor ? (majorTonic + 9) % 12 : majorTonic, signature->minor };
+    }
+
     std::vector<notation::NoteEvent> notes;
 
     for (auto* track : tracktion::getAudioTracks (edit))

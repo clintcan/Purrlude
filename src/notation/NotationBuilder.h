@@ -14,6 +14,7 @@ struct BuildOptions
     int splitPitch = 60;                        ///< Grand staff: this note and above go on the treble staff
     std::optional<KeySignature> key;            ///< Estimated from the notes if not given
     bool triplets = true;                       ///< Write beats played in triplets as triplets
+    bool concertPitch = false;                  ///< Write transposing instruments as they sound
 };
 
 /** Builds a one-part score from performed notes. */
@@ -23,13 +24,20 @@ Score buildScore (const std::vector<NoteEvent>&, TimeSignature, const BuildOptio
 
 struct PartNotes
 {
+    PartNotes (std::string partName, std::vector<NoteEvent> partNotes, bool isPercussion = false, Transposition t = {})
+        : name (std::move (partName)), notes (std::move (partNotes)), percussion (isPercussion), transposition (t) {}
+
     std::string name;
     std::vector<NoteEvent> notes;
     bool percussion = false;   ///< General MIDI drum notes, written as drum notation
+    Transposition transposition;   ///< For a transposing instrument (see transpositionForProgram)
 };
 
 /** Builds a score with one part per entry. The key is estimated from all pitched parts
     together, and every part gets the same number of measures (shorter ones end in rests).
+
+    Transposing parts are written at their written pitch, in their written key, unless
+    options.concertPitch is set.
 */
 Score buildMultiPartScore (const std::vector<PartNotes>&, TimeSignature, const BuildOptions& = {},
                            const std::string& title = {}, double tempoBpm = 120.0);
@@ -71,6 +79,18 @@ KeySignature estimateKey (const std::vector<NoteEvent>&);
 
 /** Spells a MIDI note for a key: diatonic notes by the scale, others with the key's accidental direction. */
 Pitch spell (int midiNote, KeySignature);
+
+/** How the instrument a General MIDI program plays is written: bass and guitar an octave
+    above sounding, tenor sax a ninth above, alto and baritone sax in E-flat, trumpet,
+    clarinet and soprano sax in B-flat, horn and English horn in F, and piccolo, celesta,
+    xylophone and glockenspiel below. Others (piano, strings, flute...) as they sound.
+*/
+Transposition transpositionForProgram (int gmProgram);
+
+/** The key a transposing instrument reads in, e.g. G major for a B-flat instrument when
+    the music sounds in F. Prefers the simpler of enharmonic keys.
+*/
+KeySignature transposeKey (KeySignature concert, Transposition);
 
 /** Where a General MIDI drum note sits on a percussion staff, and its notehead:
     kick F4, snare C5, toms E5/D5/A4, hi-hat G5 (x, open with an "o"), crash A5 (x), ride F5 (x).

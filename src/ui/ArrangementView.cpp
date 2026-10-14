@@ -29,6 +29,10 @@ public:
     void paint (juce::Graphics& g) override
     {
         auto x = owner.beatToX (owner.getPlayheadBeat()) - (float) getX();
+
+        if (x < -2.0f || x > (float) getWidth() + 2.0f)
+            return;   // scrolled out of view
+
         g.setColour (playheadColour);
         g.fillRect (juce::Rectangle<float> (x - 0.5f, 0.0f, 2.0f, (float) getHeight()));
     }
@@ -64,17 +68,24 @@ public:
         g.setFont (juce::FontOptions (12.0f));
         g.drawText ("Master", 8, 0, 50, getHeight(), juce::Justification::centredLeft);
 
-        // Bar numbers, right of the headers.
+        // Bar numbers, right of the headers: every bar, or every 2nd, 4th... when zoomed out.
         auto beatsPerBar = owner.edit.tempoSequence.getTimeSig (0)->numerator.get();
-        g.reduceClipRegion (headerWidth, 0, getWidth() - headerWidth, getHeight());
+        auto barWidth = beatsPerBar * owner.timeline.getPixelsPerBeat();
+        int barStep = 1;
 
-        for (int beat = 0; beat <= (int) owner.getVisibleBeats(); beat += beatsPerBar)
+        while (barStep * barWidth < 28.0 && barStep < 1024)
+            barStep *= 2;
+
+        g.reduceClipRegion (headerWidth, 0, getWidth() - headerWidth, getHeight());
+        auto [firstBeat, lastBeat] = owner.getVisibleBeatRange();
+
+        for (int bar = (int) (firstBeat / beatsPerBar) / barStep * barStep; bar * beatsPerBar <= lastBeat; bar += barStep)
         {
-            auto x = (int) owner.beatToX (beat);
+            auto x = (int) owner.beatToX (bar * beatsPerBar);
             g.setColour (juce::Colours::white.withAlpha (0.25f));
             g.drawVerticalLine (x, 0.0f, (float) getHeight());
             g.setColour (juce::Colours::lightgrey);
-            g.drawText (juce::String (beat / beatsPerBar + 1), x + 3, 0, 40, getHeight(), juce::Justification::centredLeft);
+            g.drawText (juce::String (bar + 1), x + 3, 0, 40, getHeight(), juce::Justification::centredLeft);
         }
 
         g.setColour (juce::Colours::black.withAlpha (0.3f));
@@ -99,6 +110,61 @@ private:
     LevelMeter masterMeter;
 };
 
+/** Zoom buttons (under the track headers) and the horizontal scrollbar (under the lanes). */
+class ArrangementView::ZoomBar final : public juce::Component,
+                                       private juce::ScrollBar::Listener
+{
+public:
+    explicit ZoomBar (ArrangementView& o) : owner (o)
+    {
+        zoomOutButton.setTooltip ("Zoom out (Cmd -)");
+        zoomInButton.setTooltip ("Zoom in (Cmd +, or pinch, or Cmd + scroll)");
+        fitButton.setTooltip ("Show the whole song (Cmd 0)");
+        zoomOutButton.onClick = [this] { owner.zoomOut(); };
+        zoomInButton.onClick = [this] { owner.zoomIn(); };
+        fitButton.onClick = [this] { owner.zoomToFit(); };
+
+        for (auto* b : { &zoomOutButton, &zoomInButton, &fitButton })
+        {
+            b->setWantsKeyboardFocus (false);
+            addAndMakeVisible (b);
+        }
+
+        scrollBar.setAutoHide (false);
+        scrollBar.addListener (this);
+        addAndMakeVisible (scrollBar);
+    }
+
+    ~ZoomBar() override     { scrollBar.removeListener (this); }
+
+    /** Shows the visible part of the song on the scrollbar. */
+    void update (double songBeats, double startBeat, double visibleBeats)
+    {
+        scrollBar.setRangeLimits (0.0, std::max (songBeats, startBeat + visibleBeats), juce::dontSendNotification);
+        scrollBar.setCurrentRange (startBeat, visibleBeats, juce::dontSendNotification);
+        fitButton.setToggleState (owner.timeline.isFit(), juce::dontSendNotification);
+    }
+
+    void resized() override
+    {
+        auto r = getLocalBounds();
+        auto buttons = r.removeFromLeft (headerWidth).reduced (6, 1);
+        zoomOutButton.setBounds (buttons.removeFromLeft (28));
+        buttons.removeFromLeft (4);
+        zoomInButton.setBounds (buttons.removeFromLeft (28));
+        buttons.removeFromLeft (4);
+        fitButton.setBounds (buttons.removeFromLeft (44));
+        scrollBar.setBounds (r.reduced (0, 2));
+    }
+
+private:
+    void scrollBarMoved (juce::ScrollBar*, double newStart) override    { owner.scrollTo (newStart); }
+
+    ArrangementView& owner;
+    juce::TextButton zoomOutButton { "-" }, zoomInButton { "+" }, fitButton { "Fit" };
+    juce::ScrollBar scrollBar { false };
+};
+
 ArrangementView::ArrangementView (tracktion::Edit& e, LiveInstrument& l, MidiDeviceSettings& s)
     : edit (e), live (l), deviceSettings (s)
 {
@@ -116,6 +182,7 @@ ArrangementView::ArrangementView (tracktion::Edit& e, LiveInstrument& l, MidiDev
     addAndMakeVisible (*rulerOverlay);
     playheadOverlay = std::make_unique<PlayheadOverlay> (*this);
     addAndMakeVisible (*playheadOverlay);
+    zoomBar = std::make_unique<ZoomBar> (*this);   // shown by whoever lays out the arrangement
 
     edit.engine.getDeviceManager().addChangeListener (this);
     deviceSettings.addChangeListener (this);
@@ -129,6 +196,7 @@ ArrangementView::~ArrangementView()
     stopTimer();
     playheadOverlay = nullptr;
     rulerOverlay = nullptr;
+    zoomBar = nullptr;
     edit.engine.getDeviceManager().removeChangeListener (this);
     deviceSettings.removeChangeListener (this);
 }
@@ -187,27 +255,107 @@ void ArrangementView::syncHeaders()
     }
 }
 
-double ArrangementView::getVisibleBeats() const
+double ArrangementView::getSongBeats() const
 {
     auto beatsPerBar = edit.tempoSequence.getTimeSig (0)->numerator.get();
     auto endBeat = edit.tempoSequence.toBeats (tracktion::toPosition (edit.getLength())).inBeats();
     auto playheadBeat = edit.tempoSequence.toBeats (edit.getTransport().getPosition()).inBeats();
 
-    // Always show a little empty space after the content and the playhead.
+    // Always a little empty space after the content and the playhead.
     auto bars = juce::jmax ((double) minimumBars, std::ceil (juce::jmax (endBeat, playheadBeat) / beatsPerBar) + 4.0);
     return bars * beatsPerBar;
 }
 
+double ArrangementView::getLaneWidth() const
+{
+    return (double) juce::jmax (1, getWidth() - headerWidth);
+}
+
+std::pair<double, double> ArrangementView::getVisibleBeatRange() const
+{
+    return { timeline.getStartBeat(), timeline.getStartBeat() + timeline.getVisibleBeats (getLaneWidth()) };
+}
+
 float ArrangementView::beatToX (double beat) const
 {
-    auto width = (double) (getWidth() - headerWidth);
-    return (float) (headerWidth + beat / getVisibleBeats() * width);
+    return (float) (headerWidth + timeline.beatToX (beat));
 }
 
 double ArrangementView::xToBeat (float x) const
 {
-    auto width = (double) (getWidth() - headerWidth);
-    return juce::jmax (0.0, (x - headerWidth) / width * getVisibleBeats());
+    return juce::jmax (0.0, timeline.xToBeat (x - headerWidth));
+}
+
+//==============================================================================
+juce::Component& ArrangementView::getZoomBar()
+{
+    return *zoomBar;
+}
+
+void ArrangementView::updateTimeline()
+{
+    timeline.update (getSongBeats(), getLaneWidth());
+    auto [start, end] = getVisibleBeatRange();
+    zoomBar->update (getSongBeats(), start, end - start);
+}
+
+void ArrangementView::zoomAround (double factor, double anchorBeat)
+{
+    timeline.zoom (factor, anchorBeat, getSongBeats(), getLaneWidth());
+    updateTimeline();
+    repaint();
+}
+
+double ArrangementView::getZoomAnchor() const
+{
+    // The playhead if it's in view, otherwise the middle of the view.
+    auto [start, end] = getVisibleBeatRange();
+    auto playhead = getPlayheadBeat();
+    return playhead >= start && playhead <= end ? playhead : (start + end) / 2.0;
+}
+
+void ArrangementView::zoomIn()      { zoomAround (1.5, getZoomAnchor()); }
+void ArrangementView::zoomOut()     { zoomAround (1.0 / 1.5, getZoomAnchor()); }
+
+void ArrangementView::zoomToFit()
+{
+    timeline.zoomToFit();
+    updateTimeline();
+    repaint();
+}
+
+void ArrangementView::scrollTo (double startBeat)
+{
+    timeline.scrollTo (startBeat, getSongBeats(), getLaneWidth());
+    updateTimeline();
+    repaint();
+}
+
+void ArrangementView::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
+{
+    // Cmd + scroll zooms around the mouse.
+    if (e.mods.isCommandDown())
+    {
+        zoomAround (std::pow (2.0, wheel.deltaY * 2.0), xToBeat ((float) e.x));
+        return;
+    }
+
+    // Sideways swipes (or Shift + scroll) move through the song; the rest scrolls the tracks.
+    auto sideways = std::abs (wheel.deltaX) > std::abs (wheel.deltaY);
+
+    if (sideways || e.mods.isShiftDown())
+    {
+        auto delta = sideways ? wheel.deltaX : wheel.deltaY;
+        scrollTo (timeline.getStartBeat() - delta * 400.0 / timeline.getPixelsPerBeat());
+        return;
+    }
+
+    juce::Component::mouseWheelMove (e, wheel);
+}
+
+void ArrangementView::mouseMagnify (const juce::MouseEvent& e, float scaleFactor)
+{
+    zoomAround (scaleFactor, xToBeat ((float) e.x));
 }
 
 void ArrangementView::paint (juce::Graphics& g)
@@ -217,18 +365,22 @@ void ArrangementView::paint (juce::Graphics& g)
 
     auto& tempo = edit.tempoSequence;
     auto beatsPerBar = tempo.getTimeSig (0)->numerator.get();
-    auto visibleBeats = getVisibleBeats();
     auto tracks = tracktion::getAudioTracks (edit);
     auto lanesBottom = rulerHeight + laneHeight * tracks.size();
+    auto [firstBeat, lastBeat] = getVisibleBeatRange();
 
-    // Bar and beat lines (the bar numbers are on the ruler overlay).
-    for (int beat = 0; beat <= (int) visibleBeats; ++beat)
+    // Bar and beat lines (the bar numbers are on the ruler overlay); beats only when there's room.
+    auto showBeats = timeline.getPixelsPerBeat() >= 8.0;
+
+    for (int beat = (int) std::floor (firstBeat); beat <= (int) std::ceil (lastBeat); ++beat)
     {
-        auto x = beatToX (beat);
         bool isBar = beat % beatsPerBar == 0;
 
+        if (! isBar && ! showBeats)
+            continue;
+
         g.setColour (juce::Colours::white.withAlpha (isBar ? 0.25f : 0.08f));
-        g.drawVerticalLine ((int) x, (float) rulerHeight, (float) lanesBottom);
+        g.drawVerticalLine ((int) beatToX (beat), (float) rulerHeight, (float) lanesBottom);
     }
 
     auto playheadBeat = getPlayheadBeat();
@@ -357,29 +509,42 @@ double ArrangementView::getPlayheadBeat() const
 void ArrangementView::moved()
 {
     // The viewport scrolls by moving this component: keep the ruler in view.
-    resized();
+    positionOverlays();
 }
 
 void ArrangementView::resized()
 {
-    // The ruler stays at the top of what the viewport shows, above the track headers.
-    if (rulerOverlay != nullptr)
-    {
-        auto* viewport = findParentComponentOfClass<juce::Viewport>();
-        rulerOverlay->setBounds (0, viewport != nullptr ? viewport->getViewPositionY() : 0, getWidth(), rulerHeight);
-        rulerOverlay->toFront (false);
-    }
-
-    if (playheadOverlay != nullptr)
-    {
-        playheadOverlay->setBounds (getLocalBounds().withTrimmedLeft (headerWidth));
-        playheadOverlay->toFront (false);
-    }
-
     for (size_t i = 0; i < headers.size(); ++i)
         headers[i]->setBounds (0, rulerHeight + (int) i * laneHeight, headerWidth, laneHeight);
 
     addTrackButton.setBounds (8, rulerHeight + (int) headers.size() * laneHeight + 8, 90, 26);
+
+    if (playheadOverlay != nullptr)
+        playheadOverlay->setBounds (getLocalBounds().withTrimmedLeft (headerWidth));
+
+    positionOverlays();
+
+    if (zoomBar != nullptr)
+        updateTimeline();
+}
+
+void ArrangementView::positionOverlays()
+{
+    if (rulerOverlay == nullptr || playheadOverlay == nullptr)
+        return;
+
+    // The ruler stays at the top of what the viewport shows. This component is the one the
+    // viewport moves to scroll, so its own position says where that is (the viewport's
+    // getViewPositionY() is still the old one while this is being moved).
+    rulerOverlay->setBounds (0, juce::jmax (0, -getY()), getWidth(), rulerHeight);
+
+    // Above the track headers, which may have been added since; the playhead above that.
+    if (getIndexOfChildComponent (rulerOverlay.get()) != getNumChildComponents() - 2
+         || getIndexOfChildComponent (playheadOverlay.get()) != getNumChildComponents() - 1)
+    {
+        rulerOverlay->toFront (false);
+        playheadOverlay->toFront (false);
+    }
 }
 
 int ArrangementView::laneIndexAt (int y) const
@@ -579,6 +744,19 @@ void ArrangementView::timerCallback()
     // Tracks added, removed or reordered (including by undo).
     syncHeaders();
 
+    // While playing, page forward when the playhead runs off the right of the view.
+    if (transport.isPlaying() && ! timeline.isFit())
+    {
+        auto [start, end] = getVisibleBeatRange();
+        auto playhead = getPlayheadBeat();
+
+        if (playhead > end - (end - start) * 0.02 || playhead < start)
+            timeline.scrollTo (playhead - (end - start) * 0.05, getSongBeats(), getLaneWidth());
+    }
+
+    updateTimeline();
+
+    positionOverlays();   // in case anything slipped past moved() and resized()
     rulerOverlay->repaint();
 
     for (auto& header : headers)

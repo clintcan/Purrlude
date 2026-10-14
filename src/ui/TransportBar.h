@@ -6,7 +6,7 @@ namespace purrlude
 {
 
 /** Record / play / stop / return-to-start, metronome and count-in toggles,
-    tempo and the playhead position (bar.beat and minutes:seconds).
+    tempo, time signature and the playhead position (bar.beat and minutes:seconds).
 */
 class TransportBar final : public juce::Component,
                            private juce::Timer
@@ -25,12 +25,16 @@ private:
     void timerCallback() override;
     void updateButtons();
     void setTempo (double bpm);
+    void showTimeSignatureMenu();
+    void askForTimeSignature();
 
     tracktion::Edit& edit;
 
     juce::TextButton startButton { "|<" }, playButton { "Play" }, recordButton { "Record" };
     juce::ToggleButton metronomeButton { "Metronome" }, countInButton { "Count-in" };
     juce::Label tempoLabel, tempoUnitLabel { {}, "BPM" }, positionLabel;
+    juce::TextButton timeSignatureButton;
+    std::unique_ptr<juce::AlertWindow> timeSignatureWindow;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TransportBar)
 };

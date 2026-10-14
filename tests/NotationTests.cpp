@@ -356,6 +356,77 @@ TEST_CASE ("Triplets are written with brackets", "[notation][triplets]")
     REQUIRE_FALSE (toMusicXml (buildScore (notes, {}, { .triplets = false })).contains ("time-modification"));
 }
 
+TEST_CASE ("Transposing instruments are written as their players read them", "[notation][transposing]")
+{
+    // Instruments by GM program.
+    REQUIRE (transpositionForProgram (0).isNone());                    // piano
+    REQUIRE (transpositionForProgram (73).isNone());                   // flute
+    REQUIRE (transpositionForProgram (32).getWrittenSemitones() == 12);   // acoustic bass
+    REQUIRE (transpositionForProgram (25).getWrittenSemitones() == 12);   // steel guitar
+    REQUIRE (transpositionForProgram (66).getWrittenSemitones() == 14);   // tenor sax
+    REQUIRE (transpositionForProgram (65).getWrittenSemitones() == 9);    // alto sax
+    REQUIRE (transpositionForProgram (67).getWrittenSemitones() == 21);   // baritone sax
+    REQUIRE (transpositionForProgram (56).getWrittenSemitones() == 2);    // trumpet
+    REQUIRE (transpositionForProgram (60).getWrittenSemitones() == 7);    // horn
+    REQUIRE (transpositionForProgram (72).getWrittenSemitones() == -12);  // piccolo
+
+    // Written keys.
+    KeySignature fMajor { -1, false };
+    REQUIRE (transposeKey (fMajor, transpositionForProgram (66)).fifths == 1);    // G for tenor sax
+    REQUIRE (transposeKey (fMajor, transpositionForProgram (65)).fifths == 2);    // D for alto sax
+    REQUIRE (transposeKey (fMajor, transpositionForProgram (60)).fifths == 0);    // C for horn
+    REQUIRE (transposeKey (fMajor, transpositionForProgram (32)).fifths == -1);   // F for bass
+    REQUIRE (transposeKey ({ 4, false }, transpositionForProgram (65)).fifths == -5);   // Db, not C#
+    REQUIRE (transposeKey ({ 0, true }, transpositionForProgram (56)).minor);
+
+    // An F major tune for tenor sax, piano and a walking bass.
+    auto melody = scale ({ 65, 67, 69, 70 });                                 // F G A Bb, sounding
+    std::vector<NoteEvent> bass { { 0, 1, 29, 100 }, { 1, 1, 33, 100 }, { 2, 1, 36, 100 }, { 3, 1, 38, 100 } };   // F1 A1 C2 D2
+
+    auto score = buildMultiPartScore ({ { "Tenor Sax", melody, false, transpositionForProgram (66) },
+                                        { "Piano", melody },
+                                        { "Bass", bass, false, transpositionForProgram (32) } },
+                                      {}, { .key = fMajor });
+
+    const auto& sax = score.parts[0];
+    REQUIRE (sax.key.fifths == 1);
+    REQUIRE (sax.clefs == std::vector<Clef> { Clef::treble });
+    auto first = sax.measures[0].staves[0][0].pitches[0];
+    REQUIRE (first.midi == 65 + 14);   // G5 written
+    REQUIRE (first.step == 'G');
+    REQUIRE (first.octave == 5);
+    REQUIRE (sax.measures[0].staves[0][3].pitches[0].step == 'C');   // Bb sounding is C written
+    REQUIRE (sax.measures[0].staves[0][3].pitches[0].alter == 0);
+
+    REQUIRE (score.parts[1].key.fifths == -1);                        // piano as it sounds
+    REQUIRE (score.parts[1].transposition.isNone());
+
+    // The bass reads an octave up, on the bass staff rather than ledger lines below it.
+    const auto& bassPart = score.parts[2];
+    REQUIRE (bassPart.clefs == std::vector<Clef> { Clef::bass });
+    REQUIRE (bassPart.measures[0].staves[0][0].pitches[0].midi == 41);   // F2 written
+
+    // MusicXML says how each transposing part sounds.
+    auto doc = juce::parseXML (toMusicXml (score));
+    auto* saxPart = doc->getChildByName ("part");
+    auto* attributes = saxPart->getChildByName ("measure")->getChildByName ("attributes");
+    auto* transpose = attributes->getChildByName ("transpose");
+    REQUIRE (transpose != nullptr);
+    REQUIRE (transpose->getChildByName ("diatonic")->getAllSubText() == "-1");
+    REQUIRE (transpose->getChildByName ("chromatic")->getAllSubText() == "-2");
+    REQUIRE (transpose->getChildByName ("octave-change")->getAllSubText() == "-1");
+    REQUIRE (attributes->getChildByName ("key")->getChildByName ("fifths")->getAllSubText() == "1");
+    REQUIRE (saxPart->getNextElementWithTagName ("part")->getChildByName ("measure")->getChildByName ("attributes")
+                    ->getChildByName ("transpose") == nullptr);
+
+    // Concert pitch writes everything as it sounds.
+    auto concert = buildMultiPartScore ({ { "Tenor Sax", melody, false, transpositionForProgram (66) } },
+                                        {}, { .key = fMajor, .concertPitch = true });
+    REQUIRE (concert.parts[0].key.fifths == -1);
+    REQUIRE (concert.parts[0].transposition.isNone());
+    REQUIRE (concert.parts[0].measures[0].staves[0][0].pitches[0].midi == 65);
+}
+
 TEST_CASE ("Drum parts are written as drum notation", "[notation]")
 {
     // Kick, snare and closed hi-hats on 8ths, with an open hi-hat on the last 8th.

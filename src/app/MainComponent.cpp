@@ -128,6 +128,7 @@ void MainComponent::setProject (std::unique_ptr<Project> newProject)
     loopsPanel->setVisible (loopsButton.getToggleState());
     addAndMakeVisible (*transportBar);
     arrangementViewport.setViewedComponent (arrangement.get(), false);
+    addAndMakeVisible (arrangement->getZoomBar());
     arrangementViewport.setScrollBarsShown (true, false);
     arrangement->onContentHeightChanged = [this] { resized(); };
 
@@ -422,6 +423,56 @@ void MainComponent::exportScore (ExportFormat format)
 }
 
 //==============================================================================
+void MainComponent::chooseMidiFileToImport()
+{
+    auto dir = project->getFile() != juce::File() ? project->getFile().getParentDirectory() : getDefaultProjectDirectory();
+    fileChooser = std::make_unique<juce::FileChooser> ("Import a MIDI file", dir, "*.mid;*.midi;*.smf;*.kar");
+
+    fileChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles
+                                | juce::FileBrowserComponent::canSelectMultipleItems,
+                              [safe = juce::WeakReference<MainComponent> (this)] (const juce::FileChooser& chooser)
+    {
+        if (safe != nullptr && ! chooser.getResults().isEmpty())
+            safe->importMidiFiles (chooser.getResults());
+    });
+}
+
+void MainComponent::importMidiFiles (const juce::Array<juce::File>& files)
+{
+    auto& edit = project->getEdit();
+
+    // At the start of the bar the playhead is in.
+    auto bar = juce::jmax (0, edit.tempoSequence.toBarsAndBeats (edit.getTransport().getPosition()).bars);
+    juce::StringArray errors;
+
+    for (auto& file : files)
+        if (auto result = midi_import::importFile (edit, project->getInstrument(), file, bar); result.error.isNotEmpty())
+            errors.add (result.error);
+
+    if (! errors.isEmpty())
+        showError ("Couldn't import MIDI", errors.joinIntoString ("\n"));
+}
+
+bool MainComponent::isInterestedInFileDrag (const juce::StringArray& paths)
+{
+    for (auto& path : paths)
+        if (midi_import::isMidiFile (juce::File (path)))
+            return true;
+
+    return false;
+}
+
+void MainComponent::filesDropped (const juce::StringArray& paths, int, int)
+{
+    juce::Array<juce::File> files;
+
+    for (auto& path : paths)
+        if (midi_import::isMidiFile (juce::File (path)))
+            files.add (juce::File (path));
+
+    importMidiFiles (files);
+}
+
 void MainComponent::exportAudio()
 {
     if (audioExport != nullptr)
@@ -652,7 +703,11 @@ void MainComponent::resized()
     if (editorTabs.isVisible())
         editorTabs.setBounds (r.removeFromBottom (juce::jmax (0, juce::jmin (r.getHeight() - 180, (int) (r.getHeight() * 0.6f)))));
 
-    // The arrangement scrolls when its tracks don't fit.
+    // The arrangement scrolls up and down when its tracks don't fit; the zoom bar below it
+    // scrolls it sideways.
+    if (arrangement != nullptr)
+        arrangement->getZoomBar().setBounds (r.removeFromBottom (ArrangementView::zoomBarHeight));
+
     arrangementViewport.setBounds (r);
 
     if (arrangement != nullptr)
@@ -685,6 +740,11 @@ bool MainComponent::keyPressed (const juce::KeyPress& key)
             case 'O':   openProject();  return true;
             case 'S':   if (mods.isShiftDown()) saveProjectAs(); else saveProject();                            return true;
             case 'E':   if (mods.isShiftDown()) exportAudio(); else exportScore (ExportFormat::pdf);            return true;
+            case 'I':   chooseMidiFileToImport();                                                               return true;
+            case '=':
+            case '+':   arrangement->zoomIn();                                                                  return true;
+            case '-':   arrangement->zoomOut();                                                                 return true;
+            case '0':   arrangement->zoomToFit();                                                               return true;
             case 'Z':   if (mods.isShiftDown()) project->getEdit().redo(); else project->getEdit().undo();      return true;
             default:    return false;
         }
@@ -727,6 +787,8 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
         addItem (saveId, "Save", "command + S");
         addItem (saveAsId, "Save As...", "command + shift + S");
         menu.addSeparator();
+        addItem (importMidiId, "Import MIDI File...", "command + I");
+        menu.addSeparator();
         addItem (exportPdfId, "Export Score as PDF...", "command + E");
         addItem (exportPartsId, "Export Parts as PDF...", "");
         addItem (exportMusicXmlId, "Export MusicXML...", "");
@@ -754,6 +816,7 @@ void MainComponent::menuItemSelected (int id, int)
         case exportPartsId:     exportScore (ExportFormat::partPdfs);   break;
         case exportMusicXmlId:  exportScore (ExportFormat::musicXml);   break;
         case exportAudioId:     exportAudio();                          break;
+        case importMidiId:      chooseMidiFileToImport();               break;
         case undoId:    project->getEdit().undo();          break;
         case redoId:    project->getEdit().redo();          break;
         default:        break;

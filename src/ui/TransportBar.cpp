@@ -1,5 +1,7 @@
 #include "TransportBar.h"
 
+#include "model/TimeSignature.h"
+
 namespace purrlude
 {
 
@@ -35,12 +37,16 @@ TransportBar::TransportBar (tracktion::Edit& e)
     tempoLabel.setColour (juce::Label::outlineColourId, juce::Colours::grey);
     tempoLabel.onTextChange = [this] { setTempo (tempoLabel.getText().getDoubleValue()); };
 
+    timeSignatureButton.setTooltip ("Time signature: click to change it. The music stays where it is; only the bars change.");
+    timeSignatureButton.setWantsKeyboardFocus (false);
+    timeSignatureButton.onClick = [this] { showTimeSignatureMenu(); };
+
     positionLabel.setFont (juce::FontOptions (18.0f));
     positionLabel.setJustificationType (juce::Justification::centred);
 
     for (auto* c : std::initializer_list<juce::Component*> { &startButton, &playButton, &recordButton,
                                                             &metronomeButton, &countInButton,
-                                                            &tempoLabel, &tempoUnitLabel, &positionLabel })
+                                                            &tempoLabel, &tempoUnitLabel, &timeSignatureButton, &positionLabel })
         addAndMakeVisible (c);
 
     updateButtons();
@@ -90,6 +96,70 @@ void TransportBar::setTempo (double bpm)
     updateButtons();
 }
 
+void TransportBar::showTimeSignatureMenu()
+{
+    static const std::array<std::pair<int, int>, 8> common
+    {{ { 2, 4 }, { 3, 4 }, { 4, 4 }, { 5, 4 }, { 6, 8 }, { 7, 8 }, { 9, 8 }, { 12, 8 } }};
+
+    auto* sig = edit.tempoSequence.getTimeSig (0);
+    juce::PopupMenu menu;
+
+    for (size_t i = 0; i < common.size(); ++i)
+    {
+        auto [numerator, denominator] = common[i];
+        menu.addItem ((int) i + 1, juce::String (numerator) + "/" + juce::String (denominator), true,
+                      sig->numerator.get() == numerator && sig->denominator.get() == denominator);
+    }
+
+    menu.addSeparator();
+    menu.addItem (100, "Other...");
+
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&timeSignatureButton),
+                        [safe = juce::Component::SafePointer<TransportBar> (this)] (int result)
+    {
+        if (safe == nullptr || result == 0)
+            return;
+
+        if (result == 100)
+            safe->askForTimeSignature();
+        else
+            changeTimeSignature (safe->edit, common[(size_t) result - 1].first, common[(size_t) result - 1].second);
+
+        safe->updateButtons();
+    });
+}
+
+void TransportBar::askForTimeSignature()
+{
+    auto* sig = edit.tempoSequence.getTimeSig (0);
+
+    timeSignatureWindow = std::make_unique<juce::AlertWindow> ("Time signature", "How many beats in a bar, and which note gets the beat?",
+                                                               juce::MessageBoxIconType::NoIcon);
+    timeSignatureWindow->addTextEditor ("beats", juce::String (sig->numerator.get()), "Beats per bar (1-32)");
+    timeSignatureWindow->addComboBox ("unit", { "2 (half note)", "4 (quarter note)", "8 (eighth note)", "16 (sixteenth note)" }, "Beat");
+
+    auto* unit = timeSignatureWindow->getComboBoxComponent ("unit");
+    unit->setSelectedItemIndex (juce::jmax (0, juce::StringArray { "2", "4", "8", "16" }.indexOf (juce::String (sig->denominator.get()))));
+
+    timeSignatureWindow->addButton ("OK", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    timeSignatureWindow->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+
+    timeSignatureWindow->enterModalState (true, juce::ModalCallbackFunction::create ([safe = juce::Component::SafePointer<TransportBar> (this)] (int result)
+    {
+        if (safe == nullptr || safe->timeSignatureWindow == nullptr)
+            return;
+
+        if (result == 1)
+        {
+            auto beats = safe->timeSignatureWindow->getTextEditorContents ("beats").getIntValue();
+            auto unitText = safe->timeSignatureWindow->getComboBoxComponent ("unit")->getText();
+            changeTimeSignature (safe->edit, juce::jlimit (1, 32, beats), unitText.getIntValue());
+        }
+
+        safe->updateButtons();
+    }), false);
+}
+
 void TransportBar::updateButtons()
 {
     auto& transport = edit.getTransport();
@@ -103,6 +173,13 @@ void TransportBar::updateButtons()
     if (! tempoLabel.isBeingEdited())
         if (auto* tempo = edit.tempoSequence.getTempo (0))
             tempoLabel.setText (juce::String (tempo->getBpm(), 1), juce::dontSendNotification);
+
+    // Changed here, by undo, or by an imported file.
+    if (auto* sig = edit.tempoSequence.getTimeSig (0))
+        timeSignatureButton.setButtonText (juce::String (sig->numerator.get()) + "/" + juce::String (sig->denominator.get()));
+
+    // No changing the meter in the middle of a take.
+    timeSignatureButton.setEnabled (! recording);
 }
 
 void TransportBar::timerCallback()
@@ -130,6 +207,7 @@ void TransportBar::resized()
     positionLabel.setBounds (r.removeFromLeft (150));   gap();
     tempoLabel.setBounds (r.removeFromLeft (60));
     tempoUnitLabel.setBounds (r.removeFromLeft (40));   gap();
+    timeSignatureButton.setBounds (r.removeFromLeft (52)); gap();
     metronomeButton.setBounds (r.removeFromLeft (110));
     countInButton.setBounds (r.removeFromLeft (100));
 }

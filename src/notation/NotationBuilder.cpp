@@ -304,6 +304,41 @@ Pitch spell (int midiNote, KeySignature key)
     return make (0, 0);   // unreachable: every pitch class is a letter or a letter +/- 1
 }
 
+Transposition transpositionForProgram (int gmProgram)
+{
+    switch (gmProgram)
+    {
+        case 8:  case 13:           return { 0, 0, 1 };      // celesta, xylophone: an octave below sounding
+        case 9:                     return { 0, 0, 2 };      // glockenspiel: two octaves below
+        case 43:                    return { 0, 0, -1 };     // contrabass
+        case 56: case 59:           return { -1, -2, 0 };    // trumpet in B-flat
+        case 60: case 69:           return { -4, -7, 0 };    // horn, English horn in F
+        case 64: case 71:           return { -1, -2, 0 };    // soprano sax, clarinet in B-flat
+        case 65:                    return { -5, -9, 0 };    // alto sax in E-flat
+        case 66:                    return { -1, -2, -1 };   // tenor sax: B-flat, an octave lower too
+        case 67:                    return { -5, -9, -1 };   // baritone sax: E-flat, an octave lower too
+        case 72:                    return { 0, 0, 1 };      // piccolo
+        default:                    break;
+    }
+
+    if (gmProgram >= 24 && gmProgram <= 39)                  // guitars and basses
+        return { 0, 0, -1 };
+
+    return {};
+}
+
+KeySignature transposeKey (KeySignature concert, Transposition transposition)
+{
+    // Moving up a semitone adds 7 sharps (mod 12): up a whole tone, two sharps.
+    auto semitones = ((transposition.getWrittenSemitones() % 12) + 12) % 12;
+    auto fifths = concert.fifths + (semitones * 7) % 12;
+
+    while (fifths > 6)    fifths -= 12;
+    while (fifths < -6)   fifths += 12;
+
+    return { fifths, concert.minor };
+}
+
 Pitch drumPitch (int gmNote)
 {
     struct Position { char step; int octave; const char* notehead; bool open = false; };
@@ -458,8 +493,26 @@ Score buildMultiPartScore (const std::vector<PartNotes>& parts, TimeSignature ti
 
     score.key = options.key ? *options.key : estimateKey (allNotes);
 
+    // A transposing part is built from its written pitches, in its written key.
+    auto build = [&] (const PartNotes& p, int minMeasures)
+    {
+        auto transposition = p.percussion || options.concertPitch ? Transposition() : p.transposition;
+
+        if (transposition.isNone())
+            return buildPart (p.notes, time, score.key, options, p.name, minMeasures, p.percussion);
+
+        auto written = p.notes;
+
+        for (auto& n : written)
+            n.pitch = std::clamp (n.pitch + transposition.getWrittenSemitones(), 0, 127);
+
+        auto part = buildPart (written, time, transposeKey (score.key, transposition), options, p.name, minMeasures, false);
+        part.transposition = transposition;
+        return part;
+    };
+
     for (const auto& p : parts)
-        score.parts.push_back (buildPart (p.notes, time, score.key, options, p.name, 1, p.percussion));
+        score.parts.push_back (build (p, 1));
 
     // Every part has the same number of measures: pad the shorter ones with rests.
     size_t numMeasures = 0;
@@ -469,8 +522,7 @@ Score buildMultiPartScore (const std::vector<PartNotes>& parts, TimeSignature ti
 
     for (size_t i = 0; i < score.parts.size(); ++i)
         if (score.parts[i].measures.size() < numMeasures)
-            score.parts[i] = buildPart (parts[i].notes, time, score.key, options, parts[i].name,
-                                        (int) numMeasures, parts[i].percussion);
+            score.parts[i] = build (parts[i], (int) numMeasures);
 
     return score;
 }
@@ -506,6 +558,7 @@ Part buildPart (const std::vector<NoteEvent>& performed, TimeSignature time, Key
     Part part;
     part.name = partName;
     part.percussion = percussion;
+    part.key = percussion ? KeySignature() : key;
 
     if (percussion)
     {

@@ -13,6 +13,8 @@ namespace purrlude
     message thread, where the Edit may be read) and, if the MusicXML or the
     width changed, asks a background thread to engrave it with Verovio. The
     result is shown on a white "paper" area that scrolls vertically.
+
+    Transposing instruments are shown as written, or as they sound with Concert pitch on.
 */
 class ScoreView final : public juce::Component,
                         private juce::Timer
@@ -38,6 +40,7 @@ private:
     std::unique_ptr<Page> page;
     juce::Viewport viewport;
     juce::Label statusLabel;
+    juce::ToggleButton concertPitchButton { "Concert pitch" };
 
     juce::String lastMusicXml;
     int lastWidth = 0, lastRequestId = 0;
