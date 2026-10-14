@@ -3,13 +3,20 @@ name: build
 # Manual only: run from the Actions tab or `gh workflow run build`.
 on:
   workflow_dispatch:
+    inputs:
+      os:
+        description: Which platform to build (all, windows, macos or ubuntu)
+        type: choice
+        options: [all, windows, macos, ubuntu]
+        default: all
 
 jobs:
   build:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+        # e.g. `gh workflow run build -f os=windows` builds only that platform.
+        os: ${{ fromJSON(inputs.os == 'all' && '["windows-latest", "macos-latest", "ubuntu-latest"]' || format('["{0}-latest"]', inputs.os)) }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
