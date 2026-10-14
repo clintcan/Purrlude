@@ -437,6 +437,42 @@ void MainComponent::chooseMidiFileToImport()
     });
 }
 
+void MainComponent::chooseAudioFileToImport()
+{
+    auto dir = project->getFile() != juce::File() ? project->getFile().getParentDirectory() : getDefaultProjectDirectory();
+    fileChooser = std::make_unique<juce::FileChooser> ("Import an audio file", dir, audio_import::getWildcard (engine));
+
+    fileChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles
+                                | juce::FileBrowserComponent::canSelectMultipleItems,
+                              [safe = juce::WeakReference<MainComponent> (this)] (const juce::FileChooser& chooser)
+    {
+        if (safe != nullptr && ! chooser.getResults().isEmpty())
+            safe->importFiles (chooser.getResults());
+    });
+}
+
+void MainComponent::importFiles (const juce::Array<juce::File>& files)
+{
+    juce::Array<juce::File> midiFiles;
+    juce::StringArray errors;
+    auto& edit = project->getEdit();
+    auto bar = juce::jmax (0, edit.tempoSequence.toBarsAndBeats (edit.getTransport().getPosition()).bars);
+
+    for (auto& file : files)
+    {
+        if (midi_import::isMidiFile (file))
+            midiFiles.add (file);
+        else if (auto result = audio_import::importFile (edit, project->getInstrument(), file, bar); result.error.isNotEmpty())
+            errors.add (result.error);
+    }
+
+    if (! midiFiles.isEmpty())
+        importMidiFiles (midiFiles);
+
+    if (! errors.isEmpty())
+        showError ("Couldn't import audio", errors.joinIntoString ("\n"));
+}
+
 void MainComponent::importMidiFiles (const juce::Array<juce::File>& files)
 {
     auto& edit = project->getEdit();
@@ -456,7 +492,7 @@ void MainComponent::importMidiFiles (const juce::Array<juce::File>& files)
 bool MainComponent::isInterestedInFileDrag (const juce::StringArray& paths)
 {
     for (auto& path : paths)
-        if (midi_import::isMidiFile (juce::File (path)))
+        if (midi_import::isMidiFile (juce::File (path)) || audio_import::isAudioFile (engine, juce::File (path)))
             return true;
 
     return false;
@@ -467,10 +503,10 @@ void MainComponent::filesDropped (const juce::StringArray& paths, int, int)
     juce::Array<juce::File> files;
 
     for (auto& path : paths)
-        if (midi_import::isMidiFile (juce::File (path)))
+        if (midi_import::isMidiFile (juce::File (path)) || audio_import::isAudioFile (engine, juce::File (path)))
             files.add (juce::File (path));
 
-    importMidiFiles (files);
+    importFiles (files);
 }
 
 void MainComponent::exportAudio()
@@ -740,7 +776,7 @@ bool MainComponent::keyPressed (const juce::KeyPress& key)
             case 'O':   openProject();  return true;
             case 'S':   if (mods.isShiftDown()) saveProjectAs(); else saveProject();                            return true;
             case 'E':   if (mods.isShiftDown()) exportAudio(); else exportScore (ExportFormat::pdf);            return true;
-            case 'I':   chooseMidiFileToImport();                                                               return true;
+            case 'I':   if (mods.isShiftDown()) chooseAudioFileToImport(); else chooseMidiFileToImport();       return true;
             case '=':
             case '+':   arrangement->zoomIn();                                                                  return true;
             case '-':   arrangement->zoomOut();                                                                 return true;
@@ -788,6 +824,7 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
         addItem (saveAsId, "Save As...", "command + shift + S");
         menu.addSeparator();
         addItem (importMidiId, "Import MIDI File...", "command + I");
+        addItem (importAudioId, "Import Audio File...", "command + shift + I");
         menu.addSeparator();
         addItem (exportPdfId, "Export Score as PDF...", "command + E");
         addItem (exportPartsId, "Export Parts as PDF...", "");
@@ -817,6 +854,7 @@ void MainComponent::menuItemSelected (int id, int)
         case exportMusicXmlId:  exportScore (ExportFormat::musicXml);   break;
         case exportAudioId:     exportAudio();                          break;
         case importMidiId:      chooseMidiFileToImport();               break;
+        case importAudioId:     chooseAudioFileToImport();              break;
         case undoId:    project->getEdit().undo();          break;
         case redoId:    project->getEdit().redo();          break;
         default:        break;

@@ -14,6 +14,7 @@ namespace
     const juce::Identifier programProperty         { "purrludeProgram" };
     const juce::Identifier toneProperty            { "purrludeDeviceTone" };   // "msb lsb program" or absent
     const juce::Identifier toneNameProperty        { "purrludeDeviceToneName" };
+    const juce::Identifier kindProperty            { "purrludeTrackKind" };   // "audio", or absent for instrument tracks
 
     constexpr const char* allMidiInsID = "all_midi_in";
 
@@ -56,10 +57,32 @@ TrackInstrument::TrackInstrument (tracktion::Edit& e, tracktion::AudioTrack& tra
 {
 }
 
+bool TrackInstrument::isAudioTrack (const tracktion::AudioTrack& track)
+{
+    return track.state[kindProperty].toString() == "audio";
+}
+
+void TrackInstrument::makeAudioTrack (tracktion::AudioTrack& track, juce::UndoManager* um)
+{
+    track.state.setProperty (kindProperty, "audio", um);
+
+    // In case it had an instrument.
+    for (auto* plugin : track.pluginList.getPlugins())
+        if (plugin->isSynth() || dynamic_cast<tracktion::MidiPatchBayPlugin*> (plugin) != nullptr)
+            plugin->deleteFromParent();
+}
+
 void TrackInstrument::setUp (tracktion::Edit& edit, tracktion::AudioTrack& track)
 {
     TrackInstrument instrument (edit, track);
     auto* existing = findSynth (track);
+
+    // Audio tracks play their clips: no instrument, just volume, pan and a meter.
+    if (isAudioTrack (track))
+    {
+        addMixPlugins (edit, track);
+        return;
+    }
 
     // The GM instrument, when its SoundFont is available. Older projects with the
     // placeholder 4OSC synth are moved over; 4OSC remains the fallback.
@@ -82,6 +105,15 @@ void TrackInstrument::setUp (tracktion::Edit& edit, tracktion::AudioTrack& track
             track.pluginList.insertPlugin (synth, 0, nullptr);
     }
 
+    addMixPlugins (edit, track);
+
+    // Only when it differs: setting it makes the audio thread re-apply it.
+    if (auto* soundFont = findSoundFont (track); soundFont != nullptr && soundFont->getProgram() != instrument.getProgram())
+        soundFont->setProgram (instrument.getProgram());
+}
+
+void TrackInstrument::addMixPlugins (tracktion::Edit& edit, tracktion::AudioTrack& track)
+{
     // Every track has volume and pan (tracks added without default plugins have neither).
     if (track.getVolumePlugin() == nullptr)
         if (auto volume = edit.getPluginCache().createNewPlugin (tracktion::VolumeAndPanPlugin::xmlTypeName, {}))
@@ -91,10 +123,6 @@ void TrackInstrument::setUp (tracktion::Edit& edit, tracktion::AudioTrack& track
     if (track.getLevelMeterPlugin() == nullptr)
         if (auto meter = edit.getPluginCache().createNewPlugin (tracktion::LevelMeterPlugin::xmlTypeName, {}))
             track.pluginList.insertPlugin (meter, -1, nullptr);
-
-    // Only when it differs: setting it makes the audio thread re-apply it.
-    if (auto* soundFont = findSoundFont (track); soundFont != nullptr && soundFont->getProgram() != instrument.getProgram())
-        soundFont->setProgram (instrument.getProgram());
 }
 
 tracktion::AudioTrack* TrackInstrument::getTrack() const

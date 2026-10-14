@@ -18,6 +18,7 @@ target_sources(PurrludeTests PRIVATE
     MidiImportTests.cpp
     TimeSignatureTests.cpp
     TimelineViewTests.cpp
+    AudioTrackTests.cpp
     NoteEditingTests.cpp
     CrashHandler.cpp
     $<$<PLATFORM_ID:Windows>:BleMidiGattProbe_windows.cpp>

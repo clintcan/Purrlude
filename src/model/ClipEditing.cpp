@@ -1,5 +1,7 @@
 #include "ClipEditing.h"
 
+#include "TrackInstrument.h"
+
 namespace purrlude
 {
 
@@ -26,12 +28,19 @@ namespace
     }
 }
 
+bool clips::canHold (const tracktion::AudioTrack& track, const tracktion::Clip& clip)
+{
+    // MIDI on instrument tracks, audio on audio tracks.
+    auto isMidi = dynamic_cast<const tracktion::MidiClip*> (&clip) != nullptr;
+    return isMidi != TrackInstrument::isAudioTrack (track);
+}
+
 tracktion::Clip* clips::move (tracktion::Edit& edit, tracktion::EditItemID clipID, double startBeat,
                               tracktion::AudioTrack& destination, bool copy)
 {
     tracktion::Clip::Ptr clip = tracktion::findClipForID (edit, clipID);
 
-    if (clip == nullptr)
+    if (clip == nullptr || ! canHold (destination, *clip))
         return nullptr;
 
     edit.getUndoManager().beginNewTransaction (copy ? "Copy clip" : "Move clip");

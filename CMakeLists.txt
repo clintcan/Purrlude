@@ -90,6 +90,8 @@ target_sources(purrlude_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/MidiImport.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/TimeSignature.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/TimeSignature.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/AudioImport.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/AudioImport.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/NoteEditing.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/NoteEditing.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/Project.h
@@ -142,6 +144,9 @@ target_compile_definitions(purrlude_core INTERFACE
     JUCE_MODAL_LOOPS_PERMITTED=1
     JUCE_STRICT_REFCOUNTEDPOINTER=1
     JUCE_DISPLAY_SPLASH_SCREEN=0
+    # Reading MP3s for audio import. JUCE's decoder, under JUCE's licence; the MP3 patents
+    # expired in 2017. (There's no MP3 encoder: export offers WAV, FLAC and Ogg.)
+    JUCE_USE_MP3AUDIOFORMAT=1
     TRACKTION_ENABLE_TIMESTRETCH_SOUNDTOUCH=1
     # Development fallback for Verovio's fonts; release builds use the copy next to the app.
     PURRLUDE_VEROVIO_DATA="${PURRLUDE_VEROVIO_DATA}"

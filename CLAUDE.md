@@ -119,8 +119,14 @@ The app talks to `purrlude::BluetoothMidiManager` (`src/devices/BluetoothMidiMan
   - Bank and program are derived from the tone number, because three printed entries are wrong.
 
 **Tracks:**
-- **Instrument tracks:** every audio track is one. `TrackInstrument` is a light handle whose state lives on the track (sound source, GM program, device tone, channel, preview).
-- **Live input:** `LiveInstrument` routes "All MIDI Ins" to the selected track, which is also the armed one. It adds and deletes tracks (undoable, never the last), and resends device tones on play.
+- **Instrument tracks:** a tracktion `AudioTrack` is one unless it's marked as an audio track. `TrackInstrument` is a light handle whose state lives on the track (sound source, GM program, device tone, channel, preview).
+- **Audio tracks** are marked by the `purrludeTrackKind="audio"` track property (`TrackInstrument::isAudioTrack`, `makeAudioTrack`).
+  - `setUp` gives them only volume, pan and a meter, never a synth.
+  - The keyboard never plays one: `LiveInstrument::selectTrack` ignores audio tracks, so the selected track is always an instrument track. There is always at least one (`canDeleteTrack`).
+  - `clips::canHold` keeps MIDI clips on instrument tracks and audio clips on audio tracks, including when dragging.
+  - Their headers have no arm or instrument menus, and a green stripe. The arrangement draws audio clips' waveforms with one `SmartThumbnail` per clip.
+- **Audio import** (`src/model/AudioImport.h`, File > Import Audio File, Cmd-Shift-I, or drop files): each file goes on a new audio track at the playhead's bar, one undo step. Files are played from where they are. `JUCE_USE_MP3AUDIOFORMAT=1` lets MP3s be read.
+- **Live input:** `LiveInstrument` routes "All MIDI Ins" to the selected track, which is also the armed one. It adds and deletes tracks (undoable, never the last instrument track), and resends device tones on play.
 - **Mixer:** each track has volume, pan, mute and solo. Volume and pan come from its `VolumeAndPanPlugin`, which `TrackInstrument::setUp` adds to every track; for external sources they're also sent as CC 7/10.
   - **Undo:** mixer changes go through `TrackMix` (`src/model/TrackMix.h`). Tracktion keeps mute/solo out of undo, and the plugin's setters would record every fader move. `TrackInstrument` therefore writes volume/pan to the plugin state without the UndoManager (and reads them back from the state, since the parameter updates asynchronously). `TrackMix::change` records one undo step per click or drag.
 - **UI:** the arrangement has one `TrackHeader` per track and scrolls vertically in a Viewport.

@@ -14,8 +14,9 @@ namespace purrlude
     the selected track, which is also the one armed for recording; choosing
     another track moves the input there.
 
-    Every audio track is an instrument track (see TrackInstrument). There is
-    always at least one.
+    Tracks are instrument tracks (see TrackInstrument), of which there is always at
+    least one, or audio tracks, which hold recorded or imported audio. The keyboard only
+    ever plays an instrument track, so the selected track is always one.
 
     Routing needs the device rescan that enabling "All MIDI Ins" triggers, so it
     may complete asynchronously; isInputRouted() reports when it has.
@@ -32,13 +33,25 @@ public:
     tracktion::AudioTrack* getTrack() const;
     tracktion::EditItemID getSelectedTrackID() const noexcept     { return trackID; }
 
-    /** Moves the live input (and record arm) to another track. */
+    /** Moves the live input (and record arm) to another instrument track. Audio tracks
+        are ignored.
+    */
     void selectTrack (tracktion::EditItemID);
+
+    juce::Array<tracktion::AudioTrack*> getInstrumentTracks() const;
+
+    /** Adds an audio track after the last track (it doesn't become the selected track). Undoable. */
+    tracktion::AudioTrack* addAudioTrack();
+
+    /** False for the last instrument track. */
+    bool canDeleteTrack (tracktion::EditItemID) const;
 
     /** Adds an instrument track after the last one (and selects it, unless asked not to). Undoable. */
     tracktion::AudioTrack* addTrack (bool select = true);
 
-    /** Deletes a track (never the last one); the first track is selected if it was selected. Undoable. */
+    /** Deletes a track (never the last instrument track); if it was selected, another
+        instrument track is. Undoable.
+    */
     void deleteTrack (tracktion::EditItemID);
 
     /** The selected track's instrument. */

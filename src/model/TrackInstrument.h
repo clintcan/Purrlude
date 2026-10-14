@@ -24,8 +24,13 @@ public:
 
     /** Gives a track its instrument: the GM SoundFont instrument (moving older projects off
         the placeholder 4OSC synth) or 4OSC if the SoundFont is missing. Safe to repeat.
+        Audio tracks get no instrument; every track gets volume, pan and a level meter.
     */
     static void setUp (tracktion::Edit&, tracktion::AudioTrack&);
+
+    /** Audio tracks hold audio clips (recorded or imported) rather than an instrument. */
+    static bool isAudioTrack (const tracktion::AudioTrack&);
+    static void makeAudioTrack (tracktion::AudioTrack&, juce::UndoManager*);
 
     tracktion::AudioTrack* getTrack() const;
     tracktion::EditItemID getTrackID() const noexcept       { return trackID; }
@@ -53,7 +58,9 @@ public:
     int getProgram() const;
 
     /** True when the built-in instrument plays the GM drum kit, so the notes are drums. */
-    bool playsDrumKit() const                       { return getSoundSourceID().isEmpty() && getProgram() == gm::drumKit; }
+    bool playsDrumKit() const                       { return getSoundSourceID().isEmpty() && getProgram() == gm::drumKit && ! isAudio(); }
+
+    bool isAudio() const                            { auto* t = getTrack(); return t != nullptr && isAudioTrack (*t); }
 
     /** The tone an external sound source plays (its own bank + program), or none to leave
         the device on whatever tone it's set to. Sent when chosen and by sendToneToDevice().
@@ -90,6 +97,8 @@ public:
     void sendMixToDevice() const;
 
 private:
+    static void addMixPlugins (tracktion::Edit&, tracktion::AudioTrack&);
+
     tracktion::Edit& edit;
     tracktion::EditItemID trackID;
 };

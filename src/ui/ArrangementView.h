@@ -92,6 +92,16 @@ private:
     double getZoomAnchor() const;
     void scrollTo (double startBeat);
 
+    void drawWaveform (juce::Graphics&, tracktion::WaveAudioClip&, juce::Rectangle<float> area, float alpha);
+
+    struct Thumbnail
+    {
+        juce::File file;
+        std::unique_ptr<tracktion::SmartThumbnail> thumbnail;
+    };
+
+    std::map<tracktion::EditItemID, std::unique_ptr<Thumbnail>> thumbnails;   ///< Audio clips' waveforms
+
     TimelineView timeline;
     class ZoomBar;
     std::unique_ptr<ZoomBar> zoomBar;

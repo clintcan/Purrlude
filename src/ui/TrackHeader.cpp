@@ -11,6 +11,7 @@ namespace
 {
     const auto recordColour   = juce::Colour (0xffd55e00);   // vermillion
     const auto selectedColour = juce::Colour (0xff0072b2);   // blue
+    const auto audioTrackColour = juce::Colour (0xff009e73); // bluish green
 
     /** Draws a pan knob: the full range faintly, a fill from the centre to the current
         position, and a pointer, so left/right reads at a glance.
@@ -53,6 +54,11 @@ namespace
 
 TrackHeader::TrackHeader (tracktion::Edit& e, LiveInstrument& l, MidiDeviceSettings& s, tracktion::EditItemID id)
     : edit (e), live (l), deviceSettings (s), trackID (id), panKnobLook (std::make_unique<PanKnobLook>()),
+      audio ([&]
+             {
+                 auto* track = tracktion::findAudioTrackForID (e, id);
+                 return track != nullptr && TrackInstrument::isAudioTrack (*track);
+             }()),
       meter ([this]() -> tracktion::LevelMeasurer*
              {
                  auto* track = tracktion::findAudioTrackForID (edit, trackID);
@@ -176,7 +182,24 @@ TrackHeader::TrackHeader (tracktion::Edit& e, LiveInstrument& l, MidiDeviceSetti
                                                             &soundBox, &volumeSlider, &panKnob })
         c->setWantsKeyboardFocus (false);
 
-    updateChoices();
+    // Audio tracks play their clips: no instrument, and nothing for the keyboard to play.
+    kindLabel.setFont (juce::FontOptions (13.0f));
+    kindLabel.setColour (juce::Label::textColourId, juce::Colours::lightgrey);
+    kindLabel.setInterceptsMouseClicks (false, false);
+    addChildComponent (kindLabel);
+
+    if (audio)
+    {
+        for (auto* c : std::initializer_list<juce::Component*> { &armButton, &instrumentBox, &soundBox })
+            c->setVisible (false);
+
+        kindLabel.setVisible (true);
+    }
+    else
+    {
+        updateChoices();
+    }
+
     refresh();
 }
 
@@ -190,7 +213,8 @@ void TrackHeader::refresh()
     if (auto* track = getInstrument().getTrack(); track != nullptr && ! nameLabel.isBeingEdited())
         nameLabel.setText (track->getName(), juce::dontSendNotification);
 
-    armButton.setToggleState (isSelected() && live.isArmed(), juce::dontSendNotification);
+    if (! audio)
+        armButton.setToggleState (isSelected() && live.isArmed(), juce::dontSendNotification);
 
     // Undo, or another view, may have changed these.
     auto instrument = getInstrument();
@@ -204,7 +228,7 @@ void TrackHeader::refresh()
         panKnob.setValue (instrument.getPan(), juce::dontSendNotification);
 
     // The sound source, undo, or a tone picked on the keyboard can change the instrument behind the menu's back.
-    if (! instrumentBox.isPopupActive())
+    if (! audio && ! instrumentBox.isPopupActive())
     {
         if (instrumentMenuSource != getInstrument().getSoundSourceID())
             updateChoices();
@@ -231,6 +255,11 @@ void TrackHeader::paint (juce::Graphics& g)
         g.setColour (selectedColour);
         g.fillRect (0, 0, 4, getHeight());
     }
+    else if (audio)
+    {
+        g.setColour (audioTrackColour.withAlpha (0.6f));   // tells audio tracks apart at a glance
+        g.fillRect (0, 0, 4, getHeight());
+    }
 
     g.setColour (juce::Colours::black.withAlpha (0.3f));
     g.drawHorizontalLine (getHeight() - 1, 0.0f, (float) getWidth());
@@ -247,15 +276,29 @@ void TrackHeader::resized()
     r.removeFromRight (5);
 
     auto buttons = r.removeFromTop (24);
-    armButton.setBounds (buttons.removeFromLeft (52));
-    buttons.removeFromLeft (4);
+
+    if (! audio)
+    {
+        armButton.setBounds (buttons.removeFromLeft (52));
+        buttons.removeFromLeft (4);
+    }
+
     muteButton.setBounds (buttons.removeFromLeft (28));
     buttons.removeFromLeft (4);
     soloButton.setBounds (buttons.removeFromLeft (28));
     r.removeFromTop (6);
-    instrumentBox.setBounds (r.removeFromTop (24));
-    r.removeFromTop (6);
-    soundBox.setBounds (r.removeFromTop (24));
+
+    if (audio)
+    {
+        kindLabel.setBounds (r.removeFromTop (54).withTrimmedLeft (-4));
+    }
+    else
+    {
+        instrumentBox.setBounds (r.removeFromTop (24));
+        r.removeFromTop (6);
+        soundBox.setBounds (r.removeFromTop (24));
+    }
+
     r.removeFromTop (4);
     auto mix = r.removeFromTop (36);
     panKnob.setBounds (mix.removeFromRight (36));
@@ -277,7 +320,7 @@ void TrackHeader::showMenu()
 {
     juce::PopupMenu menu;
     menu.addItem (1, "Rename...");
-    menu.addItem (2, "Delete Track", tracktion::getAudioTracks (edit).size() > 1);
+    menu.addItem (2, "Delete Track", live.canDeleteTrack (trackID));   // never the last instrument track
 
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this),
                         [safe = juce::Component::SafePointer<TrackHeader> (this)] (int result)

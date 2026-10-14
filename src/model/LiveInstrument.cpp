@@ -37,7 +37,19 @@ LiveInstrument::LiveInstrument (tracktion::Edit& e)
     for (auto* track : tracks)
         TrackInstrument::setUp (edit, *track);
 
-    trackID = tracks[0]->itemID;
+    // There's always an instrument track for the keyboard to play.
+    if (getInstrumentTracks().isEmpty())
+    {
+        if (auto added = edit.insertNewAudioTrack (tracktion::TrackInsertPoint::getEndOfTracks (edit), nullptr, false))
+        {
+            added->setName ("Instrument");
+            TrackInstrument::setUp (edit, *added);
+        }
+
+        tracktion::TrackList::sortTracksByType (edit.state, nullptr);
+    }
+
+    trackID = getInstrumentTracks().getFirst()->itemID;
 
     // Live input should be audible while the transport is stopped, too.
     edit.playInStopEnabled = true;
@@ -69,9 +81,23 @@ tracktion::AudioTrack* LiveInstrument::getTrack() const
     return tracktion::findAudioTrackForID (edit, trackID);
 }
 
+juce::Array<tracktion::AudioTrack*> LiveInstrument::getInstrumentTracks() const
+{
+    juce::Array<tracktion::AudioTrack*> instruments;
+
+    for (auto* track : tracktion::getAudioTracks (edit))
+        if (! TrackInstrument::isAudioTrack (*track))
+            instruments.add (track);
+
+    return instruments;
+}
+
 void LiveInstrument::selectTrack (tracktion::EditItemID id)
 {
-    if (id == trackID || tracktion::findAudioTrackForID (edit, id) == nullptr)
+    auto* track = tracktion::findAudioTrackForID (edit, id);
+
+    // The keyboard plays instrument tracks only.
+    if (id == trackID || track == nullptr || TrackInstrument::isAudioTrack (*track))
         return;
 
     auto armed = isArmed();
@@ -106,18 +132,46 @@ tracktion::AudioTrack* LiveInstrument::addTrack (bool select)
     return track.get();
 }
 
-void LiveInstrument::deleteTrack (tracktion::EditItemID id)
+tracktion::AudioTrack* LiveInstrument::addAudioTrack()
 {
-    auto tracks = tracktion::getAudioTracks (edit);
+    auto track = edit.insertNewAudioTrack (tracktion::TrackInsertPoint::getEndOfTracks (edit), nullptr, false);
+
+    if (track == nullptr)
+        return nullptr;
+
+    int audioTracks = 0;
+
+    for (auto* t : tracktion::getAudioTracks (edit))
+        if (TrackInstrument::isAudioTrack (*t))
+            ++audioTracks;
+
+    track->setName ("Audio " + juce::String (audioTracks + 1));
+    TrackInstrument::makeAudioTrack (*track, &edit.getUndoManager());
+    TrackInstrument::setUp (edit, *track);
+    tracktion::TrackList::sortTracksByType (edit.state, &edit.getUndoManager());
+    return track.get();
+}
+
+bool LiveInstrument::canDeleteTrack (tracktion::EditItemID id) const
+{
     auto* track = tracktion::findAudioTrackForID (edit, id);
 
-    if (track == nullptr || tracks.size() <= 1)
+    // Never the last instrument track: the keyboard needs one to play.
+    return track != nullptr && (TrackInstrument::isAudioTrack (*track) || getInstrumentTracks().size() > 1);
+}
+
+void LiveInstrument::deleteTrack (tracktion::EditItemID id)
+{
+    if (! canDeleteTrack (id))
         return;
 
     if (id == trackID)
-        selectTrack (tracks[0]->itemID == id ? tracks[1]->itemID : tracks[0]->itemID);
+    {
+        auto instruments = getInstrumentTracks();
+        selectTrack (instruments[0]->itemID == id ? instruments[1]->itemID : instruments[0]->itemID);
+    }
 
-    edit.deleteTrack (track);
+    edit.deleteTrack (tracktion::findAudioTrackForID (edit, id));
 }
 
 //==============================================================================
@@ -221,15 +275,15 @@ void LiveInstrument::changeListenerCallback (juce::ChangeBroadcaster* source)
 
 void LiveInstrument::timerCallback()
 {
-    // The selected track may have been deleted (e.g. by undo); fall back to the first.
+    // The selected track may have been deleted (e.g. by undo); fall back to the first instrument.
     if (getTrack() == nullptr)
     {
-        auto tracks = tracktion::getAudioTracks (edit);
+        auto instruments = getInstrumentTracks();
 
-        if (tracks.isEmpty())
+        if (instruments.isEmpty())
             return;
 
-        trackID = tracks[0]->itemID;
+        trackID = instruments[0]->itemID;
     }
 
     // Tracks restored by undo, or a track's sound source changed: keep everything in step.

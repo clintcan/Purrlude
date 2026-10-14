@@ -79,7 +79,7 @@ std::vector<BluetoothMidiManager::Device> BluetoothMidiManager::getDevices() con
 
     for (const auto& [id, r] : remembered)
     {
-        bool listed = std::any_of (result.begin(), result.end(), [&id = id] (const Device& d) { return d.info.id == id; });
+        bool listed = std::any_of (result.begin(), result.end(), [&rememberedID = id] (const Device& d) { return d.info.id == rememberedID; });
 
         if (! listed)
         {

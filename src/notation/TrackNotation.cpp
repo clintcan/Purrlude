@@ -119,8 +119,14 @@ Score buildEditScore (tracktion::Edit& edit, const std::string& title, const Bui
             parts.push_back ({ track->getName().toStdString(), std::move (notes), TrackInstrument (edit, *track).playsDrumKit(),
                                getTransposition (*track) });
 
-    if (parts.empty() && ! tracks.isEmpty())
-        parts.push_back ({ tracks[0]->getName().toStdString(), {} });
+    // Nothing played yet: an empty part for the first instrument track.
+    if (parts.empty())
+        for (auto* track : tracks)
+            if (! TrackInstrument::isAudioTrack (*track))
+            {
+                parts.push_back ({ track->getName().toStdString(), {} });
+                break;
+            }
 
     auto bpm = edit.tempoSequence.getTempo (0) != nullptr ? edit.tempoSequence.getTempo (0)->getBpm() : 120.0;
     auto withKey = options;

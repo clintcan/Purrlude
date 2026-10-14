@@ -9,9 +9,10 @@
 namespace purrlude
 {
 
-/** The header of one instrument track in the arrangement: its name (double-click to
-    rename), record arm, Instrument and Sound menus. Clicking it selects the track for
-    live input; right-click for Rename and Delete.
+/** The header of one track in the arrangement: its name (double-click to rename),
+    mute, solo, volume, pan and level meter; for an instrument track also record arm and the
+    Instrument and Sound menus. Clicking an instrument track's header selects it for live
+    input; right-click for Rename and Delete.
 */
 class TrackHeader final : public juce::Component
 {
@@ -55,6 +56,8 @@ private:
     juce::Slider volumeSlider, panKnob;
     float valueBeforeDrag = 0.0f;   ///< Volume or pan when a drag started (for its undo step)
     juce::ComboBox instrumentBox, soundBox;
+    juce::Label kindLabel { {}, "Audio track" };
+    const bool audio;   ///< An audio track: no instrument, record arm or sound menus
     LevelMeter meter;
 
     juce::StringArray soundIDs, soundNames;   ///< Parallel to soundBox items; ID "" is the built-in instrument

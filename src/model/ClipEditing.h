@@ -14,8 +14,11 @@ namespace purrlude
 */
 namespace clips
 {
+    /** MIDI clips belong on instrument tracks and audio clips on audio tracks. */
+    bool canHold (const tracktion::AudioTrack&, const tracktion::Clip&);
+
     /** Moves a clip (or a copy of it) to start at startBeat on a track, keeping its length.
-        Returns the moved clip or the copy.
+        Returns the moved clip or the copy, or nullptr if the track can't hold it.
     */
     tracktion::Clip* move (tracktion::Edit&, tracktion::EditItemID clipID, double startBeat,
                            tracktion::AudioTrack& destination, bool copy = false);

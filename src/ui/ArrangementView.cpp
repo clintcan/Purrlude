@@ -168,13 +168,29 @@ private:
 ArrangementView::ArrangementView (tracktion::Edit& e, LiveInstrument& l, MidiDeviceSettings& s)
     : edit (e), live (l), deviceSettings (s)
 {
-    addTrackButton.setTooltip ("Add an instrument track");
+    addTrackButton.setTooltip ("Add a track: an instrument track for MIDI, or an audio track for recordings and audio files");
     addTrackButton.setWantsKeyboardFocus (false);
     addTrackButton.onClick = [this]
     {
-        edit.getUndoManager().beginNewTransaction ("Add track");
-        live.addTrack();
-        syncHeaders();
+        juce::PopupMenu menu;
+        menu.addItem (1, "Instrument Track");
+        menu.addItem (2, "Audio Track");
+
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&addTrackButton),
+                            [safe = juce::Component::SafePointer<ArrangementView> (this)] (int result)
+        {
+            if (safe == nullptr || result == 0)
+                return;
+
+            safe->edit.getUndoManager().beginNewTransaction ("Add track");
+
+            if (result == 1)
+                safe->live.addTrack();
+            else
+                safe->live.addAudioTrack();
+
+            safe->syncHeaders();
+        });
     };
     addAndMakeVisible (addTrackButton);
 
@@ -424,6 +440,13 @@ void ArrangementView::paint (juce::Graphics& g)
                 g.drawRoundedRectangle (area, 4.0f, 1.0f);
             }
 
+            // Audio: its waveform.
+            if (auto* audioClip = dynamic_cast<tracktion::WaveAudioClip*> (clip))
+            {
+                drawWaveform (g, *audioClip, area.reduced (2.0f, 4.0f), alpha);
+                continue;
+            }
+
             auto* midiClip = dynamic_cast<tracktion::MidiClip*> (clip);
 
             if (midiClip == nullptr)
@@ -650,7 +673,13 @@ void ArrangementView::mouseDrag (const juce::MouseEvent& e)
         auto delta = std::round ((xToBeat ((float) e.x) - drag.grabBeat) / grid) * grid;
         drag.newStart = juce::jmax (0.0, drag.startBeat + delta);
         drag.newEnd = drag.newStart + (drag.endBeat - drag.startBeat);
-        drag.newLaneIndex = juce::jlimit (0, tracktion::getAudioTracks (edit).size() - 1, laneIndexAt (juce::jmax (rulerHeight, e.y)));
+        // Onto another lane only if that track can hold the clip (MIDI or audio).
+        auto tracks = tracktion::getAudioTracks (edit);
+        auto lane = juce::jlimit (0, tracks.size() - 1, laneIndexAt (juce::jmax (rulerHeight, e.y)));
+        auto* clip = tracktion::findClipForID (edit, drag.clipID);
+
+        if (clip != nullptr && clips::canHold (*tracks.getUnchecked (lane), *clip))
+            drag.newLaneIndex = lane;
         drag.copying = e.mods.isAltDown();
     }
 
@@ -722,9 +751,40 @@ void ArrangementView::mouseDoubleClick (const juce::MouseEvent& e)
 
     auto beat = xToBeat ((float) e.x);
 
+    // MIDI clips open in the editors; audio clips have nothing to edit there.
     for (auto* clip : tracks.getUnchecked (index)->getClips())
-        if (beat >= clip->getStartBeat().inBeats() && beat < clip->getEndBeat().inBeats() && onClipDoubleClicked != nullptr)
+        if (beat >= clip->getStartBeat().inBeats() && beat < clip->getEndBeat().inBeats() && onClipDoubleClicked != nullptr
+             && dynamic_cast<tracktion::MidiClip*> (clip) != nullptr)
             onClipDoubleClicked (clip->itemID);
+}
+
+void ArrangementView::drawWaveform (juce::Graphics& g, tracktion::WaveAudioClip& clip, juce::Rectangle<float> area, float alpha)
+{
+    auto file = clip.getAudioFile();
+
+    if (! file.isValid())
+    {
+        g.setColour (juce::Colours::white.withAlpha (0.7f * alpha));
+        g.setFont (juce::FontOptions (12.0f));
+        g.drawText ("Missing: " + clip.getOriginalFile().getFileName(), area.reduced (6.0f, 0.0f), juce::Justification::centredLeft);
+        return;
+    }
+
+    // One thumbnail per clip, made when it's first drawn (it loads in the background and repaints this).
+    auto& thumbnail = thumbnails[clip.itemID];
+
+    if (thumbnail == nullptr || thumbnail->file != file.getFile())
+        thumbnail = std::make_unique<Thumbnail> (Thumbnail { file.getFile(),
+                                                             std::make_unique<tracktion::SmartThumbnail> (edit.engine, file, *this, &edit) });
+
+    // The part of the file the clip plays: from its offset, for its length (at its speed).
+    auto position = clip.getPosition();
+    auto speed = clip.getSpeedRatio() > 0.0 ? clip.getSpeedRatio() : 1.0;
+    auto start = tracktion::TimePosition::fromSeconds (position.getOffset().inSeconds() * speed);
+    auto source = tracktion::TimeRange (start, tracktion::TimeDuration::fromSeconds (position.getLength().inSeconds() * speed));
+
+    g.setColour (juce::Colours::white.withAlpha (0.85f * alpha));
+    thumbnail->thumbnail->drawChannels (g, area.toNearestInt(), source, 1.0f);
 }
 
 void ArrangementView::timerCallback()
@@ -743,6 +803,10 @@ void ArrangementView::timerCallback()
 
     // Tracks added, removed or reordered (including by undo).
     syncHeaders();
+
+    // Waveforms of clips that have gone.
+    for (auto it = thumbnails.begin(); it != thumbnails.end();)
+        it = tracktion::findClipForID (edit, it->first) == nullptr ? thumbnails.erase (it) : std::next (it);
 
     // While playing, page forward when the playhead runs off the right of the view.
     if (transport.isPlaying() && ! timeline.isFit())

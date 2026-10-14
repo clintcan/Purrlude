@@ -154,7 +154,8 @@ Result importMidi (tracktion::Edit& edit, LiveInstrument& live, const juce::Midi
         ++nameCounts[part.trackName];
 
     Result result;
-    auto reuseFirstTrack = emptySong && tracktion::getAudioTracks (edit).size() == 1;
+    auto reuseFirstTrack = emptySong && tracktion::getAudioTracks (edit).size() == 1
+                            && ! TrackInstrument::isAudioTrack (*tracktion::getAudioTracks (edit)[0]);
 
     for (const auto& part : parts)
     {
