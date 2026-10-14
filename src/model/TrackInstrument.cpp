@@ -114,6 +114,9 @@ void TrackInstrument::setUp (tracktion::Edit& edit, tracktion::AudioTrack& track
 
 void TrackInstrument::addMixPlugins (tracktion::Edit& edit, tracktion::AudioTrack& track)
 {
+    // Undo restores the mixer's state, not the parameters that are heard (see setVolumeDb).
+    syncMixParameters (track);
+
     // Every track has volume and pan (tracks added without default plugins have neither).
     if (track.getVolumePlugin() == nullptr)
         if (auto volume = edit.getPluginCache().createNewPlugin (tracktion::VolumeAndPanPlugin::xmlTypeName, {}))
@@ -296,15 +299,29 @@ bool TrackInstrument::hasGeneralMidiSynth() const
 
 // Volume and pan are written to the plugin's state without the undo manager: the plugin's
 // own setters record every move, which would flood the undo history during a fader drag.
-// Undo for the mixer is TrackMix's job.
+// Undo for the mixer is TrackMix's job. Tracktion doesn't pass a state change on to the
+// plugin's parameters (which are what's heard), so they're updated from it afterwards.
 void TrackInstrument::setVolumeDb (float db)
 {
     if (auto* track = getTrack())
+    {
         if (auto* volume = track->getVolumePlugin())
+        {
             volume->state.setProperty (tracktion::IDs::volume,
                                        tracktion::decibelsToVolumeFaderPosition (juce::jlimit (-100.0f, 6.0f, db)), nullptr);
+            syncMixParameters (*track);
+        }
+    }
 
     sendMixToDevice();
+}
+
+void TrackInstrument::syncMixParameters (tracktion::AudioTrack& track)
+{
+    // Each parameter takes its value from the state; unchanged values change nothing.
+    if (auto* volume = track.getVolumePlugin())
+        for (auto* parameter : volume->getAutomatableParameters())
+            parameter->updateFromAttachedValue();
 }
 
 // Read from the state: the plugin's parameter catches up with it asynchronously.
@@ -323,8 +340,13 @@ float TrackInstrument::getVolumeDb() const
 void TrackInstrument::setPan (float pan)
 {
     if (auto* track = getTrack())
+    {
         if (auto* volume = track->getVolumePlugin())
+        {
             volume->state.setProperty (tracktion::IDs::pan, juce::jlimit (-1.0f, 1.0f, pan), nullptr);
+            syncMixParameters (*track);
+        }
+    }
 
     sendMixToDevice();
 }

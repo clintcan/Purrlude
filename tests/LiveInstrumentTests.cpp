@@ -461,3 +461,84 @@ TEST_CASE ("Every track gets a level meter after its volume", "[model][instrumen
     purrlude::TrackInstrument::setUp (*edit, *live.getTrack());
     REQUIRE (live.getTrack()->pluginList.getPluginsOfType<tracktion::LevelMeterPlugin>().size() == 1);
 }
+
+namespace
+{
+    /** Renders the edit (2 s) and returns each channel's peak. */
+    std::pair<float, float> renderPeaks (tracktion::Edit& edit)
+    {
+        auto file = juce::File::createTempFile (".wav");
+        tracktion::Renderer::Parameters params (edit);
+        params.destFile = file;
+        params.audioFormat = edit.engine.getAudioFileFormatManager().getWavFormat();
+        params.sampleRateForAudio = 44100.0;
+        params.blockSizeForAudio = 512;
+        params.canRenderInMono = false;
+        params.time = { tracktion::TimePosition(), tracktion::TimePosition::fromSeconds (2.0) };
+
+        std::atomic<bool> finished { false };
+        auto handle = tracktion::EditRenderer::render (std::move (params), [&finished] (auto) { finished = true; });
+
+        for (auto end = juce::Time::getMillisecondCounter() + 20000; ! finished && juce::Time::getMillisecondCounter() < end;)
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
+
+        juce::AudioFormatManager formats;
+        formats.registerBasicFormats();
+        std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (file));
+        REQUIRE (reader != nullptr);
+        juce::AudioBuffer<float> audio ((int) reader->numChannels, (int) reader->lengthInSamples);
+        reader->read (&audio, 0, (int) reader->lengthInSamples, 0, true, true);
+        reader = nullptr;
+        file.deleteFile();
+
+        return { audio.getMagnitude (0, 0, audio.getNumSamples()),
+                 audio.getNumChannels() > 1 ? audio.getMagnitude (1, 0, audio.getNumSamples()) : 0.0f };
+    }
+}
+
+TEST_CASE ("Volume and pan change what's heard", "[model][instrument][render]")
+{
+    juce::ScopedJuceInitialiser_GUI juceInit;
+    auto engine = purrlude::createEngine ("PurrludeTests");
+    auto edit = tracktion::Edit::createSingleTrackEdit (*engine);
+    purrlude::LiveInstrument live (*edit);
+    juce::MessageManager::getInstance()->runDispatchLoopUntil (300);
+
+    auto* track = live.getTrack();
+    auto clip = track->insertMIDIClip ({ tracktion::TimePosition(), tracktion::TimePosition::fromSeconds (2.0) }, nullptr);
+
+    for (int note : { 60, 64, 67 })
+        clip->getSequence().addNote (note, tracktion::BeatPosition(), tracktion::BeatDuration::fromBeats (3.0), 100, 0, nullptr);
+
+    purrlude::TrackInstrument instrument (*edit, *track);
+    auto full = renderPeaks (*edit);
+    INFO ("0 dB: " << full.first << ", " << full.second);
+    REQUIRE (full.first > 0.05f);
+
+    instrument.setVolumeDb (-30.0f);
+    juce::MessageManager::getInstance()->runDispatchLoopUntil (200);
+    auto quiet = renderPeaks (*edit);
+    INFO ("-30 dB: " << quiet.first << ", " << quiet.second);
+    REQUIRE (quiet.first < full.first * 0.1f);
+
+    instrument.setVolumeDb (0.0f);
+    instrument.setPan (-1.0f);
+    juce::MessageManager::getInstance()->runDispatchLoopUntil (200);
+    auto left = renderPeaks (*edit);
+    INFO ("hard left: " << left.first << ", " << left.second);
+    REQUIRE (left.second < left.first * 0.1f);
+
+    // Dragging a fader records nothing; a finished change is one undo step, and undoing it is heard.
+    instrument.setPan (0.0f);
+    auto& um = edit->getUndoManager();
+    um.clearUndoHistory();
+
+    purrlude::TrackMix::set (*edit, track->itemID, purrlude::TrackMix::Control::volumeDb, -20.0f);
+    REQUIRE_FALSE (um.canUndo());
+
+    purrlude::TrackMix::change (*edit, track->itemID, purrlude::TrackMix::Control::volumeDb, -30.0f, 0.0f);
+    REQUIRE (renderPeaks (*edit).first < full.first * 0.1f);
+
+    um.undo();
+    REQUIRE (renderPeaks (*edit).first > full.first * 0.9f);
+}

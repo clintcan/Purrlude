@@ -98,6 +98,7 @@ public:
 
 private:
     static void addMixPlugins (tracktion::Edit&, tracktion::AudioTrack&);
+    static void syncMixParameters (tracktion::AudioTrack&);
 
     tracktion::Edit& edit;
     tracktion::EditItemID trackID;
