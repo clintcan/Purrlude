@@ -10,6 +10,8 @@ Only content whose license permits redistribution inside the app may be added.
 | Drum loops (`loops/groove.json`) | Built-in drum loops (Loops panel) | [Groove MIDI Dataset](https://magenta.tensorflow.org/datasets/groove) v1.0.0 (MIDI only), extracted by `tools/content/build_groove_loops.py` | Jon Gillick, Adam Roberts, Jesse Engel, Douglas Eck, David Bamman (Google Magenta) | CC BY 4.0; attribution shown in the Loops panel |
 | Accompaniment progressions and patterns (`accompaniment/patterns.json`) | Built-in bass and chord parts (Loops panel) | Written for Purrlude | Purrlude contributors | Original work, under Purrlude's license |
 | Verovio fonts and glyph data (`data/`) | Score engraving | [github.com/rism-digital/verovio](https://github.com/rism-digital/verovio) 6.3.0 | RISM Digital Center and contributors; SMuFL fonts by their respective authors | LGPLv3 (Verovio); fonts under SIL OFL 1.1 |
+| basic-pitch model ("nmp", ICASSP 2022, `nmp.onnx`) | Converting notes and chords in audio to MIDI | [github.com/spotify/basic-pitch](https://github.com/spotify/basic-pitch) v0.4.0 (`9991303`) | Spotify AB | Apache 2.0 (`LICENSE-basic-pitch.txt` and `NOTICE-basic-pitch.txt` in the app's licenses folder) |
+| ONNX Runtime 1.30.0 (shared library) | Running the basic-pitch model | [github.com/microsoft/onnxruntime](https://github.com/microsoft/onnxruntime) release binaries | Microsoft Corporation | MIT (`LICENSE-onnxruntime.txt` and `ThirdPartyNotices-onnxruntime.txt` in the app's licenses folder) |
 
 ## Notes
 
@@ -25,3 +27,8 @@ Only content whose license permits redistribution inside the app may be added.
   - They are 4-bar excerpts of human performances on a Roland TD-11 kit, with its drum notes mapped to General MIDI. CC BY 4.0 requires noting changes, so the JSON records them.
   - The extraction script downloads the archive at a fixed URL and checks its SHA-256.
   - The credit, with a link, is shown at the bottom of the Loops panel.
+
+- **basic-pitch and ONNX Runtime:**
+  - The model is downloaded at a pinned commit, checked by SHA-256 and compiled into the app. Apache 2.0 requires its license and NOTICE to ship with it; both are copied into the app's licenses folder.
+  - ONNX Runtime's release binaries are downloaded at a pinned version and checked by SHA-256.
+  - **Telemetry:** official ONNX Runtime builds send usage telemetry to Microsoft by default. Purrlude turns it off before the runtime starts (`ORT_DISABLE_TELEMETRY=1`, then `DisableTelemetryEvents`). No audio or data leaves the machine.

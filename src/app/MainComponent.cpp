@@ -140,9 +140,9 @@ void MainComponent::setProject (std::unique_ptr<Project> newProject)
     editorTabs.addTab ("Piano Roll", tabColour, pianoRoll.get(), false);
     editorTabs.setCurrentTabIndex (juce::jmax (0, currentTab));
 
-    arrangement->onConvertToMidi = [this] (tracktion::EditItemID clipID, bool drums)
+    arrangement->onConvertToMidi = [this] (tracktion::EditItemID clipID, audio_to_midi::Mode mode)
     {
-        convertToMidi (clipID, drums ? audio_to_midi::Mode::drums : audio_to_midi::Mode::melody);
+        convertToMidi (clipID, mode);
     };
 
     // Double-click a clip to edit its notes.
@@ -447,7 +447,8 @@ void MainComponent::convertToMidi (tracktion::EditItemID audioClip, audio_to_mid
     conversionProgress = 0.0;
     conversionWindow = std::make_unique<juce::AlertWindow> ("Converting " + source->name + " to MIDI",
                                                             mode == audio_to_midi::Mode::drums ? "Listening for the drums..."
-                                                                                               : "Listening for the melody...",
+                                                          : mode == audio_to_midi::Mode::polyphonic ? "Listening for the notes and chords..."
+                                                                                                    : "Listening for the melody...",
                                                             juce::MessageBoxIconType::NoIcon);
     conversionWindow->addProgressBarComponent (conversionProgress);
     conversionWindow->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));

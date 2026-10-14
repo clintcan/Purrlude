@@ -38,6 +38,7 @@ add_subdirectory(${tracktion_engine_SOURCE_DIR}/modules ${CMAKE_BINARY_DIR}/trac
 
 include(cmake/Verovio.cmake)
 include(cmake/SoundFonts.cmake)
+include(cmake/OnnxRuntime.cmake)
 
 # ------------------------------------------------------------------------------
 # Purrlude core: everything except the app shell, so tests can link it.
@@ -112,6 +113,9 @@ target_sources(purrlude_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/MelodyTranscriber.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/DrumTranscriber.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/DrumTranscriber.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/AnalysisAudio.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/PolyphonicTranscriber.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/PolyphonicTranscriber.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/AudioToMidi.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/AudioToMidi.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/NoteEditing.h
@@ -187,6 +191,8 @@ target_link_libraries(purrlude_core INTERFACE
     purrlude_verovio
     purrlude_tinysoundfont
     purrlude_content
+    purrlude_models
+    purrlude_onnxruntime
 )
 
 if(WIN32)
@@ -237,6 +243,9 @@ target_link_libraries(Purrlude PRIVATE
     juce::juce_recommended_lto_flags
     juce::juce_recommended_warning_flags
 )
+
+purrlude_bundle_onnxruntime(Purrlude)
+purrlude_bundle_model_licenses(Purrlude)
 
 # Verovio's fonts and glyph files ship with the app (see ScoreRenderer::findResourceDirectory).
 if(APPLE)

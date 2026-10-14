@@ -1,5 +1,6 @@
 #pragma once
 
+#include "AnalysisAudio.h"
 #include "PitchTracker.h"
 
 #include <juce_audio_basics/juce_audio_basics.h>
@@ -37,8 +38,5 @@ std::vector<TranscribedNote> segmentNotes (const std::vector<PitchFrame>&, const
 */
 std::vector<TranscribedNote> transcribeMelody (const juce::AudioBuffer<float>&, double sampleRate,
                                                const std::function<bool (float progress)>& keepGoing = {});
-
-/** The sample rate transcribeMelody analyses at. */
-constexpr double analysisSampleRate = 22050.0;
 
 } // namespace purrlude::analysis

@@ -6,29 +6,33 @@
 #include "model/AudioToMidi.h"
 #include "notation/TrackNotation.h"
 
+#include <set>
+
 using Catch::Matchers::WithinAbs;
 
 namespace
 {
     void pump (int ms = 300)    { juce::MessageManager::getInstance()->runDispatchLoopUntil (ms); }
 
-    /** E4, G4 and C5 as harmonic tones, half a second each starting at 0.25 s, in a WAV. */
-    juce::File writeMelody()
+    /** E4, G4 and C5 as harmonic tones, half a second each starting at 0.25 s, in a WAV;
+        with a chord, then all three together at 1.75 s.
+    */
+    juce::File writeMelody (bool withChord = false)
     {
         constexpr double rate = 48000.0;
         auto file = juce::File::createTempFile (".wav");
         juce::WavAudioFormat wav;
         std::unique_ptr<juce::AudioFormatWriter> writer (wav.createWriterFor (new juce::FileOutputStream (file), rate, 2, 24, {}, 0));
-        juce::AudioBuffer<float> audio (2, (int) (2.0 * rate));
+        juce::AudioBuffer<float> audio (2, (int) ((withChord ? 3.0 : 2.0) * rate));
         audio.clear();
 
         int midi[] = { 64, 67, 72 };
 
-        for (int n = 0; n < 3; ++n)
+        for (int n = 0; n < (withChord ? 6 : 3); ++n)
         {
-            auto first = (int) ((0.25 + n * 0.5) * rate);
+            auto first = (int) ((n < 3 ? 0.25 + n * 0.5 : 1.75) * rate);
             double phase = 0.0;
-            auto frequency = 440.0 * std::pow (2.0, (midi[n] - 69) / 12.0);
+            auto frequency = 440.0 * std::pow (2.0, (midi[n % 3] - 69) / 12.0);
 
             for (int i = 0; i < (int) (0.45 * rate); ++i)
             {
@@ -36,8 +40,8 @@ namespace
                 auto t = i / rate;
                 auto envelope = juce::jmin (1.0, t / 0.02, (0.45 - t) / 0.03);
                 auto sample = (float) (0.3 * envelope * (std::sin (phase) + 0.4 * std::sin (2 * phase)));
-                audio.setSample (0, first + i, sample);
-                audio.setSample (1, first + i, sample);
+                audio.addSample (0, first + i, sample);
+                audio.addSample (1, first + i, sample);
             }
         }
 
@@ -106,6 +110,63 @@ TEST_CASE ("A melody in an audio clip becomes MIDI on a track under it", "[analy
     pump (800);
     edit->getUndoManager().undo();
     REQUIRE (tracktion::getAudioTracks (*edit).size() == 3);
+    file.deleteFile();
+}
+
+TEST_CASE ("Notes and chords in an audio clip become MIDI on a track under it", "[analysis][model]")
+{
+    if (! purrlude::audio_to_midi::isAvailable (purrlude::audio_to_midi::Mode::polyphonic))
+        SKIP ("This build has no ONNX Runtime");
+
+    juce::ScopedJuceInitialiser_GUI juceInit;
+    auto engine = purrlude::createEngine ("PurrludeTests");
+    auto edit = tracktion::Edit::createSingleTrackEdit (*engine);
+    purrlude::LiveInstrument live (*edit);
+    pump();
+
+    // The melody's notes are heard one at a time; here they're a chord as well.
+    auto file = writeMelody (true);
+    auto imported = purrlude::audio_import::importFile (*edit, live, file, 0);
+    REQUIRE (imported.error.isEmpty());
+    auto source = purrlude::audio_to_midi::getSource (*edit, imported.clip);
+    REQUIRE (source.has_value());
+
+    std::optional<std::vector<purrlude::analysis::TranscribedNote>> result;
+    juce::String error;
+
+    purrlude::audio_to_midi::Conversion conversion (*engine, *source, purrlude::audio_to_midi::Mode::polyphonic,
+                                                    [&] (auto notes, const juce::String& e)
+    {
+        result = std::move (notes);
+        error = e;
+    });
+
+    for (auto end = juce::Time::getMillisecondCounter() + 20000; ! result && juce::Time::getMillisecondCounter() < end;)
+        pump (20);
+
+    REQUIRE (result.has_value());
+    INFO (error);
+    REQUIRE (error.isEmpty());
+
+    auto* clip = purrlude::audio_to_midi::insertNotes (*edit, live, *source, *result, purrlude::audio_to_midi::Mode::polyphonic);
+    REQUIRE (clip != nullptr);
+    REQUIRE (clip->getClipTrack()->getName() == source->name + " (notes)");
+
+    // The three notes, then the chord at 1.75 s (beat 3.5).
+    std::set<int> melody, chord;
+
+    auto* track = dynamic_cast<tracktion::AudioTrack*> (clip->getClipTrack());
+    REQUIRE (track != nullptr);
+
+    for (auto& n : purrlude::notation::getTrackNotes (*track))
+        (std::abs (n.start - 3.5) < 0.1 ? chord : melody).insert (n.pitch);
+
+    REQUIRE (melody.count (64) == 1);
+    REQUIRE (melody.count (67) == 1);
+    REQUIRE (melody.count (72) == 1);
+    // (The model may add an octave above a strong second harmonic.)
+    for (int pitch : { 64, 67, 72 })
+        REQUIRE (chord.count (pitch) == 1);
     file.deleteFile();
 }
 

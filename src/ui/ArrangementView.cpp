@@ -946,7 +946,7 @@ void ArrangementView::mouseMove (const juce::MouseEvent& e)
 
 void ArrangementView::showClipMenu (tracktion::EditItemID clipID, bool isMidi)
 {
-    enum { editNotes = 1, convertMelody, convertDrums, loopClip, remove, keepTake, firstTake = 100 };
+    enum { editNotes = 1, convertMelody, convertChords, convertDrums, loopClip, remove, keepTake, firstTake = 100 };
     juce::PopupMenu menu;
 
     // Takes from a loop recording: choose the one that's heard.
@@ -968,6 +968,8 @@ void ArrangementView::showClipMenu (tracktion::EditItemID clipID, bool isMidi)
     else
     {
         menu.addItem (convertMelody, "Convert Melody to MIDI...", onConvertToMidi != nullptr);
+        menu.addItem (convertChords, "Convert Notes and Chords to MIDI...",
+                      onConvertToMidi != nullptr && audio_to_midi::isAvailable (audio_to_midi::Mode::polyphonic));
         menu.addItem (convertDrums, "Convert Drums to MIDI...", onConvertToMidi != nullptr);
     }
 
@@ -983,8 +985,10 @@ void ArrangementView::showClipMenu (tracktion::EditItemID clipID, bool isMidi)
 
         if (result == editNotes && safe->onClipDoubleClicked != nullptr)
             safe->onClipDoubleClicked (clipID);
-        else if ((result == convertMelody || result == convertDrums) && safe->onConvertToMidi != nullptr)
-            safe->onConvertToMidi (clipID, result == convertDrums);
+        else if ((result == convertMelody || result == convertChords || result == convertDrums) && safe->onConvertToMidi != nullptr)
+            safe->onConvertToMidi (clipID, result == convertDrums ? audio_to_midi::Mode::drums
+                                         : result == convertChords ? audio_to_midi::Mode::polyphonic
+                                                                   : audio_to_midi::Mode::melody);
         else if (result == remove)
             safe->deleteSelectedClip();
         else if (result >= firstTake || result == keepTake)

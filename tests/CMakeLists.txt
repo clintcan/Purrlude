@@ -23,6 +23,7 @@ target_sources(PurrludeTests PRIVATE
     MelodyTranscriptionTests.cpp
     AudioToMidiTests.cpp
     DrumTranscriptionTests.cpp
+    PolyphonicTranscriptionTests.cpp
     TrackEffectsTests.cpp
     LoopRangeTests.cpp
     SharedReverbTests.cpp
@@ -39,6 +40,8 @@ target_link_libraries(PurrludeTests PRIVATE
     juce::juce_recommended_config_flags
     juce::juce_recommended_warning_flags
 )
+
+purrlude_bundle_onnxruntime(PurrludeTests)
 
 if(APPLE)
     # macOS privacy checks need a usage string before a command-line tool may use Bluetooth.

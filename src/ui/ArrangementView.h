@@ -3,6 +3,7 @@
 #include "LevelMeter.h"
 #include "TimelineView.h"
 #include "TrackHeader.h"
+#include "model/AudioToMidi.h"
 
 #include <tracktion_engine/tracktion_engine.h>
 
@@ -46,7 +47,7 @@ public:
     std::function<void (tracktion::EditItemID)> onClipDoubleClicked;
 
     /** Called when "Convert Melody/Drums to MIDI" is chosen for an audio clip (drums true for drums). */
-    std::function<void (tracktion::EditItemID, bool drums)> onConvertToMidi;
+    std::function<void (tracktion::EditItemID, audio_to_midi::Mode)> onConvertToMidi;
 
     void paint (juce::Graphics&) override;
     void resized() override;

@@ -27,31 +27,10 @@ namespace
     constexpr Band bands[] = { { 30.0f, 90.0f }, { 1000.0f, 4000.0f }, { 6000.0f, 11000.0f }, { 150.0f, 400.0f } };
     constexpr size_t numBands = 4, bodyBand = 3;
 
-    /** Mono at the analysis rate (the same preparation as for melodies). */
+    /** Mono at the analysis rate, low-passed just under its Nyquist (the hi-hat band reaches 11 kHz). */
     std::vector<float> prepare (const juce::AudioBuffer<float>& audio, double sampleRate)
     {
-        std::vector<float> mono ((size_t) audio.getNumSamples(), 0.0f);
-
-        for (int channel = 0; channel < audio.getNumChannels(); ++channel)
-            for (int i = 0; i < audio.getNumSamples(); ++i)
-                mono[(size_t) i] += audio.getSample (channel, i) / (float) audio.getNumChannels();
-
-        if (std::abs (sampleRate - analysisSampleRate) < 1.0)
-            return mono;
-
-        // Low-pass just under the new Nyquist (the hi-hat band reaches 11 kHz), then resample.
-        for (int pass = 0; pass < 2; ++pass)
-        {
-            juce::IIRFilter lowPass;
-            lowPass.setCoefficients (juce::IIRCoefficients::makeLowPass (sampleRate, juce::jmin (10500.0, sampleRate * 0.45)));
-            lowPass.processSamples (mono.data(), (int) mono.size());
-        }
-
-        auto ratio = sampleRate / analysisSampleRate;
-        std::vector<float> resampled ((size_t) ((double) mono.size() / ratio));
-        juce::LagrangeInterpolator interpolator;
-        interpolator.process (ratio, mono.data(), resampled.data(), (int) resampled.size());
-        return resampled;
+        return toAnalysisRate (audio, sampleRate, juce::jmin (10500.0, sampleRate * 0.45));
     }
 }
 

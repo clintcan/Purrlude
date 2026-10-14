@@ -177,40 +177,8 @@ std::vector<TranscribedNote> transcribeMelody (const juce::AudioBuffer<float>& a
     if (audio.getNumSamples() == 0 || audio.getNumChannels() == 0 || sampleRate <= 0.0)
         return {};
 
-    // Mono.
-    std::vector<float> mono ((size_t) audio.getNumSamples(), 0.0f);
-
-    for (int channel = 0; channel < audio.getNumChannels(); ++channel)
-    {
-        auto* data = audio.getReadPointer (channel);
-
-        for (int i = 0; i < audio.getNumSamples(); ++i)
-            mono[(size_t) i] += data[i] / (float) audio.getNumChannels();
-    }
-
-    // To the analysis rate (the input's high end isn't needed for pitch).
-    std::vector<float> resampled;
-
-    if (std::abs (sampleRate - analysisSampleRate) < 1.0)
-    {
-        resampled = std::move (mono);
-    }
-    else
-    {
-        // Low-pass first, so nothing above the new rate folds back down as noise; harmonics
-        // up to a few kHz are all the pitch tracker needs.
-        for (int pass = 0; pass < 2; ++pass)
-        {
-            juce::IIRFilter lowPass;
-            lowPass.setCoefficients (juce::IIRCoefficients::makeLowPass (sampleRate, 5000.0));
-            lowPass.processSamples (mono.data(), (int) mono.size());
-        }
-
-        auto ratio = sampleRate / analysisSampleRate;
-        resampled.resize ((size_t) ((double) mono.size() / ratio));
-        juce::LagrangeInterpolator interpolator;
-        interpolator.process (ratio, mono.data(), resampled.data(), (int) resampled.size());
-    }
+    // At the analysis rate; harmonics up to a few kHz are all the pitch tracker needs.
+    auto resampled = toAnalysisRate (audio, sampleRate, 5000.0);
 
     auto frames = trackPitch (resampled.data(), (int) resampled.size(), analysisSampleRate, {}, keepGoing);
 

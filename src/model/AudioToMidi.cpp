@@ -7,6 +7,11 @@
 namespace purrlude::audio_to_midi
 {
 
+bool isAvailable (Mode mode)
+{
+    return mode != Mode::polyphonic || analysis::isPolyphonicAvailable();
+}
+
 std::optional<Source> getSource (tracktion::Edit& edit, tracktion::EditItemID clipID)
 {
     auto* clip = dynamic_cast<tracktion::WaveAudioClip*> (tracktion::findClipForID (edit, clipID));
@@ -80,7 +85,7 @@ tracktion::MidiClip* insertNotes (tracktion::Edit& edit, LiveInstrument& live, c
     if (track == nullptr)
         return nullptr;
 
-    // A melody plays on piano (plain enough to check the notes by), drums on the drum kit.
+    // Melodies and chords play on piano (plain enough to check the notes by), drums on the drum kit.
     track->setName (source.name + (mode == Mode::drums ? " (drums)" : " (notes)"));
     TrackInstrument (edit, *track).setProgram (mode == Mode::drums ? gm::drumKit : 0);
 
@@ -149,16 +154,21 @@ void Conversion::run()
 
         if (mode == Mode::drums)
             notes = toNotes (analysis::transcribeDrums (audio, sampleRate, {}, keepGoing));
+        else if (mode == Mode::polyphonic)
+            notes = analysis::transcribePolyphonic (audio, sampleRate, error, keepGoing);
         else
             notes = analysis::transcribeMelody (audio, sampleRate, keepGoing);
 
         if (threadShouldExit())
             return;
 
-        if (notes.empty())
+        if (notes.empty() && error.isEmpty())
             error = mode == Mode::drums
                       ? "No drum hits were found in " + source.name + ". It listens for kick, snare and hi-hat "
                         "in a recording of drums."
+                    : mode == Mode::polyphonic
+                      ? "No notes were found in " + source.name + ". It listens for pitched instruments "
+                        "and voices; drums and noise aren't turned into notes."
                       : "No melody was found in " + source.name + ". It works best on one voice or instrument "
                         "playing one note at a time, without much else in the recording.";
     }

@@ -84,7 +84,7 @@ These are what set Purrlude apart. Treat them as first-class, not add-ons.
 | Score rendering | Verovio 6.3.0 (MusicXML → SVG), built statically by `cmake/Verovio.cmake` | LGPLv3 |
 | PDF export | In-house `notation::PdfDocument`: a JUCE `LowLevelGraphicsContext` that writes vector PDF | — |
 | Notation cleanup | In-house (`src/notation/`): quantize, key estimate, spelling, staves, ties; MusicXML export | — |
-| Audio → MIDI (polyphonic) | Spotify basic-pitch model on ONNX Runtime _(planned)_ | Apache 2.0 / MIT |
+| Audio → MIDI (polyphonic) | Spotify basic-pitch model (v0.4.0) on ONNX Runtime 1.30.0, fetched by `cmake/OnnxRuntime.cmake` | Apache 2.0 / MIT |
 | Audio → MIDI (monophonic) | In-house pYIN (`src/analysis/`) | — |
 | Audio → MIDI (drums) | In-house band-energy onsets (`src/analysis/DrumTranscriber`); an ONNX classifier _(maybe later)_ | — |
 | Built-in instruments | TinySoundFont (SF2) + GeneralUser GS v2.0.3 GM bank; sfizz (SFZ) _(planned)_ | MIT / GeneralUser GS License v2.0 |
@@ -266,7 +266,7 @@ src/instruments/        Built-in instruments (SoundFont GM synth)
 content/                Bundled content: LICENSES.md manifest, devices/*.json definitions, loops/*.json drum loops
 src/model/              Project model on top of tracktion::Edit (Project, LiveInstrument)
 src/notation/           Notation layer: performed notes -> Score -> MusicXML (no UI)
-src/analysis/           Analysis layer: pitch tracking and melody transcription (no UI, no Tracktion)
+src/analysis/           Analysis layer: melody, chord (basic-pitch) and drum transcription (no UI, no Tracktion)
 src/ui/                 UI components (TransportBar, ArrangementView, ScoreView, PianoRoll, MidiDevicesPanel, LoopsPanel, EffectsPanel)
 tools/content/          Scripts that generate bundled content (run by hand; output is committed)
 tests/                  Catch2 test runner (PurrludeTests)
@@ -292,11 +292,20 @@ tests/                  Catch2 test runner (PurrludeTests)
   - **Levels:** detection uses levels clamped at -50 dB; comparisons use true levels down to -100 dB.
   - **Tuning:** the defaults were tuned on built-in loops rendered through the GM kit (`PurrludeTests "[.drum-accuracy]" -s` reports recall on hits at velocity 40+ and false hits).
   - **Results:** kicks about 90–100%, snares about 85% (not ghost notes), hi-hats about 75%. Toms and cymbals come out as the nearest of the three.
-- **Model** (`src/model/AudioToMidi.h`, mode melody or drums):
+- **Notes and chords** (`transcribePolyphonic`, `src/analysis/PolyphonicTranscriber.h`): Spotify's basic-pitch model run by ONNX Runtime, for piano, guitar, or several instruments at once.
+  - **The model** (`nmp.onnx`, 230 KB) is compiled in (`PurrludeModels`). It hears 2 s windows at 22.05 kHz overlapping by 30 frames, and gives, per 256-sample frame and piano key, how likely the key is sounding and starting. Half the overlap is dropped from each side of a window, so a frame's time is `frameTime`: window × 36164 samples + frame-in-window × 256.
+  - **Notes** (`notesFromActivations`) are a port of basic-pitch's `output_to_notes_polyphonic` (onset peaks, notes lasting until a key is quiet for 11 frames, then the "melodia trick"), without pitch bends. On the same audio it gives exactly the notes basic-pitch's Python does. basic-pitch's own `model_frames_to_time` drifts on long files (about 0.14 s after 2½ minutes), so our frame times are worked out from the windows instead.
+  - **Speed:** about 0.3 s per minute of audio in a debug build.
+  - **ONNX Runtime** is a prebuilt shared library per platform, copied into the app (`Contents/Frameworks` on macOS, next to the exe elsewhere) and the test runner. Platforms without a prebuilt release (Intel Macs) build without it: `PURRLUDE_HAS_ONNXRUNTIME=0`, and the menu item is disabled (`audio_to_midi::isAvailable`).
+  - **Telemetry:** official ONNX Runtime builds send usage telemetry to Microsoft. `getOnnxRuntime` sets `ORT_DISABLE_TELEMETRY=1` before creating its environment and calls `DisableTelemetryEvents`. Keep it that way: Purrlude sends nothing without consent.
+  - **Licenses:** basic-pitch's LICENSE and NOTICE and ONNX Runtime's LICENSE and third-party notices are copied into the app's `licenses` folder.
+  - **Known behaviour:** it can add a note an octave above a note with a strong second harmonic.
+  - **Checking a real file:** `PURRLUDE_AUDIO_FILE=/path/file.wav PurrludeTests "[.poly-file]"` prints the notes found.
+- **Model** (`src/model/AudioToMidi.h`, mode melody, polyphonic or drums):
   - `getSource` reads, on the message thread, the part of the file a clip plays.
   - `Conversion` reads and transcribes it on its own thread; deleting it cancels.
-  - `insertNotes` puts the notes on a new track under the audio track, over the clip's span, as one undo step: a piano track for a melody, a drum-kit track for drums.
-- **UI:** right-click an audio clip → Convert Melody / Drums to MIDI, with progress and Cancel from `MainComponent`.
+  - `insertNotes` puts the notes on a new track under the audio track, over the clip's span, as one undo step: a piano track for a melody or chords, a drum-kit track for drums.
+- **UI:** right-click an audio clip → Convert Melody / Notes and Chords / Drums to MIDI, with progress and Cancel from `MainComponent`.
 - **Tests:** synthesized tones (`tests/MelodyTranscriptionTests.cpp`) cover pitches, timing, vibrato, legato, repeated notes, silence and velocity. `[.bench]` times a minute of audio.
 
 ### Projects
