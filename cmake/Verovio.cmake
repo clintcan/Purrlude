@@ -9,6 +9,10 @@ CPMAddPackage(
     NAME verovio
     URL https://github.com/rism-digital/verovio/archive/refs/tags/version-6.3.0.tar.gz
     DOWNLOAD_ONLY YES
+    # Makes Verovio's thread_local statics function-local, so they're only created on threads
+    # that use Verovio. MSVC creates namespace-scope ones on every thread (including the OS's
+    # worker threads), and in Debug builds one exiting during shutdown crashes the process.
+    PATCHES ${CMAKE_CURRENT_LIST_DIR}/patches/verovio-lazy-thread-locals.patch
 )
 
 set(VRV_DIR ${verovio_SOURCE_DIR})

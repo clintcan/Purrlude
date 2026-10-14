@@ -1,0 +1,210 @@
+diff -ru a/include/vrv/customtuning.h b/include/vrv/customtuning.h
+--- a/include/vrv/customtuning.h
++++ b/include/vrv/customtuning.h
+@@ -82,8 +82,11 @@
+     // Static members //
+     //----------------//
+ 
+-    static thread_local std::map<std::string, char32_t> s_glyphNames;
+-    static thread_local std::map<char32_t, std::string> s_glyphCodes;
++    // Purrlude: function-local thread_locals are only created on threads that use them. MSVC creates
++    // namespace-scope ones on every thread, and in Debug builds destroying them on a thread that exits
++    // during process shutdown crashes.
++    static std::map<std::string, char32_t> &GlyphNames();
++    static std::map<char32_t, std::string> &GlyphCodes();
+ };
+ 
+ } // namespace vrv
+diff -ru a/include/vrv/floatingobject.h b/include/vrv/floatingobject.h
+--- a/include/vrv/floatingobject.h
++++ b/include/vrv/floatingobject.h
+@@ -152,7 +152,10 @@
+      * The ids of the group is then the position in the vector + GRPS_BASE_ID.
+      * Groups coded in MEI have negative ids (-@vgrp value)
+      */
+-    static thread_local std::vector<void *> s_drawingObjectIds;
++    // Purrlude: function-local thread_locals are only created on threads that use them. MSVC creates
++    // namespace-scope ones on every thread, and in Debug builds destroying them on a thread that exits
++    // during process shutdown crashes.
++    static std::vector<void *> &DrawingObjectIds();
+ };
+ 
+ //----------------------------------------------------------------------------
+diff -ru a/include/vrv/resources.h b/include/vrv/resources.h
+--- a/include/vrv/resources.h
++++ b/include/vrv/resources.h
+@@ -46,8 +46,8 @@
+      * @name Setters and getters
+      */
+     ///@{
+-    static std::string GetDefaultPath() { return s_defaultPath; }
+-    static void SetDefaultPath(const std::string &path) { s_defaultPath = path; }
++    static std::string GetDefaultPath() { return DefaultPath(); }
++    static void SetDefaultPath(const std::string &path) { DefaultPath() = path; }
+ 
+     std::string GetPath() const { return m_path; }
+     void SetPath(const std::string &path) { m_path = path; }
+@@ -198,7 +198,10 @@
+     //----------------//
+ 
+     /** The default path to the resources directory (e.g., for the svg/ subdirectory with fonts as XML */
+-    static thread_local std::string s_defaultPath;
++    // Purrlude: function-local thread_locals are only created on threads that use them. MSVC creates
++    // namespace-scope ones on every thread, and in Debug builds destroying them on a thread that exits
++    // during process shutdown crashes.
++    static std::string &DefaultPath();
+ 
+     /** The default font style */
+     static const StyleAttributes k_defaultStyle;
+diff -ru a/src/customtuning.cpp b/src/customtuning.cpp
+--- a/src/customtuning.cpp
++++ b/src/customtuning.cpp
+@@ -23,8 +23,17 @@
+ // Static members
+ //----------------------------------------------------------------------------
+ 
+-thread_local std::map<std::string, char32_t> CustomTuning::s_glyphNames;
+-thread_local std::map<char32_t, std::string> CustomTuning::s_glyphCodes;
++std::map<std::string, char32_t> &CustomTuning::GlyphNames()
++{
++    thread_local std::map<std::string, char32_t> glyphNames;
++    return glyphNames;
++}
++
++std::map<char32_t, std::string> &CustomTuning::GlyphCodes()
++{
++    thread_local std::map<char32_t, std::string> glyphCodes;
++    return glyphCodes;
++}
+ 
+ //----------------------------------------------------------------------------
+ // CustomTuning
+@@ -50,7 +59,7 @@
+  */
+ void CustomTuning::CreateGlyphMapping(Doc *doc)
+ {
+-    if (s_glyphNames.size() > 0 && s_glyphCodes.size() > 0) return;
++    if (GlyphNames().size() > 0 && GlyphCodes().size() > 0) return;
+ 
+     std::ifstream glyphnames(doc->GetResources().GetPath() + "/tuning-glyphnames.json");
+     std::string json((std::istreambuf_iterator<char>(glyphnames)), std::istreambuf_iterator<char>());
+@@ -66,8 +75,8 @@
+             continue;
+         }
+         char32_t code = static_cast<char32_t>(std::stoul(codepoint.c_str() + 2, nullptr, 16));
+-        s_glyphNames.insert({ glyph.first, code });
+-        s_glyphCodes.insert({ code, glyph.first });
++        GlyphNames().insert({ glyph.first, code });
++        GlyphCodes().insert({ code, glyph.first });
+     }
+ }
+ 
+@@ -125,15 +134,15 @@
+  */
+ char32_t CustomTuning::GetGlyphCode(const std::string &glyphName, Doc *doc)
+ {
+-    if (s_glyphNames.empty()) {
++    if (GlyphNames().empty()) {
+         assert(doc);
+         CreateGlyphMapping(doc);
+     }
+-    if (!s_glyphNames.count(glyphName)) {
++    if (!GlyphNames().count(glyphName)) {
+         LogDebug("Custom tuning: SMuFL glyph '%s' not found in glyph table", glyphName.c_str());
+         return 0;
+     }
+-    return s_glyphNames.at(glyphName);
++    return GlyphNames().at(glyphName);
+ }
+ 
+ /**
+@@ -141,15 +150,15 @@
+  */
+ std::string CustomTuning::GetGlyphName(char32_t glyphCode, Doc *doc)
+ {
+-    if (s_glyphCodes.empty()) {
++    if (GlyphCodes().empty()) {
+         assert(doc);
+         CreateGlyphMapping(doc);
+     }
+-    if (!s_glyphCodes.count(glyphCode)) {
++    if (!GlyphCodes().count(glyphCode)) {
+         LogError("Custom tuning: SMuFL glyph U+%04X not found in glyph table", glyphCode);
+         return "";
+     }
+-    return s_glyphCodes.at(glyphCode);
++    return GlyphCodes().at(glyphCode);
+ }
+ 
+ /**
+diff -ru a/src/floatingobject.cpp b/src/floatingobject.cpp
+--- a/src/floatingobject.cpp
++++ b/src/floatingobject.cpp
+@@ -50,7 +50,11 @@
+ // Static members
+ //----------------------------------------------------------------------------
+ 
+-thread_local std::vector<void *> FloatingObject::s_drawingObjectIds;
++std::vector<void *> &FloatingObject::DrawingObjectIds()
++{
++    thread_local std::vector<void *> drawingObjectIds;
++    return drawingObjectIds;
++}
+ 
+ //----------------------------------------------------------------------------
+ // FloatingObject
+@@ -131,7 +135,7 @@
+ 
+ void FloatingObject::ResetDrawingObjectIDs()
+ {
+-    FloatingObject::s_drawingObjectIds.clear();
++    FloatingObject::DrawingObjectIds().clear();
+ }
+ 
+ void FloatingObject::SetCurrentFloatingPositioner(FloatingPositioner *boundingBox)
+@@ -157,14 +161,14 @@
+ 
+     int idx = 0;
+     std::vector<void *>::const_iterator it
+-        = std::find(s_drawingObjectIds.begin(), s_drawingObjectIds.end(), drawingGrpObject);
+-    if (it == s_drawingObjectIds.end()) {
+-        idx = (int)s_drawingObjectIds.size();
+-        s_drawingObjectIds.push_back(drawingGrpObject);
++        = std::find(DrawingObjectIds().begin(), DrawingObjectIds().end(), drawingGrpObject);
++    if (it == DrawingObjectIds().end()) {
++        idx = (int)DrawingObjectIds().size();
++        DrawingObjectIds().push_back(drawingGrpObject);
+         // LogDebug("Creating grpId %d", idx);
+     }
+     else {
+-        idx = (int)(it - s_drawingObjectIds.begin());
++        idx = (int)(it - DrawingObjectIds().begin());
+         // LogDebug("Using grpId %d", idx);
+     }
+     m_drawingGrpId = idx + 1000;
+diff -ru a/src/resources.cpp b/src/resources.cpp
+--- a/src/resources.cpp
++++ b/src/resources.cpp
+@@ -34,7 +34,12 @@
+ // Static members with some default values
+ //----------------------------------------------------------------------------
+ 
+-thread_local std::string Resources::s_defaultPath = VRV_RESOURCE_DIR;
++std::string &Resources::DefaultPath()
++{
++    thread_local std::string defaultPath = VRV_RESOURCE_DIR;
++    return defaultPath;
++}
++
+ const Resources::StyleAttributes Resources::k_defaultStyle{ data_FONTWEIGHT::FONTWEIGHT_normal,
+     data_FONTSTYLE::FONTSTYLE_normal };
+ 
+@@ -53,7 +58,7 @@
+ 
+ Resources::Resources()
+ {
+-    m_path = s_defaultPath;
++    m_path = DefaultPath();
+     m_currentStyle = k_defaultStyle;
+     m_useLiberation = false;
+ }

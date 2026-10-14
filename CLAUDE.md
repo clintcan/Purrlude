@@ -316,6 +316,8 @@ Verovio's `data/` folder (fonts and glyph files) is copied into the app (`Conten
 
 Verovio 6.3.0's `NO_EDIT_SUPPORT` doesn't compile, so leave it off.
 
+Verovio is patched (`cmake/patches/verovio-lazy-thread-locals.patch`, applied by CPM) so its `thread_local` statics with destructors are function-local. MSVC creates namespace-scope ones on every thread, the OS's worker threads included. In Debug builds, a thread that exits during process shutdown then destroys them after the STL's locks are gone, crashing the process. That made Windows test runs fail now and then after all their checks had passed. When upgrading Verovio, re-check `thread_local` in its sources and refresh the patch.
+
 Only shapes with a `stroke-width` (lines, stems, ties) get the ink stroke. Stroking glyph outlines thickens them, and JUCE flattens stroked outlines into thousands of segments, which made PDFs about 6× larger.
 
 **PDF:** `exportScorePdf` (File → Export Score as PDF, Cmd-E) engraves A4 pages with Verovio, with the title as a header. It draws each page's Drawable into a `PdfDocument` page. Everything is vector and text is written as glyph outlines, so no fonts are embedded. There are no images or true transparency. Individual-part PDFs will come with multiple instrument tracks.
@@ -343,7 +345,7 @@ cmake --preset xcode && cmake --build --preset xcode-debug && ctest --preset xco
 cmake --preset ninja && cmake --build --preset ninja-debug && ctest --preset ninja-debug
 ```
 
-Dependencies download into `.cpm-cache/` on first configure (slow the first time). Linux needs the JUCE system packages listed in `.github/workflows/build.yml`.
+Dependencies download into `.cpm-cache/` on first configure (slow the first time). MSVC builds compile with `/MP` (parallel files within a target). Linux needs the JUCE system packages listed in `.github/workflows/build.yml`.
 
 ## Conventions
 

@@ -4,6 +4,7 @@
 #include <juce_core/juce_core.h>
 
 #include <cstdio>
+#include <cstring>
 
 #if JUCE_WINDOWS
  #ifndef NOMINMAX
@@ -14,11 +15,25 @@
 
 namespace
 {
+    // Writes straight to the OS: a crash during shutdown can come after the C runtime has torn
+    // down stdio, and printing through it would then fault again inside the handler.
+    void writeError (const char* text)
+    {
+       #if JUCE_WINDOWS
+        DWORD written = 0;
+        WriteFile (GetStdHandle (STD_ERROR_HANDLE), text, (DWORD) std::strlen (text), &written, nullptr);
+       #else
+        std::fputs (text, stderr);
+        std::fflush (stderr);
+       #endif
+    }
+
     void printStackTrace (const char* what)
     {
-        std::fprintf (stderr, "\n*** PurrludeTests crashed (%s). Stack trace:\n", what);
-        std::fputs (juce::SystemStats::getStackBacktrace().toRawUTF8(), stderr);
-        std::fflush (stderr);
+        char header[128];
+        std::snprintf (header, sizeof (header), "\n*** PurrludeTests crashed (%s). Stack trace:\n", what);
+        writeError (header);
+        writeError (juce::SystemStats::getStackBacktrace().toRawUTF8());
     }
 
    #if JUCE_WINDOWS
@@ -30,13 +45,23 @@ namespace
 
         if (code == EXCEPTION_ACCESS_VIOLATION || code == EXCEPTION_STACK_OVERFLOW || code == EXCEPTION_ILLEGAL_INSTRUCTION)
         {
-            std::fprintf (stderr, "\n*** Exception 0x%08lx at %p", (unsigned long) code, info->ExceptionRecord->ExceptionAddress);
+            // Report only the first crash: one inside this handler would otherwise recurse.
+            static volatile LONG reported = 0;
+
+            if (InterlockedExchange (&reported, 1) != 0)
+                return EXCEPTION_CONTINUE_SEARCH;
+
+            char text[256];
+            auto length = std::snprintf (text, sizeof (text), "\n*** Exception 0x%08lx at %p",
+                                         (unsigned long) code, info->ExceptionRecord->ExceptionAddress);
 
             if (code == EXCEPTION_ACCESS_VIOLATION && info->ExceptionRecord->NumberParameters >= 2)
-                std::fprintf (stderr, " (%s address %p)", info->ExceptionRecord->ExceptionInformation[0] == 0 ? "reading" : "writing",
-                              (void*) info->ExceptionRecord->ExceptionInformation[1]);
+                length += std::snprintf (text + length, sizeof (text) - (size_t) length, " (%s address %p)",
+                                         info->ExceptionRecord->ExceptionInformation[0] == 0 ? "reading" : "writing",
+                                         (void*) info->ExceptionRecord->ExceptionInformation[1]);
 
-            std::fprintf (stderr, " on thread %lu", (unsigned long) GetCurrentThreadId());
+            std::snprintf (text + length, sizeof (text) - (size_t) length, " on thread %lu", (unsigned long) GetCurrentThreadId());
+            writeError (text);
             printStackTrace ("access violation");
         }
 

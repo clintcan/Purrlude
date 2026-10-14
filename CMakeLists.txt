@@ -8,6 +8,8 @@ set_property(GLOBAL PROPERTY USE_FOLDERS YES)
 
 if(MSVC)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    # Compile each target's files in parallel (Visual Studio otherwise builds them one at a time).
+    add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/MP>)
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
