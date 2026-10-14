@@ -15,6 +15,8 @@ struct BuildOptions
     std::optional<KeySignature> key;            ///< Estimated from the notes if not given
     bool triplets = true;                       ///< Write beats played in triplets as triplets
     bool concertPitch = false;                  ///< Write transposing instruments as they sound
+
+    bool operator== (const BuildOptions&) const = default;
 };
 
 /** Builds a one-part score from performed notes. */
@@ -31,6 +33,8 @@ struct PartNotes
     std::vector<NoteEvent> notes;
     bool percussion = false;   ///< General MIDI drum notes, written as drum notation
     Transposition transposition;   ///< For a transposing instrument (see transpositionForProgram)
+
+    bool operator== (const PartNotes&) const = default;
 };
 
 /** Builds a score with one part per entry. The key is estimated from all pitched parts

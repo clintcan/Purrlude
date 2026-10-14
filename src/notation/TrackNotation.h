@@ -35,10 +35,31 @@ TimeSignature getTimeSignature (tracktion::Edit&);
 /** A one-part score for the track, using the Edit's tempo and time signature. */
 Score buildTrackScore (tracktion::AudioTrack&, const std::string& title, const BuildOptions& = {});
 
-/** The whole song: one part per track that has notes (named after the track), in one key
-    (the song's key signature if it has one, otherwise estimated).
-    If no track has notes, the first track as an empty part.
+/** Everything a score of the whole song is built from. Reading it from the Edit is cheap and
+    must happen on the message thread; building the score from it is slow for a long song
+    but needs nothing else, so it can happen on any thread.
 */
+struct EditScoreInput
+{
+    std::vector<PartNotes> parts;
+    TimeSignature timeSignature;
+    BuildOptions options;
+    double bpm = 120.0;
+
+    /** True if no part has any notes. */
+    bool isEmpty() const;
+
+    bool operator== (const EditScoreInput&) const = default;
+};
+
+/** Reads what buildEditScore needs: one part per track that has notes (named after the
+    track), or the first instrument track as an empty part if none does, and the song's key
+    signature unless the options give one.
+*/
+EditScoreInput getEditScoreInput (tracktion::Edit&, const BuildOptions& = {});
+
+/** The whole song, in one key (the song's key signature if it has one, otherwise estimated). */
+Score buildEditScore (const EditScoreInput&, const std::string& title);
 Score buildEditScore (tracktion::Edit&, const std::string& title, const BuildOptions& = {});
 
 } // namespace purrlude::notation

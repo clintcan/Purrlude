@@ -2,6 +2,7 @@
 
 #include "model/LiveInstrument.h"
 #include "notation/ScoreRenderer.h"
+#include "notation/TrackNotation.h"
 
 #include <tracktion_engine/tracktion_engine.h>
 
@@ -10,10 +11,11 @@ namespace purrlude
 
 /** Live sheet music for the instrument track.
 
-    Twice a second it rebuilds the notation from the track (cheap, on the
-    message thread, where the Edit may be read) and, if the MusicXML or the
-    width changed, asks a background thread to engrave it with Verovio. The
-    result is shown on a white "paper" area that scrolls vertically.
+    Twice a second it reads the song's notes (cheap, on the message thread, where the
+    Edit may be read) and, if they or the width changed, asks a background thread to
+    build the notation and, if the MusicXML changed, engrave it with Verovio and turn the
+    SVG into a Drawable. Each step takes seconds for a long song, so none happens on the
+    message thread. The result is shown on a white "paper" area that scrolls vertically.
 
     Transposing instruments are shown as written, or as they sound with Concert pitch on.
 
@@ -35,8 +37,8 @@ private:
     class Page;
 
     void timerCallback() override;
-    void handleRendered (int requestId, std::shared_ptr<juce::XmlElement> svg, const juce::String& error,
-                         std::vector<notation::ScoreRenderer::TimedNote>);
+    void handleRendered (int requestId, std::shared_ptr<juce::XmlElement> svg, std::shared_ptr<juce::Drawable>,
+                         const juce::String& error, std::vector<notation::ScoreRenderer::TimedNote>);
 
     /** While playing, colours the notes being played and keeps them in view. */
     void followPlayhead();
@@ -51,7 +53,7 @@ private:
     juce::Label statusLabel;
     juce::ToggleButton concertPitchButton { "Concert pitch" };
 
-    juce::String lastMusicXml;
+    notation::EditScoreInput lastInput;
     int lastWidth = 0, lastRequestId = 0;
 
     JUCE_DECLARE_WEAK_REFERENCEABLE (ScoreView)

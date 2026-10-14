@@ -109,7 +109,12 @@ std::vector<NoteEvent> getTrackNotes (tracktion::AudioTrack& track)
     return notes;
 }
 
-Score buildEditScore (tracktion::Edit& edit, const std::string& title, const BuildOptions& options)
+bool EditScoreInput::isEmpty() const
+{
+    return std::all_of (parts.begin(), parts.end(), [] (const PartNotes& p) { return p.notes.empty(); });
+}
+
+EditScoreInput getEditScoreInput (tracktion::Edit& edit, const BuildOptions& options)
 {
     std::vector<PartNotes> parts;
     auto tracks = tracktion::getAudioTracks (edit);
@@ -134,7 +139,17 @@ Score buildEditScore (tracktion::Edit& edit, const std::string& title, const Bui
     if (! withKey.key)
         withKey.key = getKeySignature (edit);
 
-    return buildMultiPartScore (parts, getTimeSignature (edit), withKey, title, bpm);
+    return { std::move (parts), getTimeSignature (edit), withKey, bpm };
+}
+
+Score buildEditScore (const EditScoreInput& input, const std::string& title)
+{
+    return buildMultiPartScore (input.parts, input.timeSignature, input.options, title, input.bpm);
+}
+
+Score buildEditScore (tracktion::Edit& edit, const std::string& title, const BuildOptions& options)
+{
+    return buildEditScore (getEditScoreInput (edit, options), title);
 }
 
 Score buildTrackScore (tracktion::AudioTrack& track, const std::string& title, const BuildOptions& options)

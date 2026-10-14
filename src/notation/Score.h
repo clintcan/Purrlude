@@ -24,6 +24,8 @@ struct NoteEvent
     double start = 0.0, length = 0.0;
     int pitch = 60;
     int velocity = 100;
+
+    bool operator== (const NoteEvent&) const = default;
 };
 
 /** A note after quantizing, in ticks. */
@@ -38,12 +40,15 @@ struct TimeSignature
     int numerator = 4, denominator = 4;
 
     int getMeasureTicks() const    { return numerator * ticksPerQuarter * 4 / denominator; }
+    bool operator== (const TimeSignature&) const = default;
 };
 
 struct KeySignature
 {
     int fifths = 0;     ///< -7 (7 flats) .. 7 (7 sharps)
     bool minor = false;
+
+    bool operator== (const KeySignature&) const = default;
 };
 
 /** A spelled pitch: C#4 and Db4 are different spellings of MIDI note 61. */
@@ -87,6 +92,7 @@ struct Transposition
     /** How many semitones the written pitch is above the sounding one. */
     int getWrittenSemitones() const     { return -(chromatic + 12 * octaveChange); }
     bool isNone() const                 { return diatonic == 0 && chromatic == 0 && octaveChange == 0; }
+    bool operator== (const Transposition&) const = default;
 };
 
 struct Measure

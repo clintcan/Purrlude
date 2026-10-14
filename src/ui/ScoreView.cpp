@@ -18,7 +18,9 @@ namespace
 }
 
 //==============================================================================
-/** Engraves on its own thread; only the latest request matters. */
+/** Builds the score and engraves it on its own thread; only the latest request matters.
+    Building is slow for a long song, so it mustn't happen on the message thread.
+*/
 class ScoreView::RenderThread final : public juce::Thread
 {
 public:
@@ -33,11 +35,11 @@ public:
         stopThread (10000);
     }
 
-    void request (int id, const juce::String& musicXml, int width)
+    void request (int id, notation::EditScoreInput input, int width)
     {
         {
             const juce::ScopedLock sl (lock);
-            pending = Job { id, musicXml, width };
+            pending = Job { id, std::move (input), width };
         }
 
         notify();
@@ -47,7 +49,7 @@ private:
     struct Job
     {
         int id = 0;
-        juce::String musicXml;
+        notation::EditScoreInput input;
         int width = 0;
     };
 
@@ -55,6 +57,8 @@ private:
     {
         // Verovio's state is global: create and use it only on this thread.
         notation::ScoreRenderer renderer (notation::ScoreRenderer::findResourceDirectory());
+        juce::String lastMusicXml;
+        int lastWidth = 0;
 
         while (! threadShouldExit())
         {
@@ -71,23 +75,46 @@ private:
                 continue;
             }
 
+            auto musicXml = notation::toMusicXml (notation::buildEditScore (job->input, {}), { .tempoMark = false });
+
+            // Changes that don't show in the notation (e.g. velocities) needn't be engraved again.
+            if (musicXml == lastMusicXml && job->width == lastWidth)
+            {
+                juce::MessageManager::callAsync ([o = owner, id = job->id]
+                {
+                    if (auto* view = o.get())
+                        view->handleRendered (id, nullptr, nullptr, {}, {});
+                });
+
+                continue;
+            }
+
+            lastMusicXml = musicXml;
+            lastWidth = job->width;
+
             juce::String error, timemap;
-            auto svg = renderer.renderMusicXml (job->musicXml, job->width, error, 45, &timemap);
+            auto svg = renderer.renderMusicXml (musicXml, job->width, error, 45, &timemap);
             auto timed = notation::ScoreRenderer::parseTimemap (timemap);
             std::shared_ptr<juce::XmlElement> prepared;
+            std::shared_ptr<juce::Drawable> drawable;
 
             if (svg.isNotEmpty())
             {
                 prepared = notation::prepareVerovioSvg (svg, juce::Colours::black);
 
-                if (prepared == nullptr)
+                // Made here too: a long score is a drawing of 100,000+ shapes, which takes seconds
+                // to build. That's allowed off the message thread while it isn't on screen.
+                if (prepared != nullptr)
+                    drawable = juce::Drawable::createFromSVG (*prepared);
+
+                if (drawable == nullptr)
                     error = "The engraved score couldn't be read.";
             }
 
-            juce::MessageManager::callAsync ([o = owner, id = job->id, prepared, error, notes = std::move (timed)]
+            juce::MessageManager::callAsync ([o = owner, id = job->id, prepared, drawable, error, notes = std::move (timed)]
             {
                 if (auto* view = o.get())
-                    view->handleRendered (id, prepared, error, notes);
+                    view->handleRendered (id, prepared, drawable, error, notes);
             });
         }
     }
@@ -104,19 +131,27 @@ private:
 class ScoreView::Page final : public juce::Component
 {
 public:
-    void setScore (std::shared_ptr<juce::XmlElement> svg, std::vector<notation::ScoreRenderer::TimedNote> timedNotes)
+    void setScore (std::shared_ptr<juce::XmlElement> svg, std::shared_ptr<juce::Drawable> drawing,
+                   std::vector<notation::ScoreRenderer::TimedNote> timedNotes)
     {
         svgXml = std::move (svg);
-        drawable = juce::Drawable::createFromSVG (*svgXml);
+        drawable = std::move (drawing);
         displaySize = notation::getSvgDisplaySize (*svgXml);
         timed = std::move (timedNotes);
         highlighted.clear();
         notes.clear();
+        originalFills.clear();   // keyed by the old drawing's shapes, whose addresses may be reused
 
         if (drawable != nullptr)
+        {
+            // One pass over the drawing: a long score has many thousands of notes and shapes.
+            std::map<juce::String, juce::Component*> byID;
+            collectIDs (*drawable, byID);
+
             for (auto& n : timed)
-                if (auto* found = findByID (*drawable, n.id))
-                    notes[n.id] = found;
+                if (auto it = byID.find (n.id); it != byID.end())
+                    notes[n.id] = it->second;
+        }
 
         setSize (getWidth(), (int) std::ceil (displaySize.getHeight()) + paperMargin * 2);
         repaint();
@@ -167,16 +202,13 @@ public:
     }
 
 private:
-    static juce::Component* findByID (juce::Component& c, const juce::String& id)
+    static void collectIDs (juce::Component& c, std::map<juce::String, juce::Component*>& byID)
     {
-        if (c.getComponentID() == id)
-            return &c;
+        if (auto id = c.getComponentID(); id.isNotEmpty())
+            byID.emplace (id, &c);   // the first (outermost) one, as a depth-first search would find
 
         for (auto* child : c.getChildren())
-            if (auto* found = findByID (*child, id))
-                return found;
-
-        return nullptr;
+            collectIDs (*child, byID);
     }
 
     /** Recolours every shape of a note (head, stem, flag, dots), remembering the ink. */
@@ -228,7 +260,7 @@ private:
         return area.transformedBy (transform).getY();
     }
 
-    std::unique_ptr<juce::Drawable> drawable;
+    std::shared_ptr<juce::Drawable> drawable;
     std::shared_ptr<juce::XmlElement> svgXml;
     juce::Rectangle<float> displaySize;
 
@@ -291,20 +323,20 @@ void ScoreView::timerCallback()
     if (edit.getTransport().isRecording())
         return;
 
+    // Only reading the notes happens here; the render thread builds the score from them.
     notation::BuildOptions options;
     options.concertPitch = concertPitchButton.getToggleState();
-    auto score = notation::buildEditScore (edit, {}, options);
-    auto musicXml = notation::toMusicXml (score, { .tempoMark = false });
+    auto input = notation::getEditScoreInput (edit, options);
     auto width = viewport.getMaximumVisibleWidth() - paperMargin * 2;
 
-    if (width < 200 || (musicXml == lastMusicXml && width == lastWidth))
+    if (width < 200 || (input == lastInput && width == lastWidth))
         return;
 
-    lastMusicXml = musicXml;
+    lastInput = input;
     lastWidth = width;
 
     statusLabel.setText ("Updating score...", juce::dontSendNotification);
-    renderThread->request (++lastRequestId, musicXml, width);
+    renderThread->request (++lastRequestId, std::move (input), width);
 }
 
 void ScoreView::followPlayhead()
@@ -332,25 +364,25 @@ void ScoreView::followPlayhead()
     }
 }
 
-void ScoreView::handleRendered (int requestId, std::shared_ptr<juce::XmlElement> svg, const juce::String& error,
-                                std::vector<notation::ScoreRenderer::TimedNote> timed)
+void ScoreView::handleRendered (int requestId, std::shared_ptr<juce::XmlElement> svg, std::shared_ptr<juce::Drawable> drawable,
+                                const juce::String& error, std::vector<notation::ScoreRenderer::TimedNote> timed)
 {
     // A newer request is on its way; this result is already out of date.
     if (requestId != lastRequestId)
         return;
 
-    if (svg == nullptr)
+    if (error.isNotEmpty())
     {
         statusLabel.setText (error, juce::dontSendNotification);
         return;
     }
 
-    page->setScore (svg, std::move (timed));
+    // No drawing and no error: the notation hadn't changed, so the page stays as it is.
+    if (svg != nullptr && drawable != nullptr)
+        page->setScore (svg, drawable, std::move (timed));
 
-    auto tracks = tracktion::getAudioTracks (edit);
-    auto empty = std::none_of (tracks.begin(), tracks.end(), [] (auto* t) { return ! notation::getTrackNotes (*t).empty(); });
-    statusLabel.setText (empty ? "Record something to see it as sheet music."
-                               : juce::String(),
+    statusLabel.setText (lastInput.isEmpty() ? "Record something to see it as sheet music."
+                                             : juce::String(),
                          juce::dontSendNotification);
 }
 

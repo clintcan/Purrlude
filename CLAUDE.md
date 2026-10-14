@@ -189,6 +189,7 @@ The app talks to `purrlude::BluetoothMidiManager` (`src/devices/BluetoothMidiMan
 - **Song key:** the key is stored on the Edit (`notation::get/setKeySignature`). Scores and the accompaniment's key use it instead of estimating, since jazz ii–V material fools the estimate.
 - **Checking a real file:** `PURRLUDE_MIDI_FILE=/path/song.mid PurrludeTests "[.midi-file]" -s` imports it, prints its tracks and writes the score PDF next to it.
 - **Undo:** the import is one undo step, left open like other arrangement edits.
+- **Speed:** each part's events are written straight into a detached `SEQUENCE` ValueTree, and the clip is inserted with it (`insertClipWithState`), one undoable change per part. Adding them through a clip's `MidiList` makes each event an undoable change the Edit reacts to, and `MidiList::addNote` then finds the new note by a linear search. That took tens of seconds for a 12-part, 6-minute file.
 
 **Time signature** (`src/model/TimeSignature.h`, the "4/4" button in the transport bar):
 - **What changes:** `changeTimeSignature` changes the song's one time signature as one undo step, keeping how the song sounds. Clips stay at their times and notes in place; only the barring changes.
@@ -296,7 +297,8 @@ A note quantized past the end of the performance moves back onto the last grid s
 
 **Not handled yet:** multiple voices per staff, tempo or time-signature changes, and other tuplets (quintuplets, triplets spanning two beats).
 
-**On-screen score:** `ScoreView` (`src/ui/`) rebuilds the MusicXML twice a second on the message thread, skipping while recording. When it changes, a background thread engraves it with `notation::ScoreRenderer` (Verovio). Verovio has global state, so it is only ever used from that one thread.
+**On-screen score:** `ScoreView` (`src/ui/`) reads the song's notes twice a second on the message thread (`notation::getEditScoreInput`), skipping while recording. When they or the width change, its render thread builds the score and MusicXML (`buildEditScore (EditScoreInput)`), and, if the MusicXML changed, engraves it with `notation::ScoreRenderer` (Verovio) and builds the Drawable. Verovio has global state, so it is only ever used from that one thread.
+- **Keep the message thread light:** for a long song (12 parts, 6 minutes, 35k notes, Release build) building the score takes about 1 s, engraving 30 s, and making the 110k-shape Drawable 4.5 s. Only reading the notes (a few ms) and indexing the drawing's note ids happen on the message thread. Drawables may be built off it because they aren't on screen.
 
 JUCE's SVG parser can't draw Verovio's output directly. `prepareVerovioSvg` fixes it:
 - Glyph `<use>` references become inline copies of their definitions.

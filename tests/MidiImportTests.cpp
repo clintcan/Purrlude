@@ -4,6 +4,7 @@
 #include "instruments/GeneralMidi.h"
 #include "model/EngineSetup.h"
 #include "model/MidiImport.h"
+#include "notation/MusicXmlWriter.h"
 #include "notation/TrackNotation.h"
 
 using Catch::Matchers::WithinAbs;
@@ -209,4 +210,28 @@ TEST_CASE ("Importing a real MIDI file", "[.midi-file]")
     auto pdf = file.withFileExtension (".pdf");
     REQUIRE (purrlude::notation::exportScorePdf (purrlude::notation::buildEditScore (*f.edit, file.getFileNameWithoutExtension().toStdString()), pdf, error));
     std::cout << "Score: " << pdf.getFullPathName() << "\n";
+}
+
+TEST_CASE ("The score's input is read once and changes only with the music", "[midi-import][notation]")
+{
+    Fixture f;
+    REQUIRE (purrlude::notation::getEditScoreInput (*f.edit).isEmpty());
+
+    REQUIRE (purrlude::midi_import::importMidi (*f.edit, f.live, roundTrip (makeSong()), 0).error.isEmpty());
+
+    // The score view reads the input on the message thread and builds from it elsewhere:
+    // that must give the same score as building straight from the Edit.
+    auto input = purrlude::notation::getEditScoreInput (*f.edit);
+    REQUIRE_FALSE (input.isEmpty());
+    REQUIRE (input.parts.size() == 4);
+    REQUIRE (purrlude::notation::toMusicXml (purrlude::notation::buildEditScore (input, "Song"))
+             == purrlude::notation::toMusicXml (purrlude::notation::buildEditScore (*f.edit, "Song")));
+
+    // Nothing changed, nothing to rebuild.
+    REQUIRE (purrlude::notation::getEditScoreInput (*f.edit) == input);
+
+    // A new note is a change.
+    auto* clip = dynamic_cast<tracktion::MidiClip*> (tracktion::getAudioTracks (*f.edit)[0]->getClips()[0]);
+    clip->getSequence().addNote (67, tracktion::BeatPosition::fromBeats (2.0), tracktion::BeatDuration::fromBeats (1.0), 100, 0, nullptr);
+    REQUIRE_FALSE (purrlude::notation::getEditScoreInput (*f.edit) == input);
 }

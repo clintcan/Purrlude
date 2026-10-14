@@ -204,13 +204,16 @@ Result importMidi (tracktion::Edit& edit, LiveInstrument& live, const juce::Midi
         auto range = tracktion::TimeRange (tempo.toTime (tracktion::BeatPosition::fromBeats (startBeat)),
                                            tempo.toTime (tracktion::BeatPosition::fromBeats (startBeat + lengthBeats)));
 
-        track->deleteRegion (range, nullptr);
-        auto clip = track->insertMIDIClip (name, range, nullptr);
-
-        if (clip == nullptr)
-            continue;
-
-        auto& sequence = clip->getSequence();
+        // The events go straight into the state of a sequence that isn't part of the Edit yet,
+        // and the clip is inserted with it in one step. Adding them through a clip's MidiList
+        // (each an undoable change the Edit reacts to, and each followed by a linear search for
+        // the new event) took tens of seconds for a long song with many parts.
+        auto sequence = tracktion::MidiList::createMidiList();
+        auto addController = [&] (tracktion::BeatPosition beat, int type, int value, std::optional<int> metadata = {})
+        {
+            sequence.appendChild (metadata ? tracktion::MidiControllerEvent::createControllerEvent (beat, type, value, *metadata)
+                                           : tracktion::MidiControllerEvent::createControllerEvent (beat, type, value), nullptr);
+        };
 
         for (auto* holder : part.events)
         {
@@ -221,27 +224,43 @@ Result importMidi (tracktion::Edit& edit, LiveInstrument& live, const juce::Midi
             {
                 auto offTicks = holder->noteOffObject != nullptr ? holder->noteOffObject->message.getTimeStamp() : m.getTimeStamp();
                 auto length = std::max (1.0 / 64.0, (offTicks - m.getTimeStamp()) / ticksPerQuarter * quartersToBeats);
-                sequence.addNote (m.getNoteNumber(), beat, tracktion::BeatDuration::fromBeats (length), m.getVelocity(), 0, &um);
+                // As MidiList::addNote makes them.
+                sequence.appendChild (tracktion::createValueTree (tracktion::IDs::NOTE,
+                                                                  tracktion::IDs::p, m.getNoteNumber(),
+                                                                  tracktion::IDs::b, beat.inBeats(),
+                                                                  tracktion::IDs::l, length,
+                                                                  tracktion::IDs::v, (int) m.getVelocity(),
+                                                                  tracktion::IDs::c, 0), nullptr);
             }
             else if (m.isController())
             {
                 // Bank selects mean nothing to the GM instrument.
                 if (m.getControllerNumber() != 0 && m.getControllerNumber() != 32)
-                    sequence.addControllerEvent (beat, m.getControllerNumber(), m.getControllerValue() << 7, &um);
+                    addController (beat, m.getControllerNumber(), m.getControllerValue() << 7);
             }
             else if (m.isPitchWheel())
             {
-                sequence.addControllerEvent (beat, tracktion::MidiControllerEvent::pitchWheelType, m.getPitchWheelValue(), &um);
+                addController (beat, tracktion::MidiControllerEvent::pitchWheelType, m.getPitchWheelValue());
             }
             else if (m.isChannelPressure())
             {
-                sequence.addControllerEvent (beat, tracktion::MidiControllerEvent::channelPressureType, m.getChannelPressureValue() << 7, &um);
+                addController (beat, tracktion::MidiControllerEvent::channelPressureType, m.getChannelPressureValue() << 7);
             }
             else if (m.isAftertouch())
             {
-                sequence.addControllerEvent (beat, tracktion::MidiControllerEvent::aftertouchType, m.getAfterTouchValue() << 7, m.getNoteNumber(), &um);
+                addController (beat, tracktion::MidiControllerEvent::aftertouchType, m.getAfterTouchValue() << 7, m.getNoteNumber());
             }
         }
+
+        juce::ValueTree clipState (tracktion::IDs::MIDICLIP);
+        clipState.appendChild (sequence, nullptr);
+
+        if (! track->containsAnyMIDIClips())
+            track->setVerticalScaleToDefault();
+
+        if (tracktion::insertClipWithState (*track, clipState, name, tracktion::TrackItem::Type::midi, { range, {} },
+                                            tracktion::DeleteExistingClips::yes, false) == nullptr)
+            continue;
 
         result.tracks.add (track->itemID);
     }
