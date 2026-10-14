@@ -1,5 +1,6 @@
 #include "TransportBar.h"
 
+#include "model/AudioExport.h"
 #include "model/TimeSignature.h"
 
 namespace purrlude
@@ -63,11 +64,36 @@ void TransportBar::togglePlay()
     auto& transport = edit.getTransport();
 
     if (transport.isPlaying())
+    {
         transport.stop (false, false);
+    }
     else
+    {
+        // From the end of the song, play starts over.
+        auto song = AudioExport::getSongRange (edit);
+
+        if (! song.isEmpty() && transport.getPosition() >= song.getEnd())
+            transport.setPosition (tracktion::TimePosition());
+
         transport.play (false);
+    }
 
     updateButtons();
+}
+
+void TransportBar::stopAtEndOfSong()
+{
+    auto& transport = edit.getTransport();
+
+    // Recording may go past what's there; only playback stops by itself.
+    if (! transport.isPlaying() || transport.isRecording())
+        return;
+
+    // A moment after the last clip ends, for notes and effects to ring out.
+    auto song = AudioExport::getSongRange (edit);
+
+    if (! song.isEmpty() && transport.getPosition() >= song.getEnd() + tracktion::TimeDuration::fromSeconds (endTailSeconds))
+        transport.stop (false, false);
 }
 
 void TransportBar::toggleRecord()
@@ -184,6 +210,8 @@ void TransportBar::updateButtons()
 
 void TransportBar::timerCallback()
 {
+    stopAtEndOfSong();
+
     auto& transport = edit.getTransport();
     auto time = transport.getPosition();
     auto barsBeats = edit.tempoSequence.toBarsAndBeats (time);

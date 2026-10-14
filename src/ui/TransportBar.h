@@ -7,6 +7,9 @@ namespace purrlude
 
 /** Record / play / stop / return-to-start, metronome and count-in toggles,
     tempo, time signature and the playhead position (bar.beat and minutes:seconds).
+
+    Playback stops a moment after the last clip ends (recording doesn't), and Play from
+    the end of the song starts it again from the beginning.
 */
 class TransportBar final : public juce::Component,
                            private juce::Timer
@@ -25,6 +28,9 @@ private:
     void timerCallback() override;
     void updateButtons();
     void setTempo (double bpm);
+    void stopAtEndOfSong();
+
+    static constexpr double endTailSeconds = 1.0;   ///< Played after the last clip before stopping
     void showTimeSignatureMenu();
     void askForTimeSignature();
 

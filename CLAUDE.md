@@ -125,7 +125,16 @@ The app talks to `purrlude::BluetoothMidiManager` (`src/devices/BluetoothMidiMan
   - The keyboard never plays one: `LiveInstrument::selectTrack` ignores audio tracks, so the selected track is always an instrument track. There is always at least one (`canDeleteTrack`).
   - `clips::canHold` keeps MIDI clips on instrument tracks and audio clips on audio tracks, including when dragging.
   - Their headers have no arm or instrument menus, and a green stripe. The arrangement draws audio clips' waveforms with one `SmartThumbnail` per clip.
-- **Audio import** (`src/model/AudioImport.h`, File > Import Audio File, Cmd-Shift-I, or drop files): each file goes on a new audio track at the playhead's bar, one undo step. Files are played from where they are. `JUCE_USE_MP3AUDIOFORMAT=1` lets MP3s be read.
+- **Audio import** (`src/model/AudioImport.h`, File > Import Audio File, Cmd-Shift-I, or drop files): each file is copied into the project's audio folder and goes on a new audio track at the playhead's bar, one undo step. `JUCE_USE_MP3AUDIOFORMAT=1` lets MP3s be read.
+- **Recording audio** (`src/model/AudioInputs.h`):
+  - Each audio track's header picks an input (a Tracktion wave input, e.g. "Input 1"; an input feeds one track), arms it, and toggles monitoring ("In").
+  - Monitoring is off when an input is assigned (a mic through speakers feeds back); on means "automatic", heard while armed.
+  - Record records every armed input along with the keyboard's track.
+  - **Remembered inputs:** each track keeps its input by name (the `purrludeAudioInput` property). `restoreInputs`, run by `LiveInstrument`'s timer, gives it back after a device change recreates Tracktion's inputs, unless another track has taken it. A track that loses its input to another track forgets it.
+- **Project audio folder** (`Project::getAudioFolder`): "<name> Audio" next to the project file, or `Unsaved Audio/<autosave id>` beside the autosaves until the first save (deleted on a clean close, kept after a crash for recovery).
+  - `updateRecordingFolder` points every wave input's filename mask there, again when devices change.
+  - **Saving gathers** every audio clip's file into the folder and writes its path relative to the project's folder. Tracktion's own relative paths depend on whether the project file exists yet, so we write them.
+  - **Resolving:** Edits are created with a matching `filePathResolver` and `editFileRetriever` (sharing the project's file) before they load, so a project moved together with its folder still finds its audio.
 - **Live input:** `LiveInstrument` routes "All MIDI Ins" to the selected track, which is also the armed one. It adds and deletes tracks (undoable, never the last instrument track), and resends device tones on play.
 - **Mixer:** each track has volume, pan, mute and solo. Volume and pan come from its `VolumeAndPanPlugin`, which `TrackInstrument::setUp` adds to every track; for external sources they're also sent as CC 7/10.
   - **Undo:** mixer changes go through `TrackMix` (`src/model/TrackMix.h`). Tracktion keeps mute/solo out of undo, and the plugin's setters would record every fader move. `TrackInstrument` therefore writes volume/pan to the plugin state without the UndoManager (and reads them back from the state, since the parameter updates asynchronously). `TrackMix::change` records one undo step per click or drag.
@@ -143,6 +152,8 @@ The app talks to `purrlude::BluetoothMidiManager` (`src/devices/BluetoothMidiMan
   - **External sources:** tracks played on an external device show no level.
 - **Score:** the Score view and PDF/MusicXML export use `notation::buildEditScore` (a part per track with notes, one shared key, equal length). File > Export Parts as PDF writes one PDF per track.
 - **Scene list:** `LiveInstrument` creates the Edit's scene list at setup. Tracktion otherwise creates it undoably inside the first track insertion, which breaks undoing that insertion.
+
+**Transport:** `TransportBar` stops playback 1 s after the last clip ends (`AudioExport::getSongRange`); recording never stops by itself. Play from at or past the end starts from the beginning.
 
 **Drum loops:**
 - **Content:** `content/loops/groove.json` holds 37 4-bar loops in 14 styles from the Groove MIDI Dataset (CC BY 4.0). They're MIDI on the GM drum map, timed in quarter notes.
@@ -293,6 +304,11 @@ JUCE's SVG parser can't draw Verovio's output directly. `prepareVerovioSvg` fixe
 - `<style>` is replaced by a stroke attribute on the root.
 
 The drawing is scaled to the SVG's declared pixel size (`getSvgDisplaySize`), because its coordinates are in Verovio's internal units.
+
+**Following playback:** while the song plays, `ScoreView` colours the notes being played and scrolls to keep them in view.
+- **Timing:** `ScoreRenderer::renderMusicXml` also returns Verovio's timemap, which gives each engraved note's id with its start and end in quarter notes. `parseTimemap` reads it.
+- **Colouring:** the page finds the notes in the drawable by component id (JUCE keeps SVG ids) and recolours their shapes, keeping the original fills to restore. There's no re-engraving.
+- **Ties:** a note tied across a barline sounds as its first part, so the continuation isn't coloured.
 
 The on-screen score leaves out the metronome mark, whose note symbol needs a SMuFL text font.
 
