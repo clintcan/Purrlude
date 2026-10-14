@@ -82,6 +82,8 @@ target_sources(purrlude_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/LoopRange.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/SharedReverb.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/SharedReverb.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/Takes.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/Takes.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/TrackEffects.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/TrackEffects.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/LiveInstrument.h

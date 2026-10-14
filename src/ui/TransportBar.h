@@ -10,8 +10,8 @@ namespace purrlude
 
     Playback stops a moment after the last clip ends (recording doesn't), and Play from
     the end of the song starts it again from the beginning. While looping, playback
-    repeats the loop range until stopped, and Play from outside it starts at its start.
-    Recording doesn't loop yet: looping pauses while recording.
+    repeats the loop range until stopped, and Play from outside it starts at its start;
+    recording starts at its start, and each pass becomes a take.
 */
 class TransportBar final : public juce::Component,
                            private juce::Timer
@@ -40,9 +40,6 @@ private:
     tracktion::Edit& edit;
 
     juce::TextButton startButton { "|<" }, playButton { "Play" }, recordButton { "Record" }, loopButton { "Loop" };
-    bool loopPausedForRecording = false;   ///< Looping was on when recording started
-    bool recordingSeen = false;            ///< ...and recording has since begun
-    juce::uint32 loopPausedAt = 0;
     juce::ToggleButton metronomeButton { "Metronome" }, countInButton { "Count-in" };
     juce::Label tempoLabel, tempoUnitLabel { {}, "BPM" }, positionLabel;
     juce::TextButton timeSignatureButton;

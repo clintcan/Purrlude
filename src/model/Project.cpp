@@ -1,5 +1,6 @@
 #include "Project.h"
 #include "model/SharedReverb.h"
+#include "model/Takes.h"
 
 namespace purrlude
 {
@@ -181,9 +182,35 @@ void Project::updateRecordingFolder()
 
 void Project::gatherAudio()
 {
-    // Every audio clip's file goes into the audio folder (copied, so nothing outside is
-    // touched), and is referred to relative to the project file.
+    // Every audio clip's file (and its takes' files) goes into the audio folder (copied, so
+    // nothing outside is touched), and is referred to relative to the project file.
     auto folder = getAudioFolder();
+
+    // The path to write for a file, or nothing if it can't be gathered.
+    auto gather = [&] (const juce::File& source) -> juce::String
+    {
+        if (! source.existsAsFile())
+            return {};   // missing: leave the reference alone
+
+        auto destination = source;
+
+        if (! source.isAChildOf (folder))
+        {
+            folder.createDirectory();
+            destination = folder.getChildFile (source.getFileName());
+
+            // Same name but a different file: keep both.
+            if (destination.existsAsFile() && destination.getSize() != source.getSize())
+                destination = destination.getNonexistentSibling (true);
+
+            if (! destination.existsAsFile() && ! source.copyFileTo (destination))
+                return {};
+        }
+
+        // Relative to the project's folder (see makeResolver), written here rather than by
+        // Tracktion, whose relative paths depend on whether the project file exists yet.
+        return destination.getRelativePathFrom (file.getParentDirectory()).replaceCharacter ('\\', '/');
+    };
 
     for (auto* track : getSongTracks (*edit))
     {
@@ -194,32 +221,15 @@ void Project::gatherAudio()
             if (audioClip == nullptr)
                 continue;
 
-            auto source = audioClip->getOriginalFile();
-
-            if (! source.existsAsFile())
-                continue;   // missing: leave the reference alone
-
-            auto destination = source;
-
-            if (! source.isAChildOf (folder))
-            {
-                folder.createDirectory();
-                destination = folder.getChildFile (source.getFileName());
-
-                // Same name but a different file: keep both.
-                if (destination.existsAsFile() && destination.getSize() != source.getSize())
-                    destination = destination.getNonexistentSibling (true);
-
-                if (! destination.existsAsFile() && ! source.copyFileTo (destination))
-                    continue;
-            }
-
-            // Relative to the project's folder (see makeResolver), written here rather than by
-            // Tracktion, whose relative paths depend on whether the project file exists yet.
-            auto path = destination.getRelativePathFrom (file.getParentDirectory()).replaceCharacter ('\\', '/');
-
-            if (audioClip->state[tracktion::IDs::source].toString() != path)
+            if (auto path = gather (audioClip->getOriginalFile()); path.isNotEmpty() && audioClip->state[tracktion::IDs::source].toString() != path)
                 audioClip->state.setProperty (tracktion::IDs::source, path, nullptr);
+
+            auto takeSources = takes::getAudioSources (*clip);
+
+            for (int i = 0; i < takeSources.size(); ++i)
+                if (auto path = gather (edit->filePathResolver != nullptr ? edit->filePathResolver (takeSources[i]) : juce::File (takeSources[i]));
+                    path.isNotEmpty())
+                    takes::setAudioSource (*clip, i, path);
         }
     }
 }

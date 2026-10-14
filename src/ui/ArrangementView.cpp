@@ -3,6 +3,7 @@
 #include "model/AudioInputs.h"
 #include "model/ClipEditing.h"
 #include "model/LoopRange.h"
+#include "model/Takes.h"
 #include "notation/TrackNotation.h"
 #include "model/SharedReverb.h"
 
@@ -147,7 +148,11 @@ public:
             return;
         }
 
-        // The loop strip: grab the loop's ends or body, or start a new loop.
+        // The loop strip: grab the loop's ends or body, or start a new loop. Not while
+        // recording, whose takes are counted in passes of the loop.
+        if (owner.edit.getTransport().isRecording())
+            return;
+
         LoopDrag drag;
         drag.grabBeat = owner.xToBeat ((float) e.x);
 
@@ -663,6 +668,28 @@ void ArrangementView::paint (juce::Graphics& g)
             }
         }
 
+        // Clips with takes say which one is heard (right-click to choose another).
+        for (auto* clip : track->getClips())
+        {
+            auto count = takes::getCount (*clip);
+
+            if (count < 2)
+                continue;
+
+            auto area = getClipArea (i, clip->getStartBeat().inBeats(), clip->getEndBeat().inBeats());
+            auto text = "Take " + juce::String (takes::getCurrent (*clip) + 1) + "/" + juce::String (count);
+            auto badge = juce::Rectangle<float> (area.getX() + 4.0f, area.getY() + 4.0f, 70.0f, 18.0f).getIntersection (area.reduced (2.0f));
+
+            if (badge.getWidth() < 20.0f)
+                continue;
+
+            g.setColour (juce::Colours::black.withAlpha (0.55f));
+            g.fillRoundedRectangle (badge, 4.0f);
+            g.setColour (juce::Colours::white);
+            g.setFont (juce::FontOptions (12.0f, juce::Font::bold));
+            g.drawText (text, badge, juce::Justification::centred, true);
+        }
+
         // The take being recorded, until it becomes a clip.
         auto recordsHere = live.getTrack() == track || audio_inputs::isArmed (edit, track->itemID);
 
@@ -919,8 +946,22 @@ void ArrangementView::mouseMove (const juce::MouseEvent& e)
 
 void ArrangementView::showClipMenu (tracktion::EditItemID clipID, bool isMidi)
 {
-    enum { editNotes = 1, convertMelody, convertDrums, loopClip, remove };
+    enum { editNotes = 1, convertMelody, convertDrums, loopClip, remove, keepTake, firstTake = 100 };
     juce::PopupMenu menu;
+
+    // Takes from a loop recording: choose the one that's heard.
+    if (auto* clip = tracktion::findClipForID (edit, clipID); clip != nullptr && takes::getCount (*clip) > 1)
+    {
+        juce::PopupMenu takeMenu;
+
+        for (int t = 0; t < takes::getCount (*clip); ++t)
+            takeMenu.addItem (firstTake + t, "Take " + juce::String (t + 1), true, t == takes::getCurrent (*clip));
+
+        takeMenu.addSeparator();
+        takeMenu.addItem (keepTake, "Delete Other Takes");
+        menu.addSubMenu ("Takes", takeMenu);
+        menu.addSeparator();
+    }
 
     if (isMidi)
         menu.addItem (editNotes, "Edit Notes");
@@ -946,6 +987,18 @@ void ArrangementView::showClipMenu (tracktion::EditItemID clipID, bool isMidi)
             safe->onConvertToMidi (clipID, result == convertDrums);
         else if (result == remove)
             safe->deleteSelectedClip();
+        else if (result >= firstTake || result == keepTake)
+        {
+            if (auto* clip = tracktion::findClipForID (safe->edit, clipID))
+            {
+                if (result == keepTake)
+                    takes::keepOnlyCurrent (safe->edit, *clip);
+                else
+                    takes::setCurrent (safe->edit, *clip, result - firstTake);
+
+                safe->repaint();
+            }
+        }
         else if (result == loopClip)
             if (auto* clip = tracktion::findClipForID (safe->edit, clipID))
             {

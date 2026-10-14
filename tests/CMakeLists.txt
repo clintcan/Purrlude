@@ -26,6 +26,8 @@ target_sources(PurrludeTests PRIVATE
     TrackEffectsTests.cpp
     LoopRangeTests.cpp
     SharedReverbTests.cpp
+    TakesTests.cpp
+    LoopRecordingTests.cpp
     NoteEditingTests.cpp
     CrashHandler.cpp
     $<$<PLATFORM_ID:Windows>:BleMidiGattProbe_windows.cpp>

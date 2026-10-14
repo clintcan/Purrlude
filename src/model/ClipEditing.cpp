@@ -90,6 +90,15 @@ void clips::setEnd (tracktion::Edit& edit, tracktion::EditItemID clipID, double 
 
 }
 
+void clips::makeRoomFor (tracktion::Edit& edit, tracktion::Clip& clip)
+{
+    if (auto* track = dynamic_cast<tracktion::AudioTrack*> (clip.getClipTrack()))
+    {
+        clearUnder (*track, clip.getPosition().time, clip);
+        sortAllClipsLikeTracktion (edit);   // see ClipOrder.h
+    }
+}
+
 void clips::remove (tracktion::Edit& edit, tracktion::EditItemID clipID)
 {
     if (auto* clip = tracktion::findClipForID (edit, clipID))

@@ -174,7 +174,16 @@ The app talks to `purrlude::BluetoothMidiManager` (`src/devices/BluetoothMidiMan
 - **Storage:** the range is kept in quarter notes on the Edit's transport state (`purrludeLoopStart/End`, saved with the song), because Tracktion's loop points are in seconds and would drift off the bars when the tempo changes. Quarter notes also stay put when the time signature changes, like the music.
 - **Syncing:** `sync` writes it to Tracktion's loop points; `TransportBar` calls it 20 times a second. The loop isn't part of undo, like the playhead.
 - **Behaviour:** while looping, playback doesn't stop at the end of the song, and Play from outside the loop starts at its start (`getPlayStart`). Turning it on with no range loops four bars from the playhead's bar.
-- **Recording** doesn't loop yet (no takes): looping pauses while recording and comes back after.
+- **Recording while looping** starts at the loop's start (audio passes are counted from there), and each pass becomes a take. The loop can't be changed while recording.
+
+**Takes** (`src/model/Takes.h`, namespace `takes`):
+- **MIDI** uses Tracktion's takes (one MIDI list per pass, the last one current). `prepareMidiInputs` turns the MIDI inputs' `mergeRecordings` off while looping, since merging folds every pass into one clip; it's on otherwise (recording over a clip adds to it).
+- **Audio** keeps its own list (`PURRLUDE_TAKES` on the clip, a `TAKE` with a `source` per pass, and `current`). Tracktion's audio takes need its project database: choosing a take that's a plain file deletes it. Its take list also writes paths relative to the project *file*, which asserts for an unsaved project, so `adoptRecordedTakes` finds the passes by Tracktion's file names instead ("<recording>", "<recording>_take_2", ...).
+- **Which take is heard:** the last pass, unless an audio pass is under half the loop (recording stopped early), when it's the one before.
+- **Finishing:** `takes::RecordingFinisher` (owned by `LiveInstrument`) handles every recorded clip, in the recording's undo step: it adopts audio takes and calls `clips::makeRoomFor`, so a recording replaces what it covers like any other clip.
+- **Saving:** `Project::gatherAudio` gathers take files with the clip's own file.
+- **UI:** clips with takes show "Take n/m"; the clip menu's Takes submenu chooses one (one undo step) or deletes the others (the files stay).
+- **Tests:** `[loop-takes]` (the hidden `[takes]` tag is the MusicXML check of a real project).
 - **UI:** the ruler's top strip (`ArrangementView::RulerOverlay`) shows the range as a band: drag to set it (bars, Shift for beats), drag the band or its ends, click it to toggle. The lanes are shaded while looping. A clip's menu has Loop This Clip.
 
 **Drum loops:**

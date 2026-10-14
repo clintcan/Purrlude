@@ -2,6 +2,7 @@
 
 #include "model/AudioExport.h"
 #include "model/LoopRange.h"
+#include "model/Takes.h"
 #include "model/TimeSignature.h"
 
 namespace purrlude
@@ -117,14 +118,13 @@ void TransportBar::toggleRecord()
     }
     else
     {
-        // Loop recording (takes) isn't supported yet: record straight through, then loop again.
+        // Looping, each pass becomes a take; recording starts at the loop's start, where the
+        // passes are counted from.
+        takes::prepareMidiInputs (edit);
+
         if (loop_range::isOn (edit))
-        {
-            loopPausedForRecording = true;
-            recordingSeen = false;
-            loopPausedAt = juce::Time::getMillisecondCounter();
-            loop_range::setOn (edit, false);
-        }
+            if (auto loop = loop_range::get (edit))
+                transport.setPosition (edit.tempoSequence.toTime (loop->getStart()));
 
         transport.record (false);
     }
@@ -225,7 +225,7 @@ void TransportBar::updateButtons()
     bool recording = transport.isRecording();
 
     playButton.setButtonText (transport.isPlaying() ? "Stop" : "Play");
-    loopButton.setToggleState (loop_range::isOn (edit) || loopPausedForRecording, juce::dontSendNotification);
+    loopButton.setToggleState (loop_range::isOn (edit), juce::dontSendNotification);
     loopButton.setEnabled (! recording);
     recordButton.setButtonText (recording ? "Stop Rec" : "Record");
     recordButton.setColour (juce::TextButton::buttonColourId,
@@ -249,16 +249,6 @@ void TransportBar::timerCallback()
 
     // Loop points follow tempo changes.
     loop_range::sync (edit);
-
-    // Looping comes back once the take ends (or if recording never got going).
-    recordingSeen = recordingSeen || transport.isRecording();
-
-    if (loopPausedForRecording && ! transport.isRecording()
-         && (recordingSeen || (! transport.isPlaying() && juce::Time::getMillisecondCounter() - loopPausedAt > 2000)))
-    {
-        loopPausedForRecording = false;
-        loop_range::setOn (edit, true);
-    }
 
     stopAtEndOfSong();
 

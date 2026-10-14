@@ -29,6 +29,11 @@ namespace clips
     void setEnd (tracktion::Edit&, tracktion::EditItemID clipID, double endBeat);
 
     void remove (tracktion::Edit&, tracktion::EditItemID clipID);
+
+    /** Removes what the clip covers of the other clips on its track (trimming or splitting
+        them), as part of the current undo step: for clips made elsewhere, such as recordings.
+    */
+    void makeRoomFor (tracktion::Edit&, tracktion::Clip&);
 }
 
 } // namespace purrlude

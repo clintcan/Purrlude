@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Takes.h"
 #include "TrackEffects.h"
 #include "TrackInstrument.h"
 
@@ -103,6 +104,7 @@ private:
 
     tracktion::Edit& edit;
     track_effects::ParameterSync parameterSync { edit };   ///< Undo of an effect's knob is heard
+    takes::RecordingFinisher recordingFinisher { edit };   ///< Loop recordings become takes
     tracktion::EditItemID trackID;
     bool wasPlaying = false;
 
