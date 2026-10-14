@@ -1,6 +1,7 @@
 #pragma once
 
 #include "LiveInstrument.h"
+#include "analysis/DrumTranscriber.h"
 #include "analysis/MelodyTranscriber.h"
 
 #include <tracktion_engine/tracktion_engine.h>
@@ -8,11 +9,14 @@
 namespace purrlude
 {
 
-/** Converting a melody in an audio clip (a voice, or any one-note-at-a-time instrument)
-    into MIDI notes on a new instrument track, under the audio track.
+/** Converting an audio clip into MIDI notes on a new instrument track, under the audio
+    track: a melody (a voice, or any one-note-at-a-time instrument) or drums (kick, snare
+    and hi-hat, on a drum-kit track).
 */
-namespace melody_to_midi
+namespace audio_to_midi
 {
+    enum class Mode { melody, drums };
+
     /** The audio to convert: the part of a file an audio clip plays. Plain data, so the
         analysis can run on another thread.
     */
@@ -32,10 +36,14 @@ namespace melody_to_midi
     bool readAudio (tracktion::Engine&, const Source&, juce::AudioBuffer<float>&, double& sampleRate);
 
     /** Puts notes (seconds from the source's start) on a new instrument track under the audio
-        track, as one MIDI clip over the audio clip's span. One undo step.
+        track, as one MIDI clip over the audio clip's span: a piano track for a melody, a
+        drum-kit track for drums (the notes being GM drum notes). One undo step.
     */
     tracktion::MidiClip* insertNotes (tracktion::Edit&, LiveInstrument&, const Source&,
-                                      const std::vector<analysis::TranscribedNote>&);
+                                      const std::vector<analysis::TranscribedNote>&, Mode = Mode::melody);
+
+    /** Drum hits as notes: GM drum notes, short. */
+    std::vector<analysis::TranscribedNote> toNotes (const std::vector<analysis::DrumHit>&);
 
     /** Reads and transcribes a source on a background thread. Deleting it cancels. */
     class Conversion final : private juce::Thread
@@ -46,17 +54,19 @@ namespace melody_to_midi
         */
         using Callback = std::function<void (std::vector<analysis::TranscribedNote>, const juce::String& error)>;
 
-        Conversion (tracktion::Engine&, Source, Callback);
+        Conversion (tracktion::Engine&, Source, Mode, Callback);
         ~Conversion() override;
 
         float getProgress() const noexcept      { return progress.load(); }
         const Source& getSource() const noexcept { return source; }
+        Mode getMode() const noexcept            { return mode; }
 
     private:
         void run() override;
 
         tracktion::Engine& engine;
         Source source;
+        Mode mode;
         Callback callback;
         std::atomic<float> progress { 0.0f };
         std::shared_ptr<bool> alive = std::make_shared<bool> (true);

@@ -5,7 +5,7 @@
 #include "devices/ToneListener.h"
 #include "model/AudioExport.h"
 #include "model/AudioImport.h"
-#include "model/MelodyToMidi.h"
+#include "model/AudioToMidi.h"
 #include "model/MidiImport.h"
 #include "model/Project.h"
 #include "ui/ArrangementView.h"
@@ -82,8 +82,8 @@ private:
     bool isInterestedInFileDrag (const juce::StringArray&) override;
     void filesDropped (const juce::StringArray&, int, int) override;
 
-    void convertMelodyToMidi (tracktion::EditItemID audioClip);
-    void stopMelodyConversion();
+    void convertToMidi (tracktion::EditItemID audioClip, audio_to_midi::Mode);
+    void stopMidiConversion();
 
     void exportAudio();
     void chooseAudioDestination (AudioExportOptions);
@@ -124,10 +124,10 @@ private:
 
     int ticksSinceAutosave = 0;
 
-    std::unique_ptr<melody_to_midi::Conversion> melodyConversion;
+    std::unique_ptr<audio_to_midi::Conversion> midiConversion;
     std::unique_ptr<juce::AlertWindow> conversionWindow;
     double conversionProgress = 0.0;   ///< Read by the progress bar
-    juce::TimedCallback conversionProgressTimer { [this] { if (melodyConversion != nullptr) conversionProgress = melodyConversion->getProgress(); } };
+    juce::TimedCallback conversionProgressTimer { [this] { if (midiConversion != nullptr) conversionProgress = midiConversion->getProgress(); } };
 
     std::unique_ptr<AudioExport> audioExport;
     std::unique_ptr<juce::AlertWindow> exportWindow;

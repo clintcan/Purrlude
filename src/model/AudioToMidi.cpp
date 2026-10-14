@@ -1,9 +1,10 @@
-#include "MelodyToMidi.h"
+#include "AudioToMidi.h"
 
 #include "ClipOrder.h"
 #include "TrackInstrument.h"
+#include "instruments/GeneralMidi.h"
 
-namespace purrlude::melody_to_midi
+namespace purrlude::audio_to_midi
 {
 
 std::optional<Source> getSource (tracktion::Edit& edit, tracktion::EditItemID clipID)
@@ -51,8 +52,19 @@ bool readAudio (tracktion::Engine& engine, const Source& source, juce::AudioBuff
     return reader->read (&audio, 0, count, first, true, audio.getNumChannels() > 1);
 }
 
+std::vector<analysis::TranscribedNote> toNotes (const std::vector<analysis::DrumHit>& hits)
+{
+    // Drums only need to start; a sixteenth at 120 BPM reads as a plain hit in the score.
+    std::vector<analysis::TranscribedNote> notes;
+
+    for (auto& hit : hits)
+        notes.push_back ({ hit.time, 0.12, hit.getGeneralMidiNote(), hit.velocity });
+
+    return notes;
+}
+
 tracktion::MidiClip* insertNotes (tracktion::Edit& edit, LiveInstrument& live, const Source& source,
-                                  const std::vector<analysis::TranscribedNote>& notes)
+                                  const std::vector<analysis::TranscribedNote>& notes, Mode mode)
 {
     auto* audioClip = tracktion::findClipForID (edit, source.clip);
     auto* audioTrack = tracktion::findAudioTrackForID (edit, source.track);
@@ -68,8 +80,9 @@ tracktion::MidiClip* insertNotes (tracktion::Edit& edit, LiveInstrument& live, c
     if (track == nullptr)
         return nullptr;
 
-    track->setName (source.name + " (notes)");
-    TrackInstrument (edit, *track).setProgram (0);   // piano: plain enough to check the notes by
+    // A melody plays on piano (plain enough to check the notes by), drums on the drum kit.
+    track->setName (source.name + (mode == Mode::drums ? " (drums)" : " (notes)"));
+    TrackInstrument (edit, *track).setProgram (mode == Mode::drums ? gm::drumKit : 0);
 
     auto range = audioClip->getPosition().time;
     auto clip = track->insertMIDIClip (source.name, range, nullptr);
@@ -103,8 +116,8 @@ tracktion::MidiClip* insertNotes (tracktion::Edit& edit, LiveInstrument& live, c
 }
 
 //==============================================================================
-Conversion::Conversion (tracktion::Engine& e, Source s, Callback c)
-    : juce::Thread ("Melody to MIDI"), engine (e), source (std::move (s)), callback (std::move (c))
+Conversion::Conversion (tracktion::Engine& e, Source s, Mode m, Callback c)
+    : juce::Thread ("Audio to MIDI"), engine (e), source (std::move (s)), mode (m), callback (std::move (c))
 {
     startThread (juce::Thread::Priority::low);
 }
@@ -128,18 +141,26 @@ void Conversion::run()
     }
     else
     {
-        notes = analysis::transcribeMelody (audio, sampleRate, [this] (float p)
+        auto keepGoing = [this] (float p)
         {
             progress = p;
             return ! threadShouldExit();
-        });
+        };
+
+        if (mode == Mode::drums)
+            notes = toNotes (analysis::transcribeDrums (audio, sampleRate, {}, keepGoing));
+        else
+            notes = analysis::transcribeMelody (audio, sampleRate, keepGoing);
 
         if (threadShouldExit())
             return;
 
         if (notes.empty())
-            error = "No melody was found in " + source.name + ". It works best on one voice or instrument "
-                    "playing one note at a time, without much else in the recording.";
+            error = mode == Mode::drums
+                      ? "No drum hits were found in " + source.name + ". It listens for kick, snare and hi-hat "
+                        "in a recording of drums."
+                      : "No melody was found in " + source.name + ". It works best on one voice or instrument "
+                        "playing one note at a time, without much else in the recording.";
     }
 
     progress = 1.0f;
@@ -151,4 +172,4 @@ void Conversion::run()
     });
 }
 
-} // namespace purrlude::melody_to_midi
+} // namespace purrlude::audio_to_midi

@@ -21,7 +21,8 @@ target_sources(PurrludeTests PRIVATE
     AudioTrackTests.cpp
     AudioRecordingTests.cpp
     MelodyTranscriptionTests.cpp
-    MelodyToMidiTests.cpp
+    AudioToMidiTests.cpp
+    DrumTranscriptionTests.cpp
     NoteEditingTests.cpp
     CrashHandler.cpp
     $<$<PLATFORM_ID:Windows>:BleMidiGattProbe_windows.cpp>

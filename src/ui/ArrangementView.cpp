@@ -742,13 +742,16 @@ void ArrangementView::mouseMove (const juce::MouseEvent& e)
 
 void ArrangementView::showClipMenu (tracktion::EditItemID clipID, bool isMidi)
 {
-    enum { editNotes = 1, convert, remove };
+    enum { editNotes = 1, convertMelody, convertDrums, remove };
     juce::PopupMenu menu;
 
     if (isMidi)
         menu.addItem (editNotes, "Edit Notes");
     else
-        menu.addItem (convert, "Convert Melody to MIDI...", onConvertMelodyToMidi != nullptr);
+    {
+        menu.addItem (convertMelody, "Convert Melody to MIDI...", onConvertToMidi != nullptr);
+        menu.addItem (convertDrums, "Convert Drums to MIDI...", onConvertToMidi != nullptr);
+    }
 
     menu.addSeparator();
     menu.addItem (remove, "Delete");
@@ -760,8 +763,8 @@ void ArrangementView::showClipMenu (tracktion::EditItemID clipID, bool isMidi)
 
         if (result == editNotes && safe->onClipDoubleClicked != nullptr)
             safe->onClipDoubleClicked (clipID);
-        else if (result == convert && safe->onConvertMelodyToMidi != nullptr)
-            safe->onConvertMelodyToMidi (clipID);
+        else if ((result == convertMelody || result == convertDrums) && safe->onConvertToMidi != nullptr)
+            safe->onConvertToMidi (clipID, result == convertDrums);
         else if (result == remove)
             safe->deleteSelectedClip();
     });

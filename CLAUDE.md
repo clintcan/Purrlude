@@ -86,7 +86,7 @@ These are what set Purrlude apart. Treat them as first-class, not add-ons.
 | Notation cleanup | In-house (`src/notation/`): quantize, key estimate, spelling, staves, ties; MusicXML export | — |
 | Audio → MIDI (polyphonic) | Spotify basic-pitch model on ONNX Runtime _(planned)_ | Apache 2.0 / MIT |
 | Audio → MIDI (monophonic) | In-house pYIN (`src/analysis/`) | — |
-| Audio → MIDI (drums) | Onset detection + small ONNX classifier _(planned)_ | — |
+| Audio → MIDI (drums) | In-house band-energy onsets (`src/analysis/DrumTranscriber`); an ONNX classifier _(maybe later)_ | — |
 | Built-in instruments | TinySoundFont (SF2) + GeneralUser GS v2.0.3 GM bank; sfizz (SFZ) _(planned)_ | MIT / GeneralUser GS License v2.0 |
 | Time-stretch | Signalsmith Stretch _(planned)_; Tracktion's SoundTouch is used until then | MIT / LGPL |
 | Plugin formats | VST3 / AU / LV2 via JUCE; CLAP via clap-juce-extensions _(planned)_ | — |
@@ -254,11 +254,19 @@ tests/                  Catch2 test runner (PurrludeTests)
   - **Pitch and velocity:** a note's pitch is the median of its middle frames; its velocity comes from its peak loudness.
   - **Minimum length:** notes under 60 ms are dropped.
 - **`transcribeMelody`:** mixes to mono, low-passes at 5 kHz, resamples to 22.05 kHz, then tracks and segments. It's about 2.8 s per minute of audio in a debug build.
-- **Model** (`src/model/MelodyToMidi.h`):
+- **Drums** (`transcribeDrums`): kick, snare and closed hi-hat, mapped to GM 36/38/42.
+  - **Spectra:** 512-sample windows (23 ms) every 64 samples at 22.05 kHz.
+  - **Bands:** low 30–90 Hz (kick thump), mid 1–4 kHz (snare wires), high 6–11 kHz (hi-hat). A body band at 150–400 Hz is used only for comparisons.
+  - **Finding hits:** a hit is a rise of at least 9 dB on a smoothed level (the maximum over 23 ms, since a low kick's raw level flickers) that dies away by 6 dB within 150 ms.
+  - **Telling drums apart:** bands bleed into each other, so a rise struck together with another drum's only counts if its band holds up against that drum's. The thresholds are in `DrumTranscriberOptions`.
+  - **Levels:** detection uses levels clamped at -50 dB; comparisons use true levels down to -100 dB.
+  - **Tuning:** the defaults were tuned on built-in loops rendered through the GM kit (`PurrludeTests "[.drum-accuracy]" -s` reports recall on hits at velocity 40+ and false hits).
+  - **Results:** kicks about 90–100%, snares about 85% (not ghost notes), hi-hats about 75%. Toms and cymbals come out as the nearest of the three.
+- **Model** (`src/model/AudioToMidi.h`, mode melody or drums):
   - `getSource` reads, on the message thread, the part of the file a clip plays.
   - `Conversion` reads and transcribes it on its own thread; deleting it cancels.
-  - `insertNotes` puts the notes on a new piano track under the audio track, over the clip's span, as one undo step.
-- **UI:** right-click an audio clip → Convert Melody to MIDI, with progress and Cancel from `MainComponent`.
+  - `insertNotes` puts the notes on a new track under the audio track, over the clip's span, as one undo step: a piano track for a melody, a drum-kit track for drums.
+- **UI:** right-click an audio clip → Convert Melody / Drums to MIDI, with progress and Cancel from `MainComponent`.
 - **Tests:** synthesized tones (`tests/MelodyTranscriptionTests.cpp`) cover pitches, timing, vibrato, legato, repeated notes, silence and velocity. `[.bench]` times a minute of audio.
 
 ### Projects

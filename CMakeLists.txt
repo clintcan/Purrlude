@@ -102,8 +102,10 @@ target_sources(purrlude_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/PitchTracker.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/MelodyTranscriber.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/MelodyTranscriber.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/MelodyToMidi.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/MelodyToMidi.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/DrumTranscriber.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/DrumTranscriber.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/AudioToMidi.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/AudioToMidi.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/NoteEditing.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/NoteEditing.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/Project.h
