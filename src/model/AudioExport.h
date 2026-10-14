@@ -24,7 +24,8 @@ struct AudioExportOptions
     The song runs from the start to the end of the last clip, plus up to two seconds for
     notes and effects to ring out. The metronome isn't included.
 
-    Deleting the export cancels it (a partly written file is removed).
+    Deleting the export cancels it (a partly written file is removed). That runs the message
+    loop briefly, until the render threads have stopped.
 */
 class AudioExport
 {
@@ -64,6 +65,16 @@ private:
     size_t currentJob = 0;
     juce::Array<juce::File> written;
     std::shared_ptr<tracktion::EditRenderer::Handle> handle;
+
+    /** Threads releasing finished or cancelled renders (see release). */
+    struct Releaser
+    {
+        std::thread thread;
+        std::shared_ptr<std::atomic<bool>> done;
+    };
+
+    std::vector<Releaser> releasers;
+    void release (std::shared_ptr<tracktion::EditRenderer::Handle>);
     std::shared_ptr<bool> alive = std::make_shared<bool> (true);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AudioExport)

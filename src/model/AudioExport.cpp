@@ -64,22 +64,49 @@ AudioExport::AudioExport (tracktion::Edit& e, AudioExportOptions o, const juce::
 
 AudioExport::~AudioExport()
 {
-    *alive = false;
+    alive = nullptr;   // callbacks still queued see this and do nothing
 
-    if (handle != nullptr)
-    {
+    auto cancelled = handle != nullptr;
+
+    if (cancelled)
         handle->cancel();
 
-        // The render thread may need the message thread before it notices, so it can't be
-        // joined here: it's joined, and its partial file removed, on a thread of its own.
-        auto partial = currentJob < jobs.size() ? jobs[currentJob].file : juce::File();
+    release (std::move (handle));
 
-        std::thread ([h = std::move (handle), partial] () mutable
-        {
-            h = nullptr;
-            partial.deleteFile();
-        }).detach();
+    // The render threads may need the message thread to finish (see release), so keep it
+    // going until they have; nothing is left running once the export is gone.
+    auto* mm = juce::MessageManager::getInstanceWithoutCreating();
+    auto allDone = [this] { return std::all_of (releasers.begin(), releasers.end(), [] (auto& r) { return r.done->load(); }); };
+
+    for (auto end = juce::Time::getMillisecondCounter() + 20000; mm != nullptr && ! allDone() && juce::Time::getMillisecondCounter() < end;)
+        mm->runDispatchLoopUntil (5);
+
+    for (auto& r : releasers)
+    {
+        if (r.done->load())
+            r.thread.join();
+        else
+            r.thread.detach();   // a render that never stopped: better than hanging the app
     }
+
+    if (cancelled && currentJob < jobs.size())
+        jobs[currentJob].file.deleteFile();
+}
+
+void AudioExport::release (std::shared_ptr<tracktion::EditRenderer::Handle> finished)
+{
+    if (finished == nullptr)
+        return;
+
+    // Releasing a render's handle joins its thread, which may be waiting for the message
+    // thread (Tracktion sets renders up and tears them down there, waiting without a
+    // timeout). So it's never released on the message thread, but on a thread of its own.
+    auto done = std::make_shared<std::atomic<bool>> (false);
+    releasers.push_back ({ std::thread ([h = std::move (finished), done] () mutable
+                                        {
+                                            h = nullptr;
+                                            *done = true;
+                                        }), done });
 }
 
 float AudioExport::getProgress() const
@@ -153,8 +180,7 @@ void AudioExport::startNext()
     auto& job = jobs[currentJob];
     job.file.getParentDirectory().createDirectory();
 
-    // The callback runs on the render thread, at its end: hand the result to the message
-    // thread, where the finished render's handle can be released (joining that thread).
+    // The callback runs on the render thread, at its end: hand the result to the message thread.
     handle = tracktion::EditRenderer::render (makeParameters (job),
                                               [this, token = std::weak_ptr<bool> (alive)] (tl::expected<juce::File, std::string> result)
     {
@@ -165,7 +191,7 @@ void AudioExport::startNext()
             if (token.expired())
                 return;
 
-            handle = nullptr;
+            release (std::move (handle));
 
             if (! ok)
             {
@@ -183,7 +209,7 @@ void AudioExport::startNext()
 
 void AudioExport::finish (const juce::String& error)
 {
-    handle = nullptr;
+    release (std::move (handle));
 
     if (onFinished != nullptr)
         onFinished (error, written);
