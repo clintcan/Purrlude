@@ -440,3 +440,24 @@ TEST_CASE ("Mixer changes can be undone", "[model][instrument]")
     edit->redo();
     REQUIRE (mix::get (*edit, id, Control::mute) == 1.0f);
 }
+
+TEST_CASE ("Every track gets a level meter after its volume", "[model][instrument]")
+{
+    juce::ScopedJuceInitialiser_GUI juceInit;
+    auto engine = purrlude::createEngine ("PurrludeTests");
+    auto edit = tracktion::Edit::createSingleTrackEdit (*engine);
+    purrlude::LiveInstrument live (*edit);
+    live.addTrack (false);
+
+    for (auto* track : tracktion::getAudioTracks (*edit))
+    {
+        auto& plugins = track->pluginList;
+        REQUIRE (track->getLevelMeterPlugin() != nullptr);
+        REQUIRE (plugins.indexOf (track->getLevelMeterPlugin()) > plugins.indexOf (track->getVolumePlugin()));
+        REQUIRE (plugins.getPluginsOfType<tracktion::LevelMeterPlugin>().size() == 1);
+    }
+
+    // Setting up again (as the timer does) adds nothing.
+    purrlude::TrackInstrument::setUp (*edit, *live.getTrack());
+    REQUIRE (live.getTrack()->pluginList.getPluginsOfType<tracktion::LevelMeterPlugin>().size() == 1);
+}

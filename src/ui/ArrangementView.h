@@ -1,5 +1,6 @@
 #pragma once
 
+#include "LevelMeter.h"
 #include "TrackHeader.h"
 
 #include <tracktion_engine/tracktion_engine.h>
@@ -39,6 +40,7 @@ public:
 
     void paint (juce::Graphics&) override;
     void resized() override;
+    void moved() override;
     void mouseDown (const juce::MouseEvent&) override;
     void mouseDrag (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override;
@@ -54,7 +56,11 @@ private:
     void syncHeaders();
     double getPlayheadBeat() const;
 
+    void movePlayheadTo (double beat);
+
     class PlayheadOverlay;
+    class RulerOverlay;
+    std::unique_ptr<RulerOverlay> rulerOverlay;
     std::unique_ptr<PlayheadOverlay> playheadOverlay;
 
     double getVisibleBeats() const;

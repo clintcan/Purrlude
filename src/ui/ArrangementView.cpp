@@ -37,6 +37,68 @@ private:
     ArrangementView& owner;
 };
 
+/** The bar ruler, kept at the top of the visible area as the tracks scroll, with the
+    master level meter above the track headers. Click it to move the playhead.
+*/
+class ArrangementView::RulerOverlay final : public juce::Component
+{
+public:
+    explicit RulerOverlay (ArrangementView& o)
+        : owner (o),
+          masterMeter ([&songEdit = o.edit]() -> tracktion::LevelMeasurer*
+                       {
+                           auto* context = songEdit.getCurrentPlaybackContext();
+                           return context != nullptr ? &context->masterLevels : nullptr;
+                       }, true)
+    {
+        masterMeter.setTooltip ("Master level. A vermillion light means it went over 0 dB: click to clear.");
+        addAndMakeVisible (masterMeter);
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        auto bg = getLookAndFeel().findColour (juce::ResizableWindow::backgroundColourId);
+        g.fillAll (bg.brighter (0.05f));
+
+        g.setColour (juce::Colours::lightgrey);
+        g.setFont (juce::FontOptions (12.0f));
+        g.drawText ("Master", 8, 0, 50, getHeight(), juce::Justification::centredLeft);
+
+        // Bar numbers, right of the headers.
+        auto beatsPerBar = owner.edit.tempoSequence.getTimeSig (0)->numerator.get();
+        g.reduceClipRegion (headerWidth, 0, getWidth() - headerWidth, getHeight());
+
+        for (int beat = 0; beat <= (int) owner.getVisibleBeats(); beat += beatsPerBar)
+        {
+            auto x = (int) owner.beatToX (beat);
+            g.setColour (juce::Colours::white.withAlpha (0.25f));
+            g.drawVerticalLine (x, 0.0f, (float) getHeight());
+            g.setColour (juce::Colours::lightgrey);
+            g.drawText (juce::String (beat / beatsPerBar + 1), x + 3, 0, 40, getHeight(), juce::Justification::centredLeft);
+        }
+
+        g.setColour (juce::Colours::black.withAlpha (0.3f));
+        g.drawHorizontalLine (getHeight() - 1, 0.0f, (float) getWidth());
+    }
+
+    void resized() override
+    {
+        masterMeter.setBounds (juce::Rectangle<int> (58, 0, headerWidth - 66, getHeight()).withSizeKeepingCentre (headerWidth - 66, 10));
+    }
+
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        if (e.x >= headerWidth)
+            owner.movePlayheadTo (owner.xToBeat ((float) e.x));
+    }
+
+    void mouseDrag (const juce::MouseEvent& e) override   { mouseDown (e); }
+
+private:
+    ArrangementView& owner;
+    LevelMeter masterMeter;
+};
+
 ArrangementView::ArrangementView (tracktion::Edit& e, LiveInstrument& l, MidiDeviceSettings& s)
     : edit (e), live (l), deviceSettings (s)
 {
@@ -50,6 +112,8 @@ ArrangementView::ArrangementView (tracktion::Edit& e, LiveInstrument& l, MidiDev
     };
     addAndMakeVisible (addTrackButton);
 
+    rulerOverlay = std::make_unique<RulerOverlay> (*this);
+    addAndMakeVisible (*rulerOverlay);
     playheadOverlay = std::make_unique<PlayheadOverlay> (*this);
     addAndMakeVisible (*playheadOverlay);
 
@@ -64,6 +128,7 @@ ArrangementView::~ArrangementView()
 {
     stopTimer();
     playheadOverlay = nullptr;
+    rulerOverlay = nullptr;
     edit.engine.getDeviceManager().removeChangeListener (this);
     deviceSettings.removeChangeListener (this);
 }
@@ -156,25 +221,14 @@ void ArrangementView::paint (juce::Graphics& g)
     auto tracks = tracktion::getAudioTracks (edit);
     auto lanesBottom = rulerHeight + laneHeight * tracks.size();
 
-    // Ruler and bar lines.
-    g.setColour (bg.brighter (0.05f));
-    g.fillRect (0, 0, getWidth(), rulerHeight);
-
+    // Bar and beat lines (the bar numbers are on the ruler overlay).
     for (int beat = 0; beat <= (int) visibleBeats; ++beat)
     {
         auto x = beatToX (beat);
         bool isBar = beat % beatsPerBar == 0;
 
         g.setColour (juce::Colours::white.withAlpha (isBar ? 0.25f : 0.08f));
-        g.drawVerticalLine ((int) x, isBar ? 0.0f : (float) rulerHeight, (float) lanesBottom);
-
-        if (isBar)
-        {
-            g.setColour (juce::Colours::lightgrey);
-            g.setFont (juce::FontOptions (12.0f));
-            g.drawText (juce::String (beat / beatsPerBar + 1), (int) x + 3, 0, 40, rulerHeight,
-                        juce::Justification::centredLeft);
-        }
+        g.drawVerticalLine ((int) x, (float) rulerHeight, (float) lanesBottom);
     }
 
     auto playheadBeat = getPlayheadBeat();
@@ -300,8 +354,22 @@ double ArrangementView::getPlayheadBeat() const
 
 
 
+void ArrangementView::moved()
+{
+    // The viewport scrolls by moving this component: keep the ruler in view.
+    resized();
+}
+
 void ArrangementView::resized()
 {
+    // The ruler stays at the top of what the viewport shows, above the track headers.
+    if (rulerOverlay != nullptr)
+    {
+        auto* viewport = findParentComponentOfClass<juce::Viewport>();
+        rulerOverlay->setBounds (0, viewport != nullptr ? viewport->getViewPositionY() : 0, getWidth(), rulerHeight);
+        rulerOverlay->toFront (false);
+    }
+
     if (playheadOverlay != nullptr)
     {
         playheadOverlay->setBounds (getLocalBounds().withTrimmedLeft (headerWidth));
@@ -378,11 +446,15 @@ void ArrangementView::mouseDown (const juce::MouseEvent& e)
         return;
     }
 
-    // Empty space or the ruler: move the playhead there.
+    // Empty space: move the playhead there.
     selectedClipID = {};
-    auto beat = xToBeat ((float) e.x);
-    edit.getTransport().setPosition (edit.tempoSequence.toTime (tracktion::BeatPosition::fromBeats (beat)));
+    movePlayheadTo (xToBeat ((float) e.x));
     repaint();
+}
+
+void ArrangementView::movePlayheadTo (double beat)
+{
+    edit.getTransport().setPosition (edit.tempoSequence.toTime (tracktion::BeatPosition::fromBeats (beat)));
 }
 
 void ArrangementView::mouseDrag (const juce::MouseEvent& e)
@@ -506,6 +578,8 @@ void ArrangementView::timerCallback()
 
     // Tracks added, removed or reordered (including by undo).
     syncHeaders();
+
+    rulerOverlay->repaint();
 
     for (auto& header : headers)
         header->refresh();

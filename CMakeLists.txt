@@ -111,6 +111,8 @@ target_sources(purrlude_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/LoopsPanel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/ExportAudioDialog.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/ExportAudioDialog.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/LevelMeter.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/LevelMeter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/ScoreView.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/ScoreView.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/PianoRoll.h

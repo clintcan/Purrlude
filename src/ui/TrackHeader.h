@@ -2,6 +2,7 @@
 
 #include "devices/MidiDeviceSettings.h"
 #include "model/LiveInstrument.h"
+#include "ui/LevelMeter.h"
 
 #include <tracktion_engine/tracktion_engine.h>
 
@@ -54,6 +55,7 @@ private:
     juce::Slider volumeSlider, panKnob;
     float valueBeforeDrag = 0.0f;   ///< Volume or pan when a drag started (for its undo step)
     juce::ComboBox instrumentBox, soundBox;
+    LevelMeter meter;
 
     juce::StringArray soundIDs, soundNames;   ///< Parallel to soundBox items; ID "" is the built-in instrument
     std::vector<DeviceTone> toneChoices;      ///< Instrument menu items when playing through a device

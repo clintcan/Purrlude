@@ -124,6 +124,10 @@ The app talks to `purrlude::BluetoothMidiManager` (`src/devices/BluetoothMidiMan
 - **Mixer:** each track has volume, pan, mute and solo. Volume and pan come from its `VolumeAndPanPlugin`, which `TrackInstrument::setUp` adds to every track; for external sources they're also sent as CC 7/10.
   - **Undo:** mixer changes go through `TrackMix` (`src/model/TrackMix.h`). Tracktion keeps mute/solo out of undo, and the plugin's setters would record every fader move. `TrackInstrument` therefore writes volume/pan to the plugin state without the UndoManager (and reads them back from the state, since the parameter updates asynchronously). `TrackMix::change` records one undo step per click or drag.
 - **UI:** the arrangement has one `TrackHeader` per track and scrolls vertically in a Viewport.
+  - **Sticky ruler:** the ruler is an overlay kept at the top of the visible area. The viewport scrolls by moving the arrangement, so `ArrangementView::moved` repositions it.
+  - **Meters:** `TrackInstrument::setUp` gives every track a `LevelMeterPlugin` after its volume. `LevelMeter` (`src/ui/`) shows it in the header, and the master level (`EditPlaybackContext::masterLevels`) on the ruler.
+  - **Meter references:** `LevelMeter` looks the measurer up on every update and holds only a weak reference, since plugins and playback contexts come and go.
+  - **External sources:** tracks played on an external device show no level.
 - **Score:** the Score view and PDF/MusicXML export use `notation::buildEditScore` (a part per track with notes, one shared key, equal length). File > Export Parts as PDF writes one PDF per track.
 - **Scene list:** `LiveInstrument` creates the Edit's scene list at setup. Tracktion otherwise creates it undoably inside the first track insertion, which breaks undoing that insertion.
 

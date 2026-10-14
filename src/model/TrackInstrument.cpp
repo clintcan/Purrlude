@@ -87,6 +87,11 @@ void TrackInstrument::setUp (tracktion::Edit& edit, tracktion::AudioTrack& track
         if (auto volume = edit.getPluginCache().createNewPlugin (tracktion::VolumeAndPanPlugin::xmlTypeName, {}))
             track.pluginList.insertPlugin (volume, -1, nullptr);
 
+    // And a level meter, after the volume so it shows what's heard.
+    if (track.getLevelMeterPlugin() == nullptr)
+        if (auto meter = edit.getPluginCache().createNewPlugin (tracktion::LevelMeterPlugin::xmlTypeName, {}))
+            track.pluginList.insertPlugin (meter, -1, nullptr);
+
     // Only when it differs: setting it makes the audio thread re-apply it.
     if (auto* soundFont = findSoundFont (track); soundFont != nullptr && soundFont->getProgram() != instrument.getProgram())
         soundFont->setProgram (instrument.getProgram());

@@ -52,8 +52,16 @@ namespace
 }
 
 TrackHeader::TrackHeader (tracktion::Edit& e, LiveInstrument& l, MidiDeviceSettings& s, tracktion::EditItemID id)
-    : edit (e), live (l), deviceSettings (s), trackID (id), panKnobLook (std::make_unique<PanKnobLook>())
+    : edit (e), live (l), deviceSettings (s), trackID (id), panKnobLook (std::make_unique<PanKnobLook>()),
+      meter ([this]() -> tracktion::LevelMeasurer*
+             {
+                 auto* track = tracktion::findAudioTrackForID (edit, trackID);
+                 auto* plugin = track != nullptr ? track->getLevelMeterPlugin() : nullptr;
+                 return plugin != nullptr ? &plugin->measurer : nullptr;
+             }, false)
 {
+    addAndMakeVisible (meter);
+
     nameLabel.setFont (juce::FontOptions (15.0f, juce::Font::bold));
     nameLabel.setEditable (false, true);   // double-click to rename
     nameLabel.setTooltip ("Double-click to rename");
@@ -233,6 +241,11 @@ void TrackHeader::resized()
     auto r = getLocalBounds().reduced (8, 6);
     nameLabel.setBounds (r.removeFromTop (22).withTrimmedLeft (-4));
     r.removeFromTop (4);
+
+    // The level meter runs down the right edge, beside the controls.
+    meter.setBounds (r.removeFromRight (10));
+    r.removeFromRight (5);
+
     auto buttons = r.removeFromTop (24);
     armButton.setBounds (buttons.removeFromLeft (52));
     buttons.removeFromLeft (4);
