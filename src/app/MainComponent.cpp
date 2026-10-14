@@ -34,7 +34,7 @@ MainComponent::MainComponent (tracktion::Engine& e, BluetoothMidiManager& blueto
             instrument.setDeviceTone (tone);
     };
 
-    audioSettingsButton.onClick = [this] { engine.getUIBehaviour().showSettingsScreen(); };
+    audioSettingsButton.onClick = [this] { showAudioSettings(); };
     devicesButton.setClickingTogglesState (true);
     devicesButton.setToggleState (true, juce::dontSendNotification);
     devicesButton.onClick = [this] { showSidePanel (devicesButton.getToggleState() ? &devicesPanel : nullptr); };
@@ -423,6 +423,27 @@ void MainComponent::exportScore (ExportFormat format)
 }
 
 //==============================================================================
+void MainComponent::showAudioSettings()
+{
+    // MIDI devices have their own panel; this is the audio interface: which device plays and
+    // records, its sample rate and buffer size, and which of its channels are used.
+    // Tracktion saves the choice and rebuilds its inputs when it changes.
+    auto selector = std::make_unique<juce::AudioDeviceSelectorComponent> (engine.getDeviceManager().deviceManager,
+                                                                          0, 64,     // inputs
+                                                                          0, 64,     // outputs
+                                                                          false, false, false, false);
+    selector->setSize (520, 440);
+
+    juce::DialogWindow::LaunchOptions launch;
+    launch.content.setOwned (selector.release());
+    launch.dialogTitle = "Audio Settings";
+    launch.dialogBackgroundColour = getLookAndFeel().findColour (juce::ResizableWindow::backgroundColourId);
+    launch.escapeKeyTriggersCloseButton = true;
+    launch.useNativeTitleBar = true;
+    launch.resizable = true;
+    launch.launchAsync();
+}
+
 void MainComponent::chooseMidiFileToImport()
 {
     auto dir = project->getFile() != juce::File() ? project->getFile().getParentDirectory() : getDefaultProjectDirectory();
@@ -462,7 +483,8 @@ void MainComponent::importFiles (const juce::Array<juce::File>& files)
     {
         if (midi_import::isMidiFile (file))
             midiFiles.add (file);
-        else if (auto result = audio_import::importFile (edit, project->getInstrument(), file, bar); result.error.isNotEmpty())
+        else if (auto result = audio_import::importFile (edit, project->getInstrument(), file, bar, project->getAudioFolder());
+                 result.error.isNotEmpty())
             errors.add (result.error);
     }
 
@@ -683,6 +705,11 @@ void MainComponent::changeListenerCallback (juce::ChangeBroadcaster* source)
     if (source == &engine.getDeviceManager())
     {
         toneListener.refreshDevices();
+
+        // Audio inputs are recreated with the device: point their recordings at the project again.
+        if (project != nullptr)
+            project->updateRecordingFolder();
+
         return;
     }
 

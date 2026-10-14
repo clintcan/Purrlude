@@ -19,6 +19,7 @@ target_sources(PurrludeTests PRIVATE
     TimeSignatureTests.cpp
     TimelineViewTests.cpp
     AudioTrackTests.cpp
+    AudioRecordingTests.cpp
     NoteEditingTests.cpp
     CrashHandler.cpp
     $<$<PLATFORM_ID:Windows>:BleMidiGattProbe_windows.cpp>

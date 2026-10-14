@@ -1,5 +1,7 @@
 #include "TrackHeader.h"
 
+#include "model/AudioInputs.h"
+
 #include "devices/DeviceLibrary.h"
 #include "model/TrackMix.h"
 #include "instruments/GeneralMidi.h"
@@ -84,6 +86,12 @@ TrackHeader::TrackHeader (tracktion::Edit& e, LiveInstrument& l, MidiDeviceSetti
     armButton.setColour (juce::TextButton::buttonOnColourId, recordColour);
     armButton.onClick = [this]
     {
+        if (audio)
+        {
+            armAudio (armButton.getToggleState());
+            return;
+        }
+
         // Arming a track also makes it the one the keyboard plays.
         auto armed = armButton.getToggleState();
         live.selectTrack (trackID);
@@ -190,10 +198,27 @@ TrackHeader::TrackHeader (tracktion::Edit& e, LiveInstrument& l, MidiDeviceSetti
 
     if (audio)
     {
-        for (auto* c : std::initializer_list<juce::Component*> { &armButton, &instrumentBox, &soundBox })
+        for (auto* c : std::initializer_list<juce::Component*> { &instrumentBox, &soundBox })
             c->setVisible (false);
 
+        armButton.setTooltip ("Record-arm: Record records this track's input onto it");
+        kindLabel.setText ("Audio track", juce::dontSendNotification);
         kindLabel.setVisible (true);
+
+        inputBox.setTooltip ("The input this track records: a microphone, or an audio interface's channel (or pair)");
+        inputBox.onChange = [this] { inputChosen(); };
+        inputBox.setWantsKeyboardFocus (false);
+        addAndMakeVisible (inputBox);
+
+        monitorButton.setClickingTogglesState (true);
+        monitorButton.setTooltip ("Monitor: hear the input while the track is armed. Use headphones with a microphone, "
+                                  "or the speakers will feed back.");
+        monitorButton.setColour (juce::TextButton::buttonOnColourId, audioTrackColour);
+        monitorButton.setWantsKeyboardFocus (false);
+        monitorButton.onClick = [this] { audio_inputs::setMonitoring (edit, trackID, monitorButton.getToggleState()); };
+        addAndMakeVisible (monitorButton);
+
+        updateInputChoices();
     }
     else
     {
@@ -214,7 +239,25 @@ void TrackHeader::refresh()
         nameLabel.setText (track->getName(), juce::dontSendNotification);
 
     if (! audio)
+    {
         armButton.setToggleState (isSelected() && live.isArmed(), juce::dontSendNotification);
+    }
+    else
+    {
+        // The device may have changed (inputs come and go), or undo moved things.
+        if (! inputBox.isPopupActive() && (audio_inputs::getNames (edit) != inputNames || audio_inputs::getDeviceName (edit) != inputDevice))
+            updateInputChoices();
+
+        auto input = audio_inputs::getInput (edit, trackID);
+        auto inputId = input.isEmpty() ? 1 : inputNames.indexOf (input) + 2;
+
+        if (! inputBox.isPopupActive() && inputBox.getSelectedId() != inputId)
+            inputBox.setSelectedId (inputId, juce::dontSendNotification);
+
+        armButton.setToggleState (audio_inputs::isArmed (edit, trackID), juce::dontSendNotification);
+        monitorButton.setToggleState (audio_inputs::isMonitoring (edit, trackID), juce::dontSendNotification);
+        monitorButton.setEnabled (input.isNotEmpty());
+    }
 
     // Undo, or another view, may have changed these.
     auto instrument = getInstrument();
@@ -237,6 +280,58 @@ void TrackHeader::refresh()
     }
 
     repaint();
+}
+
+void TrackHeader::updateInputChoices()
+{
+    inputNames = audio_inputs::getNames (edit);
+    inputDevice = audio_inputs::getDeviceName (edit);
+    inputBox.clear (juce::dontSendNotification);
+    inputBox.addItem (inputNames.isEmpty() ? "No inputs: see Audio Settings" : "No input", 1);
+
+    for (int i = 0; i < inputNames.size(); ++i)
+        inputBox.addItem (audio_inputs::getDisplayName (edit, inputNames[i]), i + 2);
+
+    auto device = audio_inputs::getDeviceName (edit);
+    inputBox.setTooltip ((device.isEmpty() ? juce::String ("The input this track records.")
+                                           : "Recording from: " + device + ". Its channels are listed here.")
+                         + " To use another microphone or audio interface, choose it under Audio Settings.");
+
+    auto input = audio_inputs::getInput (edit, trackID);
+    inputBox.setSelectedId (input.isEmpty() ? 1 : inputNames.indexOf (input) + 2, juce::dontSendNotification);
+}
+
+void TrackHeader::inputChosen()
+{
+    auto id = inputBox.getSelectedId();
+    audio_inputs::setInput (edit, trackID, id >= 2 ? inputNames[id - 2] : juce::String());
+    refresh();
+}
+
+void TrackHeader::armAudio (bool armed)
+{
+    // Arming a track with no input gives it the first input no other track is using.
+    if (armed && audio_inputs::getInput (edit, trackID).isEmpty())
+    {
+        juce::StringArray used;
+
+        for (auto* track : tracktion::getAudioTracks (edit))
+            if (track->itemID != trackID)
+                used.add (audio_inputs::getInput (edit, track->itemID));
+
+        for (auto& name : inputNames)
+            if (! used.contains (name))
+            {
+                audio_inputs::setInput (edit, trackID, name);
+                break;
+            }
+
+        if (audio_inputs::getInput (edit, trackID).isEmpty() && ! inputNames.isEmpty())
+            audio_inputs::setInput (edit, trackID, inputNames[0]);
+    }
+
+    audio_inputs::setArmed (edit, trackID, armed);
+    refresh();
 }
 
 void TrackHeader::updateChoices()
@@ -276,12 +371,8 @@ void TrackHeader::resized()
     r.removeFromRight (5);
 
     auto buttons = r.removeFromTop (24);
-
-    if (! audio)
-    {
-        armButton.setBounds (buttons.removeFromLeft (52));
-        buttons.removeFromLeft (4);
-    }
+    armButton.setBounds (buttons.removeFromLeft (52));
+    buttons.removeFromLeft (4);
 
     muteButton.setBounds (buttons.removeFromLeft (28));
     buttons.removeFromLeft (4);
@@ -290,7 +381,10 @@ void TrackHeader::resized()
 
     if (audio)
     {
-        kindLabel.setBounds (r.removeFromTop (54).withTrimmedLeft (-4));
+        monitorButton.setBounds (soloButton.getBounds().translated (soloButton.getWidth() + 4, 0).withWidth (32));
+        inputBox.setBounds (r.removeFromTop (24));
+        r.removeFromTop (6);
+        kindLabel.setBounds (r.removeFromTop (24).withTrimmedLeft (-4));
     }
     else
     {

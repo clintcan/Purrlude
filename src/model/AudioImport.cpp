@@ -13,12 +13,29 @@ juce::String getWildcard (tracktion::Engine& engine)
     return engine.getAudioFileFormatManager().readFormatManager.getWildcardForAllFormats();
 }
 
-Result importFile (tracktion::Edit& edit, LiveInstrument& live, const juce::File& file, int startBar)
+Result importFile (tracktion::Edit& edit, LiveInstrument& live, const juce::File& original, int startBar,
+                  const juce::File& audioFolder)
 {
-    tracktion::AudioFile audio (edit.engine, file);
+    tracktion::AudioFile check (edit.engine, original);
 
-    if (! file.existsAsFile() || ! isAudioFile (edit.engine, file) || ! audio.isValid() || audio.getLength() <= 0.0)
-        return { file.getFileName() + " isn't an audio file Purrlude can read.", {}, {} };
+    if (! original.existsAsFile() || ! isAudioFile (edit.engine, original) || ! check.isValid() || check.getLength() <= 0.0)
+        return { original.getFileName() + " isn't an audio file Purrlude can read.", {}, {} };
+
+    // A copy in the project's audio folder (unless it's already there).
+    auto file = original;
+
+    if (audioFolder != juce::File() && ! original.isAChildOf (audioFolder))
+    {
+        file = audioFolder.getChildFile (original.getFileName());
+
+        if (file.exists())
+            file = file.getNonexistentSibling (true);
+
+        if (! audioFolder.createDirectory() || ! original.copyFileTo (file))
+            return { "Couldn't copy " + original.getFileName() + " into the project's audio folder.", {}, {} };
+    }
+
+    tracktion::AudioFile audio (edit.engine, file);
 
     edit.getUndoManager().beginNewTransaction ("Import " + file.getFileName());
 

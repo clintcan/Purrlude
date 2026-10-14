@@ -72,6 +72,7 @@ private:
     void exportScore (ExportFormat);
     void exportParts();
 
+    void showAudioSettings();
     void chooseMidiFileToImport();
     void importMidiFiles (const juce::Array<juce::File>&);
     void chooseAudioFileToImport();
@@ -110,7 +111,7 @@ private:
     juce::TabbedComponent editorTabs { juce::TabbedButtonBar::TabsAtTop };
     std::unique_ptr<juce::FileChooser> fileChooser;
 
-    juce::TextButton audioSettingsButton { "Audio/MIDI Settings" };
+    juce::TextButton audioSettingsButton { "Audio Settings" };
     juce::TextButton devicesButton { "MIDI Devices" };
     juce::TextButton loopsButton { "Loops" };
     juce::TextButton editorsButton { "Editors" };

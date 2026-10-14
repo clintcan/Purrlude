@@ -92,6 +92,8 @@ target_sources(purrlude_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/TimeSignature.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/AudioImport.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/AudioImport.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/AudioInputs.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/AudioInputs.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/NoteEditing.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/NoteEditing.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/Project.h

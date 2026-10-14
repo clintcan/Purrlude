@@ -1,5 +1,6 @@
 #include "ArrangementView.h"
 
+#include "model/AudioInputs.h"
 #include "model/ClipEditing.h"
 #include "notation/TrackNotation.h"
 
@@ -486,7 +487,9 @@ void ArrangementView::paint (juce::Graphics& g)
         }
 
         // The take being recorded, until it becomes a clip.
-        if (recordStartBeat && live.getTrack() == track && playheadBeat > *recordStartBeat)
+        auto recordsHere = live.getTrack() == track || audio_inputs::isArmed (edit, track->itemID);
+
+        if (recordStartBeat && recordsHere && playheadBeat > *recordStartBeat)
         {
             auto area = juce::Rectangle<float> (beatToX (*recordStartBeat), (float) lane.getY() + 4.0f,
                                                 beatToX (playheadBeat) - beatToX (*recordStartBeat),

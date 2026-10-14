@@ -27,14 +27,54 @@ namespace
 
         return state;
     }
+
+    /** Resolves a clip's file path: absolute, or relative to the project's folder (as
+        "Song Audio/take.wav"). Shared with the Edit, so it follows the project when it moves.
+    */
+    tracktion::Edit::FilePathResolver makeResolver (std::shared_ptr<juce::File> projectFile)
+    {
+        return [projectFile] (const juce::String& path) -> juce::File
+        {
+            if (juce::File::isAbsolutePath (path))
+                return path;
+
+            return *projectFile == juce::File() ? juce::File() : projectFile->getSiblingFile (path);
+        };
+    }
+
+    /** An Edit for a saved state that knows where its project file is from the start, so
+        clips' relative paths resolve as they load.
+    */
+    std::unique_ptr<tracktion::Edit> loadEdit (tracktion::Engine& engine, const juce::ValueTree& state,
+                                               std::shared_ptr<juce::File> projectFile)
+    {
+        auto id = tracktion::ProjectItemID::fromProperty (state, tracktion::IDs::projectID);
+
+        if (! id.isValid())
+            id = tracktion::ProjectItemID::createNewID (0);
+
+        return tracktion::Edit::createEdit (tracktion::Edit::Options
+        {
+            engine,
+            state,
+            id,
+            tracktion::Edit::forEditing,
+            nullptr,
+            tracktion::Edit::getDefaultNumUndoLevels(),
+            [projectFile] { return *projectFile; },
+            makeResolver (projectFile)
+        });
+    }
 }
 
-Project::Project (std::unique_ptr<tracktion::Edit> e, const juce::File& f, const juce::File& autosaveDir)
-    : edit (std::move (e))
+Project::Project (std::unique_ptr<tracktion::Edit> e, const juce::File& f, const juce::File& autosaveDir,
+                  std::shared_ptr<juce::File> projectFile)
+    : edit (std::move (e)), editFile (projectFile != nullptr ? projectFile : std::make_shared<juce::File>())
 {
     setFile (f);
     autosaveFile = autosaveDir.getChildFile (juce::Uuid().toString() + autosaveExtension);
     instrument = std::make_unique<LiveInstrument> (*edit);
+    updateRecordingFolder();
 
     // Adding the synth is setup, not something to undo or to prompt about.
     edit->getUndoManager().clearUndoHistory();
@@ -48,8 +88,9 @@ Project::~Project()
     instrument = nullptr;
 
     // Reaching here means a clean close (saved, or changes discarded). After a
-    // crash the autosave stays behind for findRecoverable().
+    // crash the autosave stays behind for findRecoverable(), with any unsaved audio.
     deleteAutosave();
+    getUnsavedAudioFolder().deleteRecursively();
 }
 
 std::unique_ptr<Project> Project::createNew (tracktion::Engine& engine, const juce::File& autosaveDir)
@@ -72,7 +113,9 @@ std::unique_ptr<Project> Project::open (tracktion::Engine& engine, const juce::F
         return nullptr;
 
     state.removeProperty (originalFileProperty, nullptr);
-    return std::unique_ptr<Project> (new Project (tracktion::loadEditFromState (engine, state), f, autosaveDir));
+
+    auto projectFile = std::make_shared<juce::File> (f);
+    return std::unique_ptr<Project> (new Project (loadEdit (engine, state, projectFile), f, autosaveDir, projectFile));
 }
 
 std::unique_ptr<Project> Project::recover (tracktion::Engine& engine, const Recoverable& r,
@@ -85,7 +128,8 @@ std::unique_ptr<Project> Project::recover (tracktion::Engine& engine, const Reco
 
     state.removeProperty (originalFileProperty, nullptr);
 
-    std::unique_ptr<Project> project (new Project (tracktion::loadEditFromState (engine, state), r.originalFile, autosaveDir));
+    auto projectFile = std::make_shared<juce::File> (r.originalFile);
+    std::unique_ptr<Project> project (new Project (loadEdit (engine, state, projectFile), r.originalFile, autosaveDir, projectFile));
 
     // Keep using the same autosave, so a second crash before saving loses nothing.
     project->autosaveFile = r.autosave;
@@ -106,7 +150,77 @@ bool Project::hasUnsavedChanges() const
 void Project::setFile (const juce::File& f)
 {
     file = f;
-    edit->editFileRetriever = [f] { return f; };
+    *editFile = f;
+    edit->editFileRetriever = [projectFile = editFile] { return *projectFile; };
+    edit->filePathResolver = makeResolver (editFile);
+}
+
+juce::File Project::getUnsavedAudioFolder() const
+{
+    // Named after the autosave, so a recovered untitled project finds its recordings again.
+    return autosaveFile.getParentDirectory().getSiblingFile ("Unsaved Audio")
+                       .getChildFile (autosaveFile.getFileNameWithoutExtension());
+}
+
+juce::File Project::getAudioFolder() const
+{
+    return file == juce::File() ? getUnsavedAudioFolder()
+                                : file.getSiblingFile (file.getFileNameWithoutExtension() + " Audio");
+}
+
+void Project::updateRecordingFolder()
+{
+    // Tracktion expands %track% and %take%; the folder is created when a recording starts.
+    auto mask = getAudioFolder().getChildFile ("%track% take %take%").getFullPathName();
+
+    for (auto* input : edit->engine.getDeviceManager().getWaveInputDevices())
+        if (input->getFilenameMask() != mask)
+            input->setFilenameMask (mask);
+}
+
+void Project::gatherAudio()
+{
+    // Every audio clip's file goes into the audio folder (copied, so nothing outside is
+    // touched), and is referred to relative to the project file.
+    auto folder = getAudioFolder();
+
+    for (auto* track : tracktion::getAudioTracks (*edit))
+    {
+        for (auto* clip : track->getClips())
+        {
+            auto* audioClip = dynamic_cast<tracktion::AudioClipBase*> (clip);
+
+            if (audioClip == nullptr)
+                continue;
+
+            auto source = audioClip->getOriginalFile();
+
+            if (! source.existsAsFile())
+                continue;   // missing: leave the reference alone
+
+            auto destination = source;
+
+            if (! source.isAChildOf (folder))
+            {
+                folder.createDirectory();
+                destination = folder.getChildFile (source.getFileName());
+
+                // Same name but a different file: keep both.
+                if (destination.existsAsFile() && destination.getSize() != source.getSize())
+                    destination = destination.getNonexistentSibling (true);
+
+                if (! destination.existsAsFile() && ! source.copyFileTo (destination))
+                    continue;
+            }
+
+            // Relative to the project's folder (see makeResolver), written here rather than by
+            // Tracktion, whose relative paths depend on whether the project file exists yet.
+            auto path = destination.getRelativePathFrom (file.getParentDirectory()).replaceCharacter ('\\', '/');
+
+            if (audioClip->state[tracktion::IDs::source].toString() != path)
+                audioClip->state.setProperty (tracktion::IDs::source, path, nullptr);
+        }
+    }
 }
 
 bool Project::writeEdit (const juce::File& target, const juce::File& originalFileToRecord, juce::String& error)
@@ -152,11 +266,26 @@ bool Project::save (juce::String& error)
 bool Project::saveAs (const juce::File& f, juce::String& error)
 {
     auto target = f.hasFileExtension (fileExtension) ? f : f.withFileExtension (fileExtension);
+    auto previousFile = file;
 
-    if (! writeEdit (target, {}, error))
+    // The audio goes with the project: gather it into the (new) audio folder first. Relative
+    // paths are worked out from the project's folder, so that has to exist already.
+    if (! target.getParentDirectory().createDirectory())
+    {
+        error = "Couldn't create " + target.getParentDirectory().getFullPathName();
         return false;
+    }
 
     setFile (target);
+    gatherAudio();
+
+    if (! writeEdit (target, {}, error))
+    {
+        setFile (previousFile);
+        return false;
+    }
+
+    updateRecordingFolder();
     edit->resetChangedStatus();
     recovered = false;
     lastAutosavedChange = edit->lastSignificantChange.get();

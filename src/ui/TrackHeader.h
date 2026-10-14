@@ -10,8 +10,8 @@ namespace purrlude
 {
 
 /** The header of one track in the arrangement: its name (double-click to rename),
-    mute, solo, volume, pan and level meter; for an instrument track also record arm and the
-    Instrument and Sound menus. Clicking an instrument track's header selects it for live
+    record arm, mute, solo, volume, pan and level meter; for an instrument track the
+    Instrument and Sound menus, for an audio track its input and input monitoring. Clicking an instrument track's header selects it for live
     input; right-click for Rename and Delete.
 */
 class TrackHeader final : public juce::Component
@@ -57,7 +57,16 @@ private:
     float valueBeforeDrag = 0.0f;   ///< Volume or pan when a drag started (for its undo step)
     juce::ComboBox instrumentBox, soundBox;
     juce::Label kindLabel { {}, "Audio track" };
-    const bool audio;   ///< An audio track: no instrument, record arm or sound menus
+    const bool audio;   ///< An audio track: an input instead of instrument and sound menus
+
+    // Audio tracks: the input they record, and whether it's monitored.
+    juce::ComboBox inputBox;
+    juce::TextButton monitorButton { "In" };
+    juce::StringArray inputNames;   ///< inputBox items (ids from 2; 1 is "No input")
+    juce::String inputDevice;       ///< The audio device they belong to
+    void updateInputChoices();
+    void inputChosen();
+    void armAudio (bool);
     LevelMeter meter;
 
     juce::StringArray soundIDs, soundNames;   ///< Parallel to soundBox items; ID "" is the built-in instrument
