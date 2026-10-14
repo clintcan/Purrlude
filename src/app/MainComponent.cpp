@@ -1,5 +1,7 @@
 #include "MainComponent.h"
 
+#include "ui/ExportAudioDialog.h"
+
 #include "notation/MusicXmlWriter.h"
 #include "notation/ScorePdf.h"
 #include "notation/TrackNotation.h"
@@ -81,6 +83,7 @@ MainComponent::~MainComponent()
     deviceSettings.removeChangeListener (this);
     engine.getDeviceManager().removeChangeListener (this);
     stopTimer();
+    stopAudioExport();
     editorTabs.clearTabs();
     loopsPanel = nullptr;
     pianoRoll = nullptr;
@@ -105,7 +108,8 @@ void MainComponent::setProject (std::unique_ptr<Project> newProject)
 {
     jassert (newProject != nullptr);
 
-    // UI that references the old Edit must go before it does.
+    // UI (and an export) that references the old Edit must go before it does.
+    stopAudioExport();
     auto currentTab = editorTabs.getCurrentTabIndex();
     editorTabs.clearTabs();
     loopsPanel = nullptr;
@@ -417,6 +421,104 @@ void MainComponent::exportScore (ExportFormat format)
     });
 }
 
+//==============================================================================
+void MainComponent::exportAudio()
+{
+    if (audioExport != nullptr)
+        return;
+
+    ExportAudioDialog::show (settings, [safe = juce::WeakReference<MainComponent> (this)] (AudioExportOptions options)
+    {
+        if (safe != nullptr)
+            safe->chooseAudioDestination (options);
+    });
+}
+
+void MainComponent::chooseAudioDestination (AudioExportOptions options)
+{
+    auto dir = project->getFile() != juce::File() ? project->getFile().getParentDirectory() : getDefaultProjectDirectory();
+    dir.createDirectory();
+
+    auto onChosen = [safe = juce::WeakReference<MainComponent> (this), options] (const juce::FileChooser& chooser)
+    {
+        if (safe != nullptr && chooser.getResult() != juce::File())
+            safe->startAudioExport (options, chooser.getResult());
+    };
+
+    if (options.stems)
+    {
+        fileChooser = std::make_unique<juce::FileChooser> ("Choose a folder for the stems", dir);
+        fileChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories, onChosen);
+    }
+    else
+    {
+        auto extension = options.getExtension();
+        fileChooser = std::make_unique<juce::FileChooser> ("Export audio", dir.getChildFile (project->getName() + extension), "*" + extension);
+        fileChooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
+                                    | juce::FileBrowserComponent::warnAboutOverwriting, onChosen);
+    }
+}
+
+void MainComponent::startAudioExport (AudioExportOptions options, const juce::File& destination)
+{
+    project->getEdit().getTransport().stop (false, false);
+    exportProgress = 0.0;
+
+    exportWindow = std::make_unique<juce::AlertWindow> ("Exporting audio",
+                                                        options.stems ? "Rendering each track..." : "Rendering the song...",
+                                                        juce::MessageBoxIconType::NoIcon);
+    exportWindow->addProgressBarComponent (exportProgress);
+    exportWindow->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+
+    // Cancel closes the window with 0; a finished export closes it with 1.
+    exportWindow->enterModalState (true, juce::ModalCallbackFunction::create ([safe = juce::WeakReference<MainComponent> (this)] (int result)
+    {
+        if (safe != nullptr && result == 0)
+            juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->stopAudioExport(); });
+    }), false);
+
+    auto safe = juce::WeakReference<MainComponent> (this);
+    audioExport = std::make_unique<AudioExport> (project->getEdit(), options, destination,
+                                                 [safe] (const juce::String& error, const juce::Array<juce::File>& files)
+    {
+        if (safe != nullptr)
+            safe->audioExportFinished (error, files);
+    });
+
+    exportProgressTimer.startTimerHz (10);
+}
+
+void MainComponent::audioExportFinished (const juce::String& error, const juce::Array<juce::File>& files)
+{
+    exportProgressTimer.stopTimer();
+
+    if (exportWindow != nullptr)
+        exportWindow->exitModalState (1);
+
+    // The export calls this from inside itself, so it's released afterwards.
+    juce::MessageManager::callAsync ([safe = juce::WeakReference<MainComponent> (this)]
+    {
+        if (safe != nullptr)
+            safe->stopAudioExport();
+    });
+
+    if (error.isNotEmpty())
+        showError ("Couldn't export audio", error);
+    else if (! files.isEmpty())
+        files.getFirst().revealToUser();
+}
+
+void MainComponent::stopAudioExport()
+{
+    exportProgressTimer.stopTimer();
+    audioExport = nullptr;   // cancels it if it's still running
+
+    if (exportWindow != nullptr && exportWindow->isCurrentlyModal())
+        exportWindow->exitModalState (1);
+
+    exportWindow = nullptr;
+}
+
 void MainComponent::exportParts()
 {
     auto dir = project->getFile() != juce::File() ? project->getFile().getParentDirectory() : getDefaultProjectDirectory();
@@ -582,7 +684,7 @@ bool MainComponent::keyPressed (const juce::KeyPress& key)
             case 'N':   newProject();   return true;
             case 'O':   openProject();  return true;
             case 'S':   if (mods.isShiftDown()) saveProjectAs(); else saveProject();                            return true;
-            case 'E':   exportScore (ExportFormat::pdf);                                                        return true;
+            case 'E':   if (mods.isShiftDown()) exportAudio(); else exportScore (ExportFormat::pdf);            return true;
             case 'Z':   if (mods.isShiftDown()) project->getEdit().redo(); else project->getEdit().undo();      return true;
             default:    return false;
         }
@@ -628,6 +730,7 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
         addItem (exportPdfId, "Export Score as PDF...", "command + E");
         addItem (exportPartsId, "Export Parts as PDF...", "");
         addItem (exportMusicXmlId, "Export MusicXML...", "");
+        addItem (exportAudioId, "Export Audio...", "command + shift + E", audioExport == nullptr);
     }
     else
     {
@@ -650,6 +753,7 @@ void MainComponent::menuItemSelected (int id, int)
         case exportPdfId:       exportScore (ExportFormat::pdf);        break;
         case exportPartsId:     exportScore (ExportFormat::partPdfs);   break;
         case exportMusicXmlId:  exportScore (ExportFormat::musicXml);   break;
+        case exportAudioId:     exportAudio();                          break;
         case undoId:    project->getEdit().undo();          break;
         case redoId:    project->getEdit().redo();          break;
         default:        break;

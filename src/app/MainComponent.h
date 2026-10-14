@@ -3,6 +3,7 @@
 #include "devices/BluetoothMidiManager.h"
 #include "devices/MidiDeviceSettings.h"
 #include "devices/ToneListener.h"
+#include "model/AudioExport.h"
 #include "model/Project.h"
 #include "ui/ArrangementView.h"
 #include "ui/LoopsPanel.h"
@@ -24,7 +25,8 @@ namespace purrlude
 
     Shortcuts: Space play/stop, R record, Home return to start,
     Cmd/Ctrl+Z undo, Cmd/Ctrl+Shift+Z redo, Cmd/Ctrl+N/O/S new/open/save,
-    Cmd/Ctrl+Shift+S save as, Cmd/Ctrl+E export the score as PDF.
+    Cmd/Ctrl+Shift+S save as, Cmd/Ctrl+E export the score as PDF, Cmd/Ctrl+Shift+E
+    export audio, Delete/Backspace delete the selected clip.
 */
 class MainComponent final : public juce::Component,
                             public juce::MenuBarModel,
@@ -48,7 +50,7 @@ public:
     void menuItemSelected (int, int) override;
 
 private:
-    enum MenuIds { newId = 1, openId, saveId, saveAsId, exportPdfId, exportPartsId, exportMusicXmlId, undoId, redoId };
+    enum MenuIds { newId = 1, openId, saveId, saveAsId, exportPdfId, exportPartsId, exportMusicXmlId, exportAudioId, undoId, redoId };
 
     void setProject (std::unique_ptr<Project>);
     void startUp();
@@ -63,6 +65,12 @@ private:
     enum class ExportFormat { pdf, partPdfs, musicXml };
     void exportScore (ExportFormat);
     void exportParts();
+
+    void exportAudio();
+    void chooseAudioDestination (AudioExportOptions);
+    void startAudioExport (AudioExportOptions, const juce::File& destination);
+    void audioExportFinished (const juce::String& error, const juce::Array<juce::File>& files);
+    void stopAudioExport();
 
     void showError (const juce::String& title, const juce::String& message);
     void updateTitle();
@@ -96,6 +104,11 @@ private:
     ToneListener toneListener { deviceSettings };
 
     int ticksSinceAutosave = 0;
+
+    std::unique_ptr<AudioExport> audioExport;
+    std::unique_ptr<juce::AlertWindow> exportWindow;
+    double exportProgress = 0.0;   ///< Read by the progress bar
+    juce::TimedCallback exportProgressTimer { [this] { if (audioExport != nullptr) exportProgress = audioExport->getProgress(); } };
 
     JUCE_DECLARE_WEAK_REFERENCEABLE (MainComponent)
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainComponent)

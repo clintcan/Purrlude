@@ -188,7 +188,7 @@ TEST_CASE ("The GM instrument renders sound offline", "[model][instrument][rende
     params.time = { tracktion::TimePosition(), tracktion::TimePosition::fromSeconds (2.0) };
     params.tracksToDo = tracks;
 
-    // Renders on a background thread; the callback arrives on the message thread.
+    // Renders on a background thread, which also calls the callback.
     std::atomic<bool> finished { false };
     auto handle = tracktion::EditRenderer::render (std::move (params), [&finished] (auto) { finished = true; });
 

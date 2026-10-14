@@ -143,6 +143,14 @@ The app talks to `purrlude::BluetoothMidiManager` (`src/devices/BluetoothMidiMan
 - **Inserting:** `insert` puts one pass of the progression in a looping clip. It goes on a built-in track with the pattern's role (a track property) and GM program, created and named after the instrument if needed.
 - **Key:** `detectKey` estimates the key from all non-drum tracks. The panel follows it until the user picks a key.
 
+**Audio export** (`src/model/AudioExport.h`, File > Export Audio, Cmd-Shift-E):
+- **Formats:** WAV or FLAC at 16 or 24 bits, or Ogg Vorbis at about 192 kbps, at 44.1 or 48 kHz, optionally peak-normalised to -1 dB. MP3 isn't offered: JUCE has no MP3 encoder.
+- **What's rendered:** the mix, or stems (one file per track that has clips and isn't muted). The range runs from the start to the end of the last clip, plus up to 2 s of tail. The metronome isn't included.
+- **Rendering:** it uses `tracktion::EditRenderer::render` on a background thread.
+  - Its finished callback runs on the render thread, so results are posted to the message thread.
+  - Cancelling (deleting the `AudioExport`) can't join the render thread on the message thread, because the thread may need the message thread first. It's joined, and the partial file deleted, on a detached thread.
+- **UI:** `ExportAudioDialog` (`src/ui/`) remembers the last choices in the settings file. `MainComponent` shows a progress window with Cancel and reveals the file when done.
+
 **Clip editing** (`src/model/ClipEditing.h`, `ArrangementView`):
 - **Operations:** `clips::move` (also copies), `setEnd` and `remove`. A clip put over others replaces what it covers, splitting them if needed.
 - **Undo:** each operation starts its own undo step and leaves it open, because Tracktion re-sorts a track's clips asynchronously and that re-sort has to join the step.

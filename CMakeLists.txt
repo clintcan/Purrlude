@@ -84,6 +84,8 @@ target_sources(purrlude_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/ClipEditing.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/Accompaniment.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/Accompaniment.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/AudioExport.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/AudioExport.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/NoteEditing.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/NoteEditing.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/Project.h
@@ -107,6 +109,8 @@ target_sources(purrlude_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/MidiDevicesPanel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/LoopsPanel.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/LoopsPanel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/ExportAudioDialog.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/ExportAudioDialog.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/ScoreView.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/ScoreView.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/PianoRoll.h
