@@ -10,7 +10,7 @@ namespace purrlude
 {
 
 /** The header of one track in the arrangement: its name (double-click to rename),
-    record arm, mute, solo, volume, pan and level meter; for an instrument track the
+    record arm, mute, solo, effects (FX), volume, pan and level meter; for an instrument track the
     Instrument and Sound menus, for an audio track its input and input monitoring. Clicking an instrument track's header selects it for live
     input; right-click for Rename and Delete.
 */
@@ -44,6 +44,7 @@ private:
     int getSelectedInstrumentId() const;
     void showMenu();
     void renameTrack();
+    void showEffects();
 
     tracktion::Edit& edit;
     LiveInstrument& live;
@@ -51,7 +52,7 @@ private:
     const tracktion::EditItemID trackID;
 
     juce::Label nameLabel;
-    juce::TextButton armButton { "Arm" }, muteButton { "M" }, soloButton { "S" };
+    juce::TextButton armButton { "Arm" }, muteButton { "M" }, soloButton { "S" }, effectsButton { "FX" };
     std::unique_ptr<juce::LookAndFeel> panKnobLook;   // declared before the knob that uses it
     juce::Slider volumeSlider, panKnob;
     float valueBeforeDrag = 0.0f;   ///< Volume or pan when a drag started (for its undo step)

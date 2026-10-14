@@ -139,6 +139,11 @@ The app talks to `purrlude::BluetoothMidiManager` (`src/devices/BluetoothMidiMan
 - **Mixer:** each track has volume, pan, mute and solo. Volume and pan come from its `VolumeAndPanPlugin`, which `TrackInstrument::setUp` adds to every track; for external sources they're also sent as CC 7/10.
   - **Undo:** mixer changes go through `TrackMix` (`src/model/TrackMix.h`). Tracktion keeps mute/solo out of undo, and the plugin's setters would record every fader move. `TrackInstrument` therefore writes volume/pan to the plugin state without the UndoManager (and reads them back from the state, since the parameter updates asynchronously). `TrackMix::change` records one undo step per click or drag.
   - **Parameters:** Tracktion doesn't pass a plugin state change on to the plugin's parameters, which are what's heard. So after writing volume or pan, `TrackInstrument` calls `updateFromAttachedValue()` on the plugin's parameters (`syncMixParameters`, also run by `setUp`). A render test checks that volume and pan change the audio.
+- **Effects** (`src/model/TrackEffects.h`, namespace `track_effects`): Tracktion's reverb, delay, 4-band EQ and compressor, each with a few named controls (`getControls`).
+  - They sit before the track's volume plugin, so the fader and meter show the final level. Add, remove and on/off are one undo step each.
+  - `add` sets starting values (e.g. reverb wet 0.25, EQ bands at 150/500/2.5k/8k Hz, compressor attack 10 ms). The compressor's ratio is stored inverted (0.5 = 2:1), so its knob is reversed.
+  - Delay times are note values at the song's tempo (`setDelayTime`), stored as `lengthMs`.
+  - **UI:** the FX button on the header's name row (lit when the track has effects, disabled for external sound sources) opens `EffectsPanel` (`src/ui/`) in a CallOutBox. It holds the track by id, polls for changes (undo), and starts an undo step when a knob drag begins.
 - **UI:** the arrangement has one `TrackHeader` per track and scrolls vertically in a Viewport.
   - **Zoom and horizontal scroll:** `TimelineView` (`src/ui/`, pure maths, tested) holds the beat at the left edge and the pixels per beat.
     - **Fit mode** (the default) shows the whole song as it grows. Zooming leaves it, and zooming out past the song or Cmd-0 returns to it.
@@ -237,7 +242,7 @@ content/                Bundled content: LICENSES.md manifest, devices/*.json de
 src/model/              Project model on top of tracktion::Edit (Project, LiveInstrument)
 src/notation/           Notation layer: performed notes -> Score -> MusicXML (no UI)
 src/analysis/           Analysis layer: pitch tracking and melody transcription (no UI, no Tracktion)
-src/ui/                 UI components (TransportBar, ArrangementView, ScoreView, PianoRoll, MidiDevicesPanel, LoopsPanel)
+src/ui/                 UI components (TransportBar, ArrangementView, ScoreView, PianoRoll, MidiDevicesPanel, LoopsPanel, EffectsPanel)
 tools/content/          Scripts that generate bundled content (run by hand; output is committed)
 tests/                  Catch2 test runner (PurrludeTests)
 .github/workflows/      CI for Windows, macOS, Linux

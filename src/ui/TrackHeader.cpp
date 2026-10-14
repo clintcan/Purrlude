@@ -3,7 +3,9 @@
 #include "model/AudioInputs.h"
 
 #include "devices/DeviceLibrary.h"
+#include "model/TrackEffects.h"
 #include "model/TrackMix.h"
+#include "ui/EffectsPanel.h"
 #include "instruments/GeneralMidi.h"
 
 namespace purrlude
@@ -119,6 +121,10 @@ TrackHeader::TrackHeader (tracktion::Edit& e, LiveInstrument& l, MidiDeviceSetti
     };
     addAndMakeVisible (soloButton);
 
+    effectsButton.setColour (juce::TextButton::buttonOnColourId, audioTrackColour);
+    effectsButton.onClick = [this] { showEffects(); };
+    addAndMakeVisible (effectsButton);
+
     volumeSlider.setSliderStyle (juce::Slider::LinearHorizontal);
     volumeSlider.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
     volumeSlider.setRange (-60.0, 6.0, 0.1);
@@ -186,7 +192,7 @@ TrackHeader::TrackHeader (tracktion::Edit& e, LiveInstrument& l, MidiDeviceSetti
     soundBox.onChange = [this] { soundChosen(); };
     addAndMakeVisible (soundBox);
 
-    for (auto* c : std::initializer_list<juce::Component*> { &armButton, &muteButton, &soloButton, &instrumentBox,
+    for (auto* c : std::initializer_list<juce::Component*> { &armButton, &muteButton, &soloButton, &effectsButton, &instrumentBox,
                                                             &soundBox, &volumeSlider, &panKnob })
         c->setWantsKeyboardFocus (false);
 
@@ -263,6 +269,16 @@ void TrackHeader::refresh()
     auto instrument = getInstrument();
     muteButton.setToggleState (instrument.isMuted(), juce::dontSendNotification);
     soloButton.setToggleState (instrument.isSolo(), juce::dontSendNotification);
+
+    // Lit when the track has effects. A track heard on an external device doesn't pass
+    // through them, so they can't be used there.
+    auto* track = instrument.getTrack();
+    auto external = ! audio && instrument.getSoundSourceID().isNotEmpty();
+    effectsButton.setToggleState (track != nullptr && ! track_effects::getEffects (*track).isEmpty(), juce::dontSendNotification);
+    effectsButton.setEnabled (! external);
+    effectsButton.setTooltip (external ? "Effects work on Purrlude's built-in sounds; this track plays on "
+                                             + instrument.getSoundSourceName() + "."
+                                       : "Effects: reverb, delay, EQ and compressor");
 
     if (! volumeSlider.isMouseButtonDown())
         volumeSlider.setValue (juce::jmax (-60.0f, instrument.getVolumeDb()), juce::dontSendNotification);
@@ -363,7 +379,9 @@ void TrackHeader::paint (juce::Graphics& g)
 void TrackHeader::resized()
 {
     auto r = getLocalBounds().reduced (8, 6);
-    nameLabel.setBounds (r.removeFromTop (22).withTrimmedLeft (-4));
+    auto nameRow = r.removeFromTop (22);
+    effectsButton.setBounds (nameRow.removeFromRight (32));
+    nameLabel.setBounds (nameRow.withTrimmedLeft (-4).withTrimmedRight (4));
     r.removeFromTop (4);
 
     // The level meter runs down the right edge, beside the controls.
@@ -437,6 +455,12 @@ void TrackHeader::showMenu()
 void TrackHeader::renameTrack()
 {
     nameLabel.showEditor();
+}
+
+void TrackHeader::showEffects()
+{
+    auto panel = std::make_unique<EffectsPanel> (edit, trackID);
+    juce::CallOutBox::launchAsynchronously (std::move (panel), effectsButton.getScreenBounds(), nullptr);
 }
 
 //==============================================================================

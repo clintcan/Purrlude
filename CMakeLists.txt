@@ -78,6 +78,8 @@ target_sources(purrlude_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/TrackInstrument.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/TrackMix.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/TrackMix.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/TrackEffects.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/TrackEffects.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/LiveInstrument.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/LiveInstrument.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/LoopLibrary.h
@@ -141,6 +143,8 @@ target_sources(purrlude_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/PianoRoll.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/TransportBar.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/TransportBar.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/EffectsPanel.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/EffectsPanel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/TrackHeader.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/TrackHeader.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/ArrangementView.h
