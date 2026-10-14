@@ -1,5 +1,7 @@
 #include "LiveInstrument.h"
 
+#include "AudioInputs.h"
+
 namespace purrlude
 {
 
@@ -289,6 +291,9 @@ void LiveInstrument::timerCallback()
     // Tracks restored by undo, or a track's sound source changed: keep everything in step.
     for (auto* track : tracktion::getAudioTracks (edit))
         TrackInstrument::setUp (edit, *track);
+
+    // Audio tracks that lost their input when the audio device changed get it back.
+    audio_inputs::restoreInputs (edit);
 
     routeInput();
     updateMonitoring();

@@ -40,6 +40,12 @@ namespace audio_inputs
     bool isMonitoring (tracktion::Edit&, tracktion::EditItemID track);
     void setMonitoring (tracktion::Edit&, tracktion::EditItemID track, bool);
 
+    /** Gives tracks back the inputs they had, by name, where they've lost them: Tracktion
+        recreates its inputs when the audio device changes, and a song may be opened with
+        another device. Call it regularly; it does nothing when nothing is lost.
+    */
+    void restoreInputs (tracktion::Edit&);
+
     /** Audio tracks being recorded right now. */
     juce::Array<tracktion::EditItemID> getRecordingTracks (tracktion::Edit&);
 }

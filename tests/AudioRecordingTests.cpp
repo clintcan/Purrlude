@@ -154,9 +154,20 @@ TEST_CASE ("Audio tracks take an input, arm and monitor", "[audio-tracks]")
     REQUIRE (purrlude::audio_inputs::getInput (edit, first->itemID).isEmpty());
     REQUIRE_FALSE (purrlude::audio_inputs::isArmed (edit, first->itemID));
 
+    // An input lost (as when the device changes and Tracktion recreates its inputs) comes back.
+    for (auto* instance : edit.getAllInputDevices())
+        if (instance->getTargets().contains (second->itemID))
+            (void) instance->removeTarget (second->itemID, nullptr);
+
+    REQUIRE (purrlude::audio_inputs::getInput (edit, second->itemID).isEmpty());
+    purrlude::audio_inputs::restoreInputs (edit);
+    REQUIRE (purrlude::audio_inputs::getInput (edit, second->itemID) == names[0]);
+
     // No input.
     REQUIRE (purrlude::audio_inputs::setInput (edit, second->itemID, {}));
     REQUIRE (purrlude::audio_inputs::getInput (edit, second->itemID).isEmpty());
+    purrlude::audio_inputs::restoreInputs (edit);
+    REQUIRE (purrlude::audio_inputs::getInput (edit, second->itemID).isEmpty());   // chose none: stays none
     REQUIRE_FALSE (purrlude::audio_inputs::setInput (edit, second->itemID, "No Such Input"));
 }
 
