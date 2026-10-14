@@ -46,6 +46,13 @@ namespace audio_to_midi
     tracktion::MidiClip* insertNotes (tracktion::Edit&, LiveInstrument&, const Source&,
                                       const std::vector<analysis::TranscribedNote>&, Mode = Mode::melody);
 
+    /** Puts notes on a new instrument track (named, with a GM program) placed after a track,
+        in one MIDI clip over the audio clip's span. Doesn't start an undo step.
+    */
+    tracktion::MidiClip* addNoteTrack (tracktion::Edit&, LiveInstrument&, const Source&,
+                                       const std::vector<analysis::TranscribedNote>&,
+                                       const juce::String& name, int program, tracktion::Track* after);
+
     /** Drum hits as notes: GM drum notes, short. */
     std::vector<analysis::TranscribedNote> toNotes (const std::vector<analysis::DrumHit>&);
 

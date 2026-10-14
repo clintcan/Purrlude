@@ -152,3 +152,35 @@ function(purrlude_bundle_model_licenses target)
 
     add_custom_command(TARGET ${target} POST_BUILD ${commands} COMMENT "Copying model licenses" VERBATIM)
 endfunction()
+
+# The instrument separation model (Demucs v4 "htdemucs_6s", MIT), exported to ONNX by
+# tools/models/export_demucs.py. At 115 MB it isn't compiled in: the app looks for it in the
+# user's models folder, then beside the app. Development builds that have it in the cache
+# also find it there (PURRLUDE_DEMUCS_MODEL) and copy it into the app.
+set(PURRLUDE_DEMUCS_MODEL ${purrlude_ml_cache}/demucs/htdemucs_6s.onnx CACHE FILEPATH
+    "The Demucs htdemucs_6s ONNX model (made by tools/models/export_demucs.py)")
+
+if(EXISTS ${PURRLUDE_DEMUCS_MODEL})
+    target_compile_definitions(purrlude_onnxruntime INTERFACE PURRLUDE_DEMUCS_MODEL="${PURRLUDE_DEMUCS_MODEL}")
+else()
+    message(STATUS "No Demucs model at ${PURRLUDE_DEMUCS_MODEL}: separating instruments needs it "
+                   "(make it with tools/models/export_demucs.py)")
+endif()
+
+function(purrlude_bundle_demucs target)
+    if(NOT EXISTS ${PURRLUDE_DEMUCS_MODEL} OR NOT ONNXRUNTIME_PACKAGE)
+        return()
+    endif()
+
+    if(APPLE)
+        set(dest "$<TARGET_BUNDLE_CONTENT_DIR:${target}>/Resources/models")
+    else()
+        set(dest "$<TARGET_FILE_DIR:${target}>/models")
+    endif()
+
+    add_custom_command(TARGET ${target} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${dest}"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PURRLUDE_DEMUCS_MODEL}" "${dest}/htdemucs_6s.onnx"
+        COMMENT "Copying the instrument separation model"
+        VERBATIM)
+endfunction()

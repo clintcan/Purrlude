@@ -77,17 +77,34 @@ tracktion::MidiClip* insertNotes (tracktion::Edit& edit, LiveInstrument& live, c
     if (audioClip == nullptr || audioTrack == nullptr)
         return nullptr;
 
-    auto& um = edit.getUndoManager();
-    um.beginNewTransaction ("Convert " + source.name + " to MIDI");
+    edit.getUndoManager().beginNewTransaction ("Convert " + source.name + " to MIDI");
 
-    auto* track = live.addTrack (false, audioTrack);
+    // Melodies and chords play on piano (plain enough to check the notes by), drums on the drum kit.
+    auto* clip = addNoteTrack (edit, live, source, notes, source.name + (mode == Mode::drums ? " (drums)" : " (notes)"),
+                               mode == Mode::drums ? gm::drumKit : 0, audioTrack);
+
+    // Left open, like other arrangement edits, with the clips in Tracktion's order (ClipOrder.h).
+    sortAllClipsLikeTracktion (edit);   // see ClipOrder.h
+    return clip;
+}
+
+tracktion::MidiClip* addNoteTrack (tracktion::Edit& edit, LiveInstrument& live, const Source& source,
+                                   const std::vector<analysis::TranscribedNote>& notes,
+                                   const juce::String& name, int program, tracktion::Track* after)
+{
+    auto* audioClip = tracktion::findClipForID (edit, source.clip);
+
+    if (audioClip == nullptr)
+        return nullptr;
+
+    auto& um = edit.getUndoManager();
+    auto* track = live.addTrack (false, after);
 
     if (track == nullptr)
         return nullptr;
 
-    // Melodies and chords play on piano (plain enough to check the notes by), drums on the drum kit.
-    track->setName (source.name + (mode == Mode::drums ? " (drums)" : " (notes)"));
-    TrackInstrument (edit, *track).setProgram (mode == Mode::drums ? gm::drumKit : 0);
+    track->setName (name);
+    TrackInstrument (edit, *track).setProgram (program);
 
     auto range = audioClip->getPosition().time;
     auto clip = track->insertMIDIClip (source.name, range, nullptr);
@@ -115,8 +132,6 @@ tracktion::MidiClip* insertNotes (tracktion::Edit& edit, LiveInstrument& live, c
                                          tracktion::BeatDuration::fromBeats (end - start), note.velocity, 0, &um);
     }
 
-    // Left open, like other arrangement edits, with the clips in Tracktion's order (ClipOrder.h).
-    sortAllClipsLikeTracktion (edit);   // see ClipOrder.h
     return clip.get();
 }
 

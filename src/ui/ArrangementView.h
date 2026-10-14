@@ -4,6 +4,7 @@
 #include "TimelineView.h"
 #include "TrackHeader.h"
 #include "model/AudioToMidi.h"
+#include "model/InstrumentSeparation.h"
 
 #include <tracktion_engine/tracktion_engine.h>
 
@@ -48,6 +49,9 @@ public:
 
     /** Called when "Convert Melody/Drums to MIDI" is chosen for an audio clip (drums true for drums). */
     std::function<void (tracktion::EditItemID, audio_to_midi::Mode)> onConvertToMidi;
+
+    /** Called when "Separate Instruments to MIDI/Audio Tracks" is chosen for an audio clip. */
+    std::function<void (tracktion::EditItemID, separation::Output)> onSeparateInstruments;
 
     void paint (juce::Graphics&) override;
     void resized() override;

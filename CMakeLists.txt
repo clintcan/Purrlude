@@ -116,8 +116,14 @@ target_sources(purrlude_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/AnalysisAudio.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/PolyphonicTranscriber.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/PolyphonicTranscriber.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/OnnxRuntime.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/OnnxRuntime.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/SourceSeparator.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/SourceSeparator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/AudioToMidi.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/AudioToMidi.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/InstrumentSeparation.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/InstrumentSeparation.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/NoteEditing.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/NoteEditing.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/Project.h
@@ -246,6 +252,7 @@ target_link_libraries(Purrlude PRIVATE
 
 purrlude_bundle_onnxruntime(Purrlude)
 purrlude_bundle_model_licenses(Purrlude)
+purrlude_bundle_demucs(Purrlude)
 
 # Verovio's fonts and glyph files ship with the app (see ScoreRenderer::findResourceDirectory).
 if(APPLE)

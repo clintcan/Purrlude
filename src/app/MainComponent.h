@@ -6,6 +6,7 @@
 #include "model/AudioExport.h"
 #include "model/AudioImport.h"
 #include "model/AudioToMidi.h"
+#include "model/InstrumentSeparation.h"
 #include "model/MidiImport.h"
 #include "model/Project.h"
 #include "ui/ArrangementView.h"
@@ -83,7 +84,11 @@ private:
     void filesDropped (const juce::StringArray&, int, int) override;
 
     void convertToMidi (tracktion::EditItemID audioClip, audio_to_midi::Mode);
+    void separateInstruments (tracktion::EditItemID audioClip, separation::Output);
+    /** The progress window for a conversion or separation; Cancel stops it. */
+    void showConversionWindow (const juce::String& title, const juce::String& message);
     void stopMidiConversion();
+    juce::File getModelsFolder() const;
 
     void exportAudio();
     void chooseAudioDestination (AudioExportOptions);
@@ -124,10 +129,16 @@ private:
 
     int ticksSinceAutosave = 0;
 
+    // A conversion to MIDI or a separation (only one at a time), with its progress window.
     std::unique_ptr<audio_to_midi::Conversion> midiConversion;
+    std::unique_ptr<separation::Job> separationJob;
     std::unique_ptr<juce::AlertWindow> conversionWindow;
     double conversionProgress = 0.0;   ///< Read by the progress bar
-    juce::TimedCallback conversionProgressTimer { [this] { if (midiConversion != nullptr) conversionProgress = midiConversion->getProgress(); } };
+    juce::TimedCallback conversionProgressTimer { [this]
+    {
+        if (midiConversion != nullptr)      conversionProgress = midiConversion->getProgress();
+        else if (separationJob != nullptr)  conversionProgress = separationJob->getProgress();
+    } };
 
     std::unique_ptr<AudioExport> audioExport;
     std::unique_ptr<juce::AlertWindow> exportWindow;

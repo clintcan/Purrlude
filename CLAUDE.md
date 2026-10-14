@@ -87,6 +87,7 @@ These are what set Purrlude apart. Treat them as first-class, not add-ons.
 | Audio → MIDI (polyphonic) | Spotify basic-pitch model (v0.4.0) on ONNX Runtime 1.30.0, fetched by `cmake/OnnxRuntime.cmake` | Apache 2.0 / MIT |
 | Audio → MIDI (monophonic) | In-house pYIN (`src/analysis/`) | — |
 | Audio → MIDI (drums) | In-house band-energy onsets (`src/analysis/DrumTranscriber`); an ONNX classifier _(maybe later)_ | — |
+| Instrument separation | Demucs v4 `htdemucs_6s` on ONNX Runtime, exported by `tools/models/export_demucs.py` | MIT |
 | Built-in instruments | TinySoundFont (SF2) + GeneralUser GS v2.0.3 GM bank; sfizz (SFZ) _(planned)_ | MIT / GeneralUser GS License v2.0 |
 | Time-stretch | Signalsmith Stretch _(planned)_; Tracktion's SoundTouch is used until then | MIT / LGPL |
 | Plugin formats | VST3 / AU / LV2 via JUCE; CLAP via clap-juce-extensions _(planned)_ | — |
@@ -266,9 +267,10 @@ src/instruments/        Built-in instruments (SoundFont GM synth)
 content/                Bundled content: LICENSES.md manifest, devices/*.json definitions, loops/*.json drum loops
 src/model/              Project model on top of tracktion::Edit (Project, LiveInstrument)
 src/notation/           Notation layer: performed notes -> Score -> MusicXML (no UI)
-src/analysis/           Analysis layer: melody, chord (basic-pitch) and drum transcription (no UI, no Tracktion)
+src/analysis/           Analysis layer: melody, chord (basic-pitch) and drum transcription, instrument separation (Demucs) (no UI, no Tracktion)
 src/ui/                 UI components (TransportBar, ArrangementView, ScoreView, PianoRoll, MidiDevicesPanel, LoopsPanel, EffectsPanel)
 tools/content/          Scripts that generate bundled content (run by hand; output is committed)
+tools/models/           Scripts that make the ML models that are too big to commit (run by hand)
 tests/                  Catch2 test runner (PurrludeTests)
 .github/workflows/      CI for Windows, macOS, Linux
 ```
@@ -301,11 +303,18 @@ tests/                  Catch2 test runner (PurrludeTests)
   - **Licenses:** basic-pitch's LICENSE and NOTICE and ONNX Runtime's LICENSE and third-party notices are copied into the app's `licenses` folder.
   - **Known behaviour:** it can add a note an octave above a note with a strong second harmonic.
   - **Checking a real file:** `PURRLUDE_AUDIO_FILE=/path/file.wav PurrludeTests "[.poly-file]"` prints the notes found.
+- **Separating instruments** (`separateStems`, `src/analysis/SourceSeparator.h`): Meta's Demucs v4 six-instrument model splits a song into drums, bass, other, vocals, guitar and piano.
+  - **The model** (`htdemucs_6s.onnx`, 115 MB) is exported by `tools/models/export_demucs.py` (PyTorch 2.5.1, sevagh/demucs.onnx at a pinned commit; reproducible, SHA-256 `7924dfb5…`). ONNX can't express the spectrogram steps, so the export leaves them out and `SourceSeparator.cpp` does them: torch.stft/istft with Demucs's padding (`demucs::spectrogram`, `inverseSpectrogram`).
+  - **Processing** follows Demucs's `apply_model` with no shifts: the song is normalised by its mono mix's mean and standard deviation, cut into 7.8 s segments overlapping by a quarter, each padded with the audio around it, and cross-faded back with triangular weights. Finished audio is passed on as soon as no later segment can change it, so a long song doesn't need gigabytes.
+  - **Matches PyTorch:** on a real song, every stem matches PyTorch Demucs to 64–92 dB SNR (float rounding). About 0.3 s per second of audio in a debug build.
+  - **Where the model lives** (`separation::findModel`): the user's models folder (`Models/` beside the settings file), then beside the app (`Contents/Resources/models` on macOS, `models/` elsewhere), then, in development builds, the CPM cache (`PURRLUDE_DEMUCS_MODEL`, also copied into the app). Without it the menu items say where to put it. It isn't hosted anywhere yet.
+  - **What it can't do:** separation stops at those six; strings, synths and horns all go to "other". It's trained on real recordings: on a General MIDI render it put the sax in "piano" and much of the bass in "guitar", though the drums came out clean.
+- **Model** (`src/model/InstrumentSeparation.h`, namespace `separation`): `Job` separates a clip on a background thread, writing each part to a WAV as it goes (the project's audio folder for audio tracks, a temporary folder otherwise). Parts more than 30 dB quieter than the mix are dropped. For MIDI, each part is converted the way that suits it: drums with the drum converter, vocals with the melody one, the rest with notes and chords (bass up to A3). `insertParts` adds the tracks under the clip's track (vocals, guitar, piano, other, bass, drums), with GM sounds, or as audio tracks over the clip's span; one undo step.
 - **Model** (`src/model/AudioToMidi.h`, mode melody, polyphonic or drums):
   - `getSource` reads, on the message thread, the part of the file a clip plays.
   - `Conversion` reads and transcribes it on its own thread; deleting it cancels.
   - `insertNotes` puts the notes on a new track under the audio track, over the clip's span, as one undo step: a piano track for a melody or chords, a drum-kit track for drums.
-- **UI:** right-click an audio clip → Convert Melody / Notes and Chords / Drums to MIDI, with progress and Cancel from `MainComponent`.
+- **UI:** right-click an audio clip → Convert Melody / Notes and Chords / Drums to MIDI, or Separate Instruments to MIDI / Audio Tracks, with progress and Cancel from `MainComponent`.
 - **Tests:** synthesized tones (`tests/MelodyTranscriptionTests.cpp`) cover pitches, timing, vibrato, legato, repeated notes, silence and velocity. `[.bench]` times a minute of audio.
 
 ### Projects

@@ -136,9 +136,10 @@ tracktion::AudioTrack* LiveInstrument::addTrack (bool select, tracktion::Track* 
     return track.get();
 }
 
-tracktion::AudioTrack* LiveInstrument::addAudioTrack()
+tracktion::AudioTrack* LiveInstrument::addAudioTrack (tracktion::Track* after)
 {
-    auto track = edit.insertNewAudioTrack (tracktion::TrackInsertPoint::getEndOfTracks (edit), nullptr, false);
+    auto where = after != nullptr ? tracktion::TrackInsertPoint (*after, false) : tracktion::TrackInsertPoint::getEndOfTracks (edit);
+    auto track = edit.insertNewAudioTrack (where, nullptr, false);
 
     if (track == nullptr)
         return nullptr;

@@ -24,6 +24,8 @@ target_sources(PurrludeTests PRIVATE
     AudioToMidiTests.cpp
     DrumTranscriptionTests.cpp
     PolyphonicTranscriptionTests.cpp
+    SourceSeparationTests.cpp
+    InstrumentSeparationTests.cpp
     TrackEffectsTests.cpp
     LoopRangeTests.cpp
     SharedReverbTests.cpp

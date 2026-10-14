@@ -4,8 +4,9 @@
 #include <queue>
 
 #if PURRLUDE_HAS_ONNXRUNTIME
+ #include "OnnxRuntime.h"
+
  #include <PurrludeModels.h>
- #include <onnxruntime_cxx_api.h>
 #endif
 
 namespace purrlude::analysis
@@ -207,31 +208,6 @@ std::vector<TranscribedNote> notesFromActivations (KeyActivations a, const Polyp
 
 #if PURRLUDE_HAS_ONNXRUNTIME
 
-namespace
-{
-    /** ONNX Runtime's official builds send usage telemetry to Microsoft (over HTTPS on macOS
-        and Linux) unless told not to. Purrlude sends nothing anywhere, so it's turned off
-        before the runtime starts, and again through the API.
-    */
-    Ort::Env& getOnnxRuntime()
-    {
-        static Ort::Env env = []
-        {
-           #if JUCE_WINDOWS
-            _putenv_s ("ORT_DISABLE_TELEMETRY", "1");
-           #else
-            setenv ("ORT_DISABLE_TELEMETRY", "1", 1);
-           #endif
-
-            Ort::Env e (ORT_LOGGING_LEVEL_WARNING, "Purrlude");
-            e.DisableTelemetryEvents();
-            return e;
-        }();
-
-        return env;
-    }
-}
-
 bool isPolyphonicAvailable()    { return true; }
 
 KeyActivations runBasicPitch (const float* audio, int numSamples, juce::String& error,
@@ -246,10 +222,7 @@ KeyActivations runBasicPitch (const float* audio, int numSamples, juce::String& 
     {
         auto& env = getOnnxRuntime();
 
-        Ort::SessionOptions sessionOptions;
-        sessionOptions.SetIntraOpNumThreads (juce::jlimit (1, 4, juce::SystemStats::getNumPhysicalCpus()));
-        sessionOptions.SetGraphOptimizationLevel (GraphOptimizationLevel::ORT_ENABLE_ALL);
-        Ort::Session session (env, PurrludeModels::nmp_onnx, (size_t) PurrludeModels::nmp_onnxSize, sessionOptions);
+        Ort::Session session (env, PurrludeModels::nmp_onnx, (size_t) PurrludeModels::nmp_onnxSize, makeSessionOptions());
 
         const char* inputNames[] = { "serving_default_input_2:0" };
         const char* outputNames[] = { "StatefulPartitionedCall:1", "StatefulPartitionedCall:2" };   // note, onset

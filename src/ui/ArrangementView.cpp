@@ -946,7 +946,7 @@ void ArrangementView::mouseMove (const juce::MouseEvent& e)
 
 void ArrangementView::showClipMenu (tracktion::EditItemID clipID, bool isMidi)
 {
-    enum { editNotes = 1, convertMelody, convertChords, convertDrums, loopClip, remove, keepTake, firstTake = 100 };
+    enum { editNotes = 1, convertMelody, convertChords, convertDrums, separateToMidi, separateToAudio, loopClip, remove, keepTake, firstTake = 100 };
     juce::PopupMenu menu;
 
     // Takes from a loop recording: choose the one that's heard.
@@ -971,6 +971,11 @@ void ArrangementView::showClipMenu (tracktion::EditItemID clipID, bool isMidi)
         menu.addItem (convertChords, "Convert Notes and Chords to MIDI...",
                       onConvertToMidi != nullptr && audio_to_midi::isAvailable (audio_to_midi::Mode::polyphonic));
         menu.addItem (convertDrums, "Convert Drums to MIDI...", onConvertToMidi != nullptr);
+        menu.addSeparator();
+
+        auto canSeparate = onSeparateInstruments != nullptr && analysis::isSeparationAvailable();
+        menu.addItem (separateToMidi, "Separate Instruments to MIDI...", canSeparate);
+        menu.addItem (separateToAudio, "Separate Instruments to Audio Tracks...", canSeparate);
     }
 
     menu.addSeparator();
@@ -989,6 +994,8 @@ void ArrangementView::showClipMenu (tracktion::EditItemID clipID, bool isMidi)
             safe->onConvertToMidi (clipID, result == convertDrums ? audio_to_midi::Mode::drums
                                          : result == convertChords ? audio_to_midi::Mode::polyphonic
                                                                    : audio_to_midi::Mode::melody);
+        else if ((result == separateToMidi || result == separateToAudio) && safe->onSeparateInstruments != nullptr)
+            safe->onSeparateInstruments (clipID, result == separateToMidi ? separation::Output::midi : separation::Output::audio);
         else if (result == remove)
             safe->deleteSelectedClip();
         else if (result >= firstTake || result == keepTake)

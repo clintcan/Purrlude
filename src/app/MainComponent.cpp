@@ -145,6 +145,11 @@ void MainComponent::setProject (std::unique_ptr<Project> newProject)
         convertToMidi (clipID, mode);
     };
 
+    arrangement->onSeparateInstruments = [this] (tracktion::EditItemID clipID, separation::Output output)
+    {
+        separateInstruments (clipID, output);
+    };
+
     // Double-click a clip to edit its notes.
     arrangement->onClipDoubleClicked = [this] (tracktion::EditItemID clipID)
     {
@@ -433,7 +438,7 @@ void MainComponent::exportScore (ExportFormat format)
 //==============================================================================
 void MainComponent::convertToMidi (tracktion::EditItemID audioClip, audio_to_midi::Mode mode)
 {
-    if (midiConversion != nullptr)
+    if (midiConversion != nullptr || separationJob != nullptr)
         return;
 
     auto source = audio_to_midi::getSource (project->getEdit(), audioClip);
@@ -444,21 +449,10 @@ void MainComponent::convertToMidi (tracktion::EditItemID audioClip, audio_to_mid
         return;
     }
 
-    conversionProgress = 0.0;
-    conversionWindow = std::make_unique<juce::AlertWindow> ("Converting " + source->name + " to MIDI",
-                                                            mode == audio_to_midi::Mode::drums ? "Listening for the drums..."
-                                                          : mode == audio_to_midi::Mode::polyphonic ? "Listening for the notes and chords..."
-                                                                                                    : "Listening for the melody...",
-                                                            juce::MessageBoxIconType::NoIcon);
-    conversionWindow->addProgressBarComponent (conversionProgress);
-    conversionWindow->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
-
-    // Cancel closes the window with 0; a finished conversion closes it with 1.
-    conversionWindow->enterModalState (true, juce::ModalCallbackFunction::create ([safe = juce::WeakReference<MainComponent> (this)] (int result)
-    {
-        if (safe != nullptr && result == 0)
-            juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->stopMidiConversion(); });
-    }), false);
+    showConversionWindow ("Converting " + source->name + " to MIDI",
+                          mode == audio_to_midi::Mode::drums ? "Listening for the drums..."
+                        : mode == audio_to_midi::Mode::polyphonic ? "Listening for the notes and chords..."
+                                                                  : "Listening for the melody...");
 
     auto safe = juce::WeakReference<MainComponent> (this);
     midiConversion = std::make_unique<audio_to_midi::Conversion> (engine, *source, mode,
@@ -483,10 +477,89 @@ void MainComponent::convertToMidi (tracktion::EditItemID audioClip, audio_to_mid
     conversionProgressTimer.startTimerHz (10);
 }
 
+juce::File MainComponent::getModelsFolder() const
+{
+    return settings.getFile().getParentDirectory().getChildFile ("Models");
+}
+
+void MainComponent::separateInstruments (tracktion::EditItemID audioClip, separation::Output output)
+{
+    if (midiConversion != nullptr || separationJob != nullptr)
+        return;
+
+    const juce::String title ("Couldn't separate the instruments");
+    auto model = separation::findModel (getModelsFolder());
+
+    if (! analysis::isSeparationAvailable())
+    {
+        showError (title, "Separating instruments isn't available in this build of Purrlude.");
+        return;
+    }
+
+    if (! model.existsAsFile())
+    {
+        showError (title, "The instrument separation model (" + juce::String (separation::modelFileName) + ", 115 MB) "
+                          "isn't installed. Put it in " + getModelsFolder().getFullPathName() + ".");
+        return;
+    }
+
+    auto source = audio_to_midi::getSource (project->getEdit(), audioClip);
+
+    if (! source)
+    {
+        showError (title, "This clip's audio file can't be read.");
+        return;
+    }
+
+    showConversionWindow ("Separating the instruments in " + source->name,
+                          output == separation::Output::midi
+                              ? "Listening for drums, bass, vocals, guitar, piano and the rest, then for their notes. "
+                                "This takes about a third of the song's length."
+                              : "Listening for drums, bass, vocals, guitar, piano and the rest. "
+                                "This takes about a third of the song's length.");
+
+    auto safe = juce::WeakReference<MainComponent> (this);
+    separationJob = std::make_unique<separation::Job> (engine, *source, output, model, project->getAudioFolder(),
+        [safe, src = *source, output, title] (std::vector<separation::Part> parts, const juce::String& error)
+    {
+        if (safe == nullptr)
+            return;
+
+        juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->stopMidiConversion(); });
+
+        if (error.isNotEmpty())
+        {
+            safe->showError (title, error);
+            return;
+        }
+
+        if (separation::insertParts (safe->project->getEdit(), safe->project->getInstrument(), src, parts, output) == 0)
+            safe->showError (title, "The audio clip has gone.");
+    });
+
+    conversionProgressTimer.startTimerHz (10);
+}
+
+void MainComponent::showConversionWindow (const juce::String& title, const juce::String& message)
+{
+    conversionProgress = 0.0;
+    conversionWindow = std::make_unique<juce::AlertWindow> (title, message, juce::MessageBoxIconType::NoIcon);
+    conversionWindow->addProgressBarComponent (conversionProgress);
+    conversionWindow->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+
+    // Cancel closes the window with 0; a finished job closes it with 1.
+    conversionWindow->enterModalState (true, juce::ModalCallbackFunction::create ([safe = juce::WeakReference<MainComponent> (this)] (int result)
+    {
+        if (safe != nullptr && result == 0)
+            juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->stopMidiConversion(); });
+    }), false);
+}
+
 void MainComponent::stopMidiConversion()
 {
     conversionProgressTimer.stopTimer();
-    midiConversion = nullptr;   // cancels it if it's still running
+    midiConversion = nullptr;   // cancels them if they're still running
+    separationJob = nullptr;
 
     if (conversionWindow != nullptr && conversionWindow->isCurrentlyModal())
         conversionWindow->exitModalState (1);

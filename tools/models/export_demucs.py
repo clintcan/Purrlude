@@ -1,0 +1,89 @@
+#!/usr/bin/env python3
+"""Exports Demucs v4's six-instrument model ("htdemucs_6s", MIT) to ONNX for Purrlude.
+
+The network is exported without its spectrogram steps, which ONNX can't express; Purrlude
+does them itself (src/analysis/SourceSeparator.cpp). This uses sevagh/demucs.onnx's copy of
+Demucs that has them moved out of the network.
+
+Run it in a virtual environment with PyTorch 2.5.1 (other versions may export a different
+graph):
+
+    python3 -m venv venv
+    venv/bin/pip install torch==2.5.1 torchaudio==2.5.1 "numpy<2.3" einops julius pyyaml tqdm \
+                         onnx dora-search openunmix diffq
+    venv/bin/python tools/models/export_demucs.py .cpm-cache/demucs/htdemucs_6s.onnx
+
+It downloads demucs.onnx at a pinned commit and Demucs's pretrained weights (checked by
+SHA-256), then writes the model (115 MB). The export is reproducible: with PyTorch 2.5.1 on
+macOS arm64 it came out with SHA-256
+7924dfb5d8e940cfb16100b634dfafb370e8036a71f968ec9193f4b482ed5b71.
+"""
+
+import hashlib
+import os
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+DEMUCS_ONNX_REPO = "https://github.com/sevagh/demucs.onnx.git"
+DEMUCS_ONNX_COMMIT = "81fa192e6fcc88e35e887f6e6ccce91227f4e6f5"
+WEIGHTS = "5c90dfd2-34c22ccb.th"
+WEIGHTS_SHA256 = "34c22ccb381c6f9fdbf324f04e1e2fe21aaaf293f5ded163a162697ff9a02ddd"
+
+
+def sha256(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def main():
+    if len(sys.argv) != 2:
+        sys.exit(__doc__)
+
+    destination = Path(sys.argv[1]).resolve()
+    destination.parent.mkdir(parents=True, exist_ok=True)
+
+    with tempfile.TemporaryDirectory() as work:
+        work = Path(work)
+        source = work / "demucs.onnx"
+        subprocess.run(["git", "clone", "--quiet", DEMUCS_ONNX_REPO, str(source)], check=True)
+        subprocess.run(["git", "-C", str(source), "checkout", "--quiet", DEMUCS_ONNX_COMMIT], check=True)
+        sys.path.insert(0, str(source / "demucs-for-onnx"))
+        os.environ["TORCH_HOME"] = str(work / "torch")
+
+        import torch
+        from torch.nn import functional as F
+        from demucs.pretrained import get_model
+        from demucs.htdemucs import HTDemucs, standalone_magnitude, standalone_spec
+
+        if torch.__version__.split("+")[0] != "2.5.1":
+            print(f"Warning: PyTorch {torch.__version__}, not 2.5.1; the export may differ.")
+
+        bag = get_model("htdemucs_6s")
+        weights = work / "torch" / "hub" / "checkpoints" / WEIGHTS
+
+        if sha256(weights) != WEIGHTS_SHA256:
+            sys.exit(f"{WEIGHTS} doesn't match its SHA-256")
+
+        model = bag.models[0] if hasattr(bag, "models") else bag
+        assert isinstance(model, HTDemucs)
+        assert model.sources == ["drums", "bass", "other", "vocals", "guitar", "piano"]
+
+        # As sevagh/demucs.onnx's scripts/convert-pth-to-onnx.py: a segment's audio and its
+        # spectrogram in, the stems' spectrograms and audio out.
+        length = int(model.segment * model.samplerate)
+        audio = F.pad(torch.randn(1, 2, 343980), (0, length - 343980))
+        spectrum = standalone_magnitude(standalone_spec(audio))
+        torch.onnx.export(model, (audio, spectrum), str(destination), export_params=True,
+                          opset_version=17, do_constant_folding=True,
+                          input_names=["input"], output_names=["output"])
+
+    print(f"Wrote {destination} ({destination.stat().st_size / 1e6:.0f} MB), SHA-256 {sha256(destination)}")
+
+
+if __name__ == "__main__":
+    main()

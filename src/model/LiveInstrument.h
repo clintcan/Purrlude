@@ -42,8 +42,8 @@ public:
 
     juce::Array<tracktion::AudioTrack*> getInstrumentTracks() const;
 
-    /** Adds an audio track after the last track (it doesn't become the selected track). Undoable. */
-    tracktion::AudioTrack* addAudioTrack();
+    /** Adds an audio track after a track, or after the last one (it doesn't become the selected track). Undoable. */
+    tracktion::AudioTrack* addAudioTrack (tracktion::Track* after = nullptr);
 
     /** False for the last instrument track. */
     bool canDeleteTrack (tracktion::EditItemID) const;

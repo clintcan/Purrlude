@@ -11,6 +11,7 @@ Only content whose license permits redistribution inside the app may be added.
 | Accompaniment progressions and patterns (`accompaniment/patterns.json`) | Built-in bass and chord parts (Loops panel) | Written for Purrlude | Purrlude contributors | Original work, under Purrlude's license |
 | Verovio fonts and glyph data (`data/`) | Score engraving | [github.com/rism-digital/verovio](https://github.com/rism-digital/verovio) 6.3.0 | RISM Digital Center and contributors; SMuFL fonts by their respective authors | LGPLv3 (Verovio); fonts under SIL OFL 1.1 |
 | basic-pitch model ("nmp", ICASSP 2022, `nmp.onnx`) | Converting notes and chords in audio to MIDI | [github.com/spotify/basic-pitch](https://github.com/spotify/basic-pitch) v0.4.0 (`9991303`) | Spotify AB | Apache 2.0 (`LICENSE-basic-pitch.txt` and `NOTICE-basic-pitch.txt` in the app's licenses folder) |
+| Demucs v4 six-instrument model ("htdemucs_6s", `htdemucs_6s.onnx`) | Separating songs into instruments | Weights from [github.com/facebookresearch/demucs](https://github.com/facebookresearch/demucs) (`5c90dfd2-34c22ccb.th`), exported to ONNX by `tools/models/export_demucs.py` with [sevagh/demucs.onnx](https://github.com/sevagh/demucs.onnx) at `81fa192` | Alexandre Défossez, Simon Rouard (Meta AI); ONNX adaptation by Sevag Hanssian | MIT (code and weights) |
 | ONNX Runtime 1.30.0 (shared library) | Running the basic-pitch model | [github.com/microsoft/onnxruntime](https://github.com/microsoft/onnxruntime) release binaries | Microsoft Corporation | MIT (`LICENSE-onnxruntime.txt` and `ThirdPartyNotices-onnxruntime.txt` in the app's licenses folder) |
 
 ## Notes
@@ -32,3 +33,7 @@ Only content whose license permits redistribution inside the app may be added.
   - The model is downloaded at a pinned commit, checked by SHA-256 and compiled into the app. Apache 2.0 requires its license and NOTICE to ship with it; both are copied into the app's licenses folder.
   - ONNX Runtime's release binaries are downloaded at a pinned version and checked by SHA-256.
   - **Telemetry:** official ONNX Runtime builds send usage telemetry to Microsoft by default. Purrlude turns it off before the runtime starts (`ORT_DISABLE_TELEMETRY=1`, then `DisableTelemetryEvents`). No audio or data leaves the machine.
+
+- **Demucs:**
+  - The code and the pretrained weights are released under the MIT license. The weights were trained on MUSDB18-HQ (a research dataset) plus Meta's own songs. That's fine for an open-source release; review it before any closed-source commercial one.
+  - At 115 MB the model isn't compiled in. It's looked for in the user's models folder, then beside the app. Development builds copy it from the CPM cache into the app.
