@@ -5,11 +5,13 @@
 namespace purrlude
 {
 
-/** Record / play / stop / return-to-start, metronome and count-in toggles,
+/** Record / play / stop / return-to-start, loop, metronome and count-in toggles,
     tempo, time signature and the playhead position (bar.beat and minutes:seconds).
 
     Playback stops a moment after the last clip ends (recording doesn't), and Play from
-    the end of the song starts it again from the beginning.
+    the end of the song starts it again from the beginning. While looping, playback
+    repeats the loop range until stopped, and Play from outside it starts at its start.
+    Recording doesn't loop yet: looping pauses while recording.
 */
 class TransportBar final : public juce::Component,
                            private juce::Timer
@@ -21,6 +23,7 @@ public:
     void togglePlay();
     void toggleRecord();
     void returnToStart();
+    void toggleLoop();
 
     void resized() override;
 
@@ -36,7 +39,10 @@ private:
 
     tracktion::Edit& edit;
 
-    juce::TextButton startButton { "|<" }, playButton { "Play" }, recordButton { "Record" };
+    juce::TextButton startButton { "|<" }, playButton { "Play" }, recordButton { "Record" }, loopButton { "Loop" };
+    bool loopPausedForRecording = false;   ///< Looping was on when recording started
+    bool recordingSeen = false;            ///< ...and recording has since begun
+    juce::uint32 loopPausedAt = 0;
     juce::ToggleButton metronomeButton { "Metronome" }, countInButton { "Count-in" };
     juce::Label tempoLabel, tempoUnitLabel { {}, "BPM" }, positionLabel;
     juce::TextButton timeSignatureButton;

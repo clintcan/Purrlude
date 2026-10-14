@@ -1,6 +1,7 @@
 #include "TransportBar.h"
 
 #include "model/AudioExport.h"
+#include "model/LoopRange.h"
 #include "model/TimeSignature.h"
 
 namespace purrlude
@@ -9,6 +10,7 @@ namespace purrlude
 namespace
 {
     const auto recordColour = juce::Colour (0xffd55e00);   // vermillion: colourblind-safe red
+    const auto loopColour   = juce::Colour (0xffe69f00);   // orange
 }
 
 TransportBar::TransportBar (tracktion::Edit& e)
@@ -21,6 +23,12 @@ TransportBar::TransportBar (tracktion::Edit& e)
     startButton.onClick = [this] { returnToStart(); };
     playButton.onClick = [this] { togglePlay(); };
     recordButton.onClick = [this] { toggleRecord(); };
+
+    loopButton.setClickingTogglesState (false);
+    loopButton.setTooltip ("Loop (L): playback repeats the loop range, the orange band on the ruler. "
+                           "Drag along the top of the ruler to set it.");
+    loopButton.setColour (juce::TextButton::buttonOnColourId, loopColour);
+    loopButton.onClick = [this] { toggleLoop(); };
 
     metronomeButton.setToggleState (edit.clickTrackEnabled.get(), juce::dontSendNotification);
     metronomeButton.onClick = [this] { edit.clickTrackEnabled = metronomeButton.getToggleState(); };
@@ -45,7 +53,7 @@ TransportBar::TransportBar (tracktion::Edit& e)
     positionLabel.setFont (juce::FontOptions (18.0f));
     positionLabel.setJustificationType (juce::Justification::centred);
 
-    for (auto* c : std::initializer_list<juce::Component*> { &startButton, &playButton, &recordButton,
+    for (auto* c : std::initializer_list<juce::Component*> { &startButton, &playButton, &recordButton, &loopButton,
                                                             &metronomeButton, &countInButton,
                                                             &tempoLabel, &tempoUnitLabel, &timeSignatureButton, &positionLabel })
         addAndMakeVisible (c);
@@ -69,10 +77,12 @@ void TransportBar::togglePlay()
     }
     else
     {
-        // From the end of the song, play starts over.
+        // From the end of the song, play starts over; looping, from outside the loop, at its start.
         auto song = AudioExport::getSongRange (edit);
 
-        if (! song.isEmpty() && transport.getPosition() >= song.getEnd())
+        if (loop_range::isOn (edit))
+            transport.setPosition (loop_range::getPlayStart (edit));
+        else if (! song.isEmpty() && transport.getPosition() >= song.getEnd())
             transport.setPosition (tracktion::TimePosition());
 
         transport.play (false);
@@ -85,8 +95,9 @@ void TransportBar::stopAtEndOfSong()
 {
     auto& transport = edit.getTransport();
 
-    // Recording may go past what's there; only playback stops by itself.
-    if (! transport.isPlaying() || transport.isRecording())
+    // Recording may go past what's there, and a loop goes round until stopped; only
+    // playback stops by itself.
+    if (! transport.isPlaying() || transport.isRecording() || loop_range::isOn (edit))
         return;
 
     // A moment after the last clip ends, for notes and effects to ring out.
@@ -101,9 +112,22 @@ void TransportBar::toggleRecord()
     auto& transport = edit.getTransport();
 
     if (transport.isRecording())
+    {
         transport.stop (false, false);   // keeps the take; it becomes a clip
+    }
     else
+    {
+        // Loop recording (takes) isn't supported yet: record straight through, then loop again.
+        if (loop_range::isOn (edit))
+        {
+            loopPausedForRecording = true;
+            recordingSeen = false;
+            loopPausedAt = juce::Time::getMillisecondCounter();
+            loop_range::setOn (edit, false);
+        }
+
         transport.record (false);
+    }
 
     updateButtons();
 }
@@ -111,6 +135,15 @@ void TransportBar::toggleRecord()
 void TransportBar::returnToStart()
 {
     edit.getTransport().setPosition (tracktion::TimePosition());
+}
+
+void TransportBar::toggleLoop()
+{
+    if (edit.getTransport().isRecording())
+        return;
+
+    loop_range::setOn (edit, ! loop_range::isOn (edit));
+    updateButtons();
 }
 
 void TransportBar::setTempo (double bpm)
@@ -192,6 +225,8 @@ void TransportBar::updateButtons()
     bool recording = transport.isRecording();
 
     playButton.setButtonText (transport.isPlaying() ? "Stop" : "Play");
+    loopButton.setToggleState (loop_range::isOn (edit) || loopPausedForRecording, juce::dontSendNotification);
+    loopButton.setEnabled (! recording);
     recordButton.setButtonText (recording ? "Stop Rec" : "Record");
     recordButton.setColour (juce::TextButton::buttonColourId,
                             recording ? recordColour : getLookAndFeel().findColour (juce::TextButton::buttonColourId));
@@ -210,9 +245,23 @@ void TransportBar::updateButtons()
 
 void TransportBar::timerCallback()
 {
+    auto& transport = edit.getTransport();
+
+    // Loop points follow tempo changes.
+    loop_range::sync (edit);
+
+    // Looping comes back once the take ends (or if recording never got going).
+    recordingSeen = recordingSeen || transport.isRecording();
+
+    if (loopPausedForRecording && ! transport.isRecording()
+         && (recordingSeen || (! transport.isPlaying() && juce::Time::getMillisecondCounter() - loopPausedAt > 2000)))
+    {
+        loopPausedForRecording = false;
+        loop_range::setOn (edit, true);
+    }
+
     stopAtEndOfSong();
 
-    auto& transport = edit.getTransport();
     auto time = transport.getPosition();
     auto barsBeats = edit.tempoSequence.toBarsAndBeats (time);
     auto seconds = juce::jmax (0.0, time.inSeconds());
@@ -232,6 +281,7 @@ void TransportBar::resized()
     startButton.setBounds (r.removeFromLeft (40));      gap();
     playButton.setBounds (r.removeFromLeft (70));       gap();
     recordButton.setBounds (r.removeFromLeft (90));     gap();
+    loopButton.setBounds (r.removeFromLeft (56));       gap();
     positionLabel.setBounds (r.removeFromLeft (150));   gap();
     tempoLabel.setBounds (r.removeFromLeft (60));
     tempoUnitLabel.setBounds (r.removeFromLeft (40));   gap();

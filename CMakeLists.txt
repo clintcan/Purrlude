@@ -78,6 +78,8 @@ target_sources(purrlude_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/TrackInstrument.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/TrackMix.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/TrackMix.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/LoopRange.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/LoopRange.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/TrackEffects.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/TrackEffects.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/LiveInstrument.h

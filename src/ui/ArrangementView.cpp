@@ -2,6 +2,7 @@
 
 #include "model/AudioInputs.h"
 #include "model/ClipEditing.h"
+#include "model/LoopRange.h"
 #include "notation/TrackNotation.h"
 
 namespace purrlude
@@ -12,6 +13,7 @@ namespace
     const auto clipColour     = juce::Colour (0xff0072b2);   // blue
     const auto recordColour   = juce::Colour (0xffd55e00);   // vermillion
     const auto playheadColour = juce::Colour (0xfff0e442);   // yellow
+    const auto loopColour     = juce::Colour (0xffe69f00);   // orange
     constexpr int minimumBars = 16;
     constexpr int edgeGrabWidth = 6;   ///< pixels at a clip's right edge that resize it
 }
@@ -43,9 +45,14 @@ private:
 };
 
 /** The bar ruler, kept at the top of the visible area as the tracks scroll, with the
-    master level meter above the track headers. Click it to move the playhead.
+    master level meter above the track headers. Click the bar numbers to move the playhead.
+
+    Its top strip holds the loop range: drag along it to set a loop (snapping to bars, or
+    beats with Shift), drag the band to move it or its ends to resize it, and click the
+    band to turn looping on or off.
 */
-class ArrangementView::RulerOverlay final : public juce::Component
+class ArrangementView::RulerOverlay final : public juce::Component,
+                                           public juce::TooltipClient
 {
 public:
     explicit RulerOverlay (ArrangementView& o)
@@ -58,6 +65,18 @@ public:
     {
         masterMeter.setTooltip ("Master level. A vermillion light means it went over 0 dB: click to clear.");
         addAndMakeVisible (masterMeter);
+    }
+
+    juce::String getTooltip() override
+    {
+        auto pos = getMouseXYRelative();
+
+        if (pos.x < headerWidth)
+            return {};
+
+        return pos.y < loopStripHeight ? "Loop: drag here to set the loop range (Shift snaps to beats). Drag the band "
+                                         "or its ends to change it; click it to turn looping on or off (L)."
+                                       : "Click to move the playhead";
     }
 
     void paint (juce::Graphics& g) override
@@ -80,13 +99,29 @@ public:
         g.reduceClipRegion (headerWidth, 0, getWidth() - headerWidth, getHeight());
         auto [firstBeat, lastBeat] = owner.getVisibleBeatRange();
 
+        // The loop strip, with the loop range as a band: orange when looping, grey when not.
+        g.setColour (juce::Colours::black.withAlpha (0.2f));
+        g.fillRect (0, 0, getWidth(), loopStripHeight);
+
+        if (auto loop = getShownLoop())
+        {
+            auto x1 = owner.beatToX (loop->getStart().inBeats()), x2 = owner.beatToX (loop->getEnd().inBeats());
+            auto band = juce::Rectangle<float> (x1, 1.0f, x2 - x1, (float) loopStripHeight - 2.0f);
+            auto on = loop_range::isOn (owner.edit);
+            g.setColour (on ? loopColour : juce::Colours::grey.withAlpha (0.6f));
+            g.fillRoundedRectangle (band, 3.0f);
+            g.setColour (on ? loopColour.brighter (0.5f) : juce::Colours::lightgrey);
+            g.fillRect (band.withWidth (3.0f));
+            g.fillRect (band.withLeft (band.getRight() - 3.0f));
+        }
+
         for (int bar = (int) (firstBeat / beatsPerBar) / barStep * barStep; bar * beatsPerBar <= lastBeat; bar += barStep)
         {
             auto x = (int) owner.beatToX (bar * beatsPerBar);
             g.setColour (juce::Colours::white.withAlpha (0.25f));
-            g.drawVerticalLine (x, 0.0f, (float) getHeight());
+            g.drawVerticalLine (x, (float) loopStripHeight, (float) getHeight());
             g.setColour (juce::Colours::lightgrey);
-            g.drawText (juce::String (bar + 1), x + 3, 0, 40, getHeight(), juce::Justification::centredLeft);
+            g.drawText (juce::String (bar + 1), x + 3, loopStripHeight, 40, getHeight() - loopStripHeight, juce::Justification::centredLeft);
         }
 
         g.setColour (juce::Colours::black.withAlpha (0.3f));
@@ -100,15 +135,141 @@ public:
 
     void mouseDown (const juce::MouseEvent& e) override
     {
-        if (e.x >= headerWidth)
+        loopDrag.reset();
+
+        if (e.x < headerWidth)
+            return;
+
+        if (e.y >= loopStripHeight)
+        {
             owner.movePlayheadTo (owner.xToBeat ((float) e.x));
+            return;
+        }
+
+        // The loop strip: grab the loop's ends or body, or start a new loop.
+        LoopDrag drag;
+        drag.grabBeat = owner.xToBeat ((float) e.x);
+
+        if (auto loop = loop_range::get (owner.edit))
+        {
+            drag.original = *loop;
+            drag.mode = getLoopPart (e.x);
+        }
+
+        loopDrag = drag;
     }
 
-    void mouseDrag (const juce::MouseEvent& e) override   { mouseDown (e); }
+    void mouseDrag (const juce::MouseEvent& e) override
+    {
+        if (! loopDrag)
+        {
+            if (e.mouseDownPosition.y >= loopStripHeight && e.x >= headerWidth)
+                owner.movePlayheadTo (owner.xToBeat ((float) e.x));
+
+            return;
+        }
+
+        auto& drag = *loopDrag;
+
+        if (! drag.moved && e.getDistanceFromDragStart() < 3)
+            return;
+
+        drag.moved = true;
+        auto unit = e.mods.isShiftDown() ? 1.0 : (double) owner.edit.tempoSequence.getTimeSig (0)->numerator.get();
+        auto snap = [unit] (double beat) { return juce::jmax (0.0, std::round (beat / unit) * unit); };
+        auto beat = owner.xToBeat ((float) e.x);
+        auto start = drag.original.getStart().inBeats(), end = drag.original.getEnd().inBeats();
+
+        switch (drag.mode)
+        {
+            case LoopPart::none:
+            {
+                // A new loop, from the bar (or beat) where the drag began to where it is.
+                auto from = std::floor (drag.grabBeat / unit) * unit;
+                start = beat < from ? snap (beat) : from;
+                end = beat < from ? from + unit : juce::jmax (from + unit, snap (beat));
+                break;
+            }
+            case LoopPart::start:   start = juce::jmin (snap (beat), end - unit); break;
+            case LoopPart::end:     end = juce::jmax (snap (beat), start + unit); break;
+            case LoopPart::body:
+            {
+                auto offset = juce::jmax (-start, snap (beat - drag.grabBeat + start) - start);
+                start += offset;
+                end += offset;
+                break;
+            }
+        }
+
+        loop_range::set (owner.edit, { tracktion::BeatPosition::fromBeats (start), tracktion::BeatPosition::fromBeats (end) });
+
+        // A new loop is meant to be heard.
+        if (drag.mode == LoopPart::none && ! loop_range::isOn (owner.edit))
+            loop_range::setOn (owner.edit, true);
+
+        repaint();
+        owner.repaint();
+    }
+
+    void mouseUp (const juce::MouseEvent&) override
+    {
+        // A click on the band turns looping on or off; elsewhere on the strip, it moves the playhead.
+        if (loopDrag && ! loopDrag->moved)
+        {
+            if (loopDrag->mode != LoopPart::none)
+                loop_range::setOn (owner.edit, ! loop_range::isOn (owner.edit));
+            else
+                owner.movePlayheadTo (loopDrag->grabBeat);
+
+            repaint();
+            owner.repaint();
+        }
+
+        loopDrag.reset();
+    }
+
+    void mouseMove (const juce::MouseEvent& e) override
+    {
+        auto part = e.y < loopStripHeight && e.x >= headerWidth ? getLoopPart (e.x) : LoopPart::none;
+        setMouseCursor (part == LoopPart::start || part == LoopPart::end ? juce::MouseCursor::LeftRightResizeCursor
+                                                                         : juce::MouseCursor::NormalCursor);
+    }
+
+    static constexpr int loopStripHeight = 12;
 
 private:
+    enum class LoopPart { none, start, end, body };
+
+    struct LoopDrag
+    {
+        LoopPart mode = LoopPart::none;
+        tracktion::BeatRange original;
+        double grabBeat = 0.0;
+        bool moved = false;
+    };
+
+    /** The loop range if any of it is set (shown even when looping is off). */
+    std::optional<tracktion::BeatRange> getShownLoop() const      { return loop_range::get (owner.edit); }
+
+    LoopPart getLoopPart (int x) const
+    {
+        auto loop = getShownLoop();
+
+        if (! loop)
+            return LoopPart::none;
+
+        auto x1 = owner.beatToX (loop->getStart().inBeats()), x2 = owner.beatToX (loop->getEnd().inBeats());
+        auto grab = juce::jmin (6.0f, (x2 - x1) / 3.0f);
+
+        if (std::abs ((float) x - x1) <= grab)  return LoopPart::start;
+        if (std::abs ((float) x - x2) <= grab)  return LoopPart::end;
+        if ((float) x > x1 && (float) x < x2)   return LoopPart::body;
+        return LoopPart::none;
+    }
+
     ArrangementView& owner;
     LevelMeter masterMeter;
+    std::optional<LoopDrag> loopDrag;
 };
 
 /** Zoom buttons (under the track headers) and the horizontal scrollbar (under the lanes). */
@@ -277,9 +438,11 @@ double ArrangementView::getSongBeats() const
     auto beatsPerBar = edit.tempoSequence.getTimeSig (0)->numerator.get();
     auto endBeat = edit.tempoSequence.toBeats (tracktion::toPosition (edit.getLength())).inBeats();
     auto playheadBeat = edit.tempoSequence.toBeats (edit.getTransport().getPosition()).inBeats();
+    auto loop = loop_range::get (edit);
+    auto loopEnd = loop ? loop->getEnd().inBeats() : 0.0;
 
-    // Always a little empty space after the content and the playhead.
-    auto bars = juce::jmax ((double) minimumBars, std::ceil (juce::jmax (endBeat, playheadBeat) / beatsPerBar) + 4.0);
+    // Always a little empty space after the content, the playhead and the loop.
+    auto bars = juce::jmax ((double) minimumBars, std::ceil (juce::jmax (endBeat, playheadBeat, loopEnd) / beatsPerBar) + 4.0);
     return bars * beatsPerBar;
 }
 
@@ -398,6 +561,19 @@ void ArrangementView::paint (juce::Graphics& g)
 
         g.setColour (juce::Colours::white.withAlpha (isBar ? 0.25f : 0.08f));
         g.drawVerticalLine ((int) beatToX (beat), (float) rulerHeight, (float) lanesBottom);
+    }
+
+    // While looping, the loop range is shaded across the lanes.
+    if (auto loop = loop_range::get (edit); loop && loop_range::isOn (edit))
+    {
+        auto x1 = juce::jmax ((float) headerWidth, beatToX (loop->getStart().inBeats()));
+        auto x2 = beatToX (loop->getEnd().inBeats());
+
+        if (x2 > x1)
+        {
+            g.setColour (loopColour.withAlpha (0.07f));
+            g.fillRect (juce::Rectangle<float> (x1, (float) rulerHeight, x2 - x1, (float) (lanesBottom - rulerHeight)));
+        }
     }
 
     auto playheadBeat = getPlayheadBeat();
@@ -742,7 +918,7 @@ void ArrangementView::mouseMove (const juce::MouseEvent& e)
 
 void ArrangementView::showClipMenu (tracktion::EditItemID clipID, bool isMidi)
 {
-    enum { editNotes = 1, convertMelody, convertDrums, remove };
+    enum { editNotes = 1, convertMelody, convertDrums, loopClip, remove };
     juce::PopupMenu menu;
 
     if (isMidi)
@@ -753,6 +929,8 @@ void ArrangementView::showClipMenu (tracktion::EditItemID clipID, bool isMidi)
         menu.addItem (convertDrums, "Convert Drums to MIDI...", onConvertToMidi != nullptr);
     }
 
+    menu.addSeparator();
+    menu.addItem (loopClip, "Loop This Clip");
     menu.addSeparator();
     menu.addItem (remove, "Delete");
 
@@ -767,6 +945,13 @@ void ArrangementView::showClipMenu (tracktion::EditItemID clipID, bool isMidi)
             safe->onConvertToMidi (clipID, result == convertDrums);
         else if (result == remove)
             safe->deleteSelectedClip();
+        else if (result == loopClip)
+            if (auto* clip = tracktion::findClipForID (safe->edit, clipID))
+            {
+                loop_range::set (safe->edit, { clip->getStartBeat(), clip->getEndBeat() });
+                loop_range::setOn (safe->edit, true);
+                safe->repaint();
+            }
     });
 }
 

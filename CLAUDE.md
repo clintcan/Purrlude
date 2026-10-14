@@ -161,6 +161,13 @@ The app talks to `purrlude::BluetoothMidiManager` (`src/devices/BluetoothMidiMan
 
 **Transport:** `TransportBar` stops playback 1 s after the last clip ends (`AudioExport::getSongRange`); recording never stops by itself. Play from at or past the end starts from the beginning.
 
+**Loop playback** (`src/model/LoopRange.h`, namespace `loop_range`; the Loop button or L):
+- **Storage:** the range is kept in quarter notes on the Edit's transport state (`purrludeLoopStart/End`, saved with the song), because Tracktion's loop points are in seconds and would drift off the bars when the tempo changes. Quarter notes also stay put when the time signature changes, like the music.
+- **Syncing:** `sync` writes it to Tracktion's loop points; `TransportBar` calls it 20 times a second. The loop isn't part of undo, like the playhead.
+- **Behaviour:** while looping, playback doesn't stop at the end of the song, and Play from outside the loop starts at its start (`getPlayStart`). Turning it on with no range loops four bars from the playhead's bar.
+- **Recording** doesn't loop yet (no takes): looping pauses while recording and comes back after.
+- **UI:** the ruler's top strip (`ArrangementView::RulerOverlay`) shows the range as a band: drag to set it (bars, Shift for beats), drag the band or its ends, click it to toggle. The lanes are shaded while looping. A clip's menu has Loop This Clip.
+
 **Drum loops:**
 - **Content:** `content/loops/groove.json` holds 37 4-bar loops in 14 styles from the Groove MIDI Dataset (CC BY 4.0). They're MIDI on the GM drum map, timed in quarter notes.
   - `tools/content/build_groove_loops.py <download-dir>` regenerates the file: it downloads the dataset (SHA-256 checked), picks the steadiest 4 bars of up to 3 beats per style, and maps the TD-11 kit to GM.

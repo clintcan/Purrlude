@@ -19,8 +19,9 @@ namespace purrlude
     Clips: click to select, drag to move (snapping to bars, or beats with Shift; onto
     another lane to change track), Option/Alt-drag to copy, drag the right edge to
     change the length, double-click to edit the notes, right-click for a menu (an audio
-    clip's melody or drums can be converted to MIDI). Clicking an empty lane or the
-    ruler moves the playhead.
+    clip's melody or drums can be converted to MIDI, and a clip can be looped). Clicking
+    an empty lane or the ruler's bar numbers moves the playhead; the ruler's top strip
+    sets the loop range.
 
     Reads the Edit afresh on every paint and keeps no pointers into it, so it can't go
     stale; a timer repaints and keeps the track headers in step with the Edit's tracks.
@@ -145,7 +146,7 @@ private:
     std::optional<double> recordStartBeat;
     int lastContentHeight = 0;
 
-    static constexpr int rulerHeight = 24, laneHeight = 166, headerWidth = 170, addButtonArea = 44;
+    static constexpr int rulerHeight = 36, laneHeight = 166, headerWidth = 170, addButtonArea = 44;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ArrangementView)
 };
