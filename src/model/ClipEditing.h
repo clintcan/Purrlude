@@ -30,6 +30,40 @@ namespace clips
 
     void remove (tracktion::Edit&, tracktion::EditItemID clipID);
 
+    /** Cuts the clip in two at beat; both parts play just what they played before. Returns
+        the right-hand part, or nullptr if beat isn't inside the clip.
+    */
+    tracktion::Clip* split (tracktion::Edit&, tracktion::EditItemID clipID, double beat);
+
+    /** Splits every clip on the tracks that beat falls inside, as one undo step. Returns how
+        many were split.
+    */
+    int splitAll (tracktion::Edit&, const juce::Array<tracktion::AudioTrack*>&, double beat);
+
+    /** Puts a copy of the clip right after it, on the same track. Returns the copy. */
+    tracktion::Clip* duplicate (tracktion::Edit&, tracktion::EditItemID clipID);
+
+    /** A clip copied (or cut) to be pasted later: a snapshot of it, unaffected by later
+        edits of the clip. Only for pasting into the same song, since an audio clip's file
+        may be stored relative to its project.
+    */
+    struct Copied
+    {
+        juce::ValueTree state;
+        double lengthBeats = 0.0;
+        tracktion::EditItemID track;    ///< The track it was copied from
+
+        bool isMidi() const;
+    };
+
+    std::optional<Copied> copy (tracktion::Edit&, tracktion::EditItemID clipID);
+    bool canHold (const tracktion::AudioTrack&, const Copied&);
+
+    /** Inserts a new clip made from a copied one at startBeat on a track, replacing what it
+        covers. Returns it, or nullptr if the track can't hold it.
+    */
+    tracktion::Clip* paste (tracktion::Edit&, const Copied&, double startBeat, tracktion::AudioTrack& destination);
+
     /** Removes what the clip covers of the other clips on its track (trimming or splitting
         them), as part of the current undo step: for clips made elsewhere, such as recordings.
     */

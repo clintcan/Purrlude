@@ -4,6 +4,7 @@
 #include "TimelineView.h"
 #include "TrackHeader.h"
 #include "model/AudioToMidi.h"
+#include "model/ClipEditing.h"
 #include "model/Automation.h"
 #include "model/InstrumentSeparation.h"
 
@@ -21,8 +22,9 @@ namespace purrlude
 
     Clips: click to select, drag to move (snapping to bars, or beats with Shift; onto
     another lane to change track), Option/Alt-drag to copy, drag the right edge to
-    change the length, double-click to edit the notes, right-click for a menu (an audio
-    clip's melody or drums can be converted to MIDI, and a clip can be looped). Clicking
+    change the length, double-click to edit the notes, right-click for a menu (split,
+    cut, copy, duplicate; an audio clip's melody or drums can be converted to MIDI, and a
+    clip can be looped). Clicking
     an empty lane or the ruler's bar numbers moves the playhead; the ruler's top strip
     sets the loop range.
 
@@ -69,6 +71,26 @@ public:
     /** Deletes the selected clip, if there is one (Delete/Backspace). */
     bool deleteSelectedClip();
 
+    /** Splits the selected clip at the playhead or, with none selected (or the playhead
+        outside it), every clip the playhead crosses. Returns false if nothing was split.
+    */
+    bool splitAtPlayhead();
+
+    /** Copies (or cuts) the selected clip, to paste with paste(). */
+    bool copySelectedClip();
+    bool cutSelectedClip();
+
+    /** Pastes the copied clip at the playhead, on the track last clicked or, if that can't
+        hold it (MIDI or audio), the track it came from. It becomes the selected clip.
+    */
+    bool paste();
+    bool canPaste() const;
+
+    /** Puts a copy of the selected clip right after it, and selects the copy. */
+    bool duplicateSelectedClip();
+
+    bool hasSelectedClip() const;
+
     void zoomIn();
     void zoomOut();
     void zoomToFit();
@@ -88,7 +110,9 @@ private:
     double getPlayheadBeat() const;
 
     void movePlayheadTo (double beat);
-    void showClipMenu (tracktion::EditItemID, bool isMidi, juce::Point<int> screenPosition);
+    void showClipMenu (tracktion::EditItemID, bool isMidi, double clickBeat, juce::Point<int> screenPosition);
+    void showLaneMenu (juce::Point<int> screenPosition);
+    tracktion::AudioTrack* getPasteTrack() const;
     void positionOverlays();
 
     class PlayheadOverlay;
@@ -176,6 +200,8 @@ private:
     std::optional<AutomationDrag> automationDrag;
     std::optional<std::pair<int, int>> hoveredPoint;   ///< lane, point
     tracktion::EditItemID selectedClipID;
+    tracktion::EditItemID clickedTrackID;              ///< Where paste() puts a clip
+    std::optional<clips::Copied> copiedClip;
 
     tracktion::Edit& edit;
     LiveInstrument& live;

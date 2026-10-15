@@ -839,9 +839,13 @@ void ArrangementView::mouseDown (const juce::MouseEvent& e)
     auto tracks = getSongTracks (edit);
     auto index = laneIndexAt (e.y);
 
-    // Clicking a lane selects its track.
+    // Clicking a lane selects its track (the keyboard's, if it's an instrument track), and
+    // pasting goes there.
     if (juce::isPositiveAndBelow (index, tracks.size()))
-        live.selectTrack (tracks.getUnchecked (index)->itemID);
+    {
+        clickedTrackID = tracks.getUnchecked (index)->itemID;
+        live.selectTrack (clickedTrackID);
+    }
 
     // A lane showing automation edits its curve rather than its clips.
     if (automationMouseDown (e, index))
@@ -854,7 +858,8 @@ void ArrangementView::mouseDown (const juce::MouseEvent& e)
 
         if (e.mods.isPopupMenu())
         {
-            showClipMenu (hit.clip->itemID, dynamic_cast<tracktion::MidiClip*> (hit.clip) != nullptr, e.getScreenPosition());
+            showClipMenu (hit.clip->itemID, dynamic_cast<tracktion::MidiClip*> (hit.clip) != nullptr,
+                          xToBeat ((float) e.x), e.getScreenPosition());
             repaint();
             return;
         }
@@ -872,10 +877,13 @@ void ArrangementView::mouseDown (const juce::MouseEvent& e)
         return;
     }
 
-    // Empty space: move the playhead there.
+    // Empty space: move the playhead there (and right-click for Paste).
     selectedClipID = {};
     movePlayheadTo (xToBeat ((float) e.x));
     repaint();
+
+    if (e.mods.isPopupMenu() && juce::isPositiveAndBelow (index, tracks.size()))
+        showLaneMenu (e.getScreenPosition());
 }
 
 void ArrangementView::movePlayheadTo (double beat)
@@ -1023,10 +1031,44 @@ void ArrangementView::mouseMove (const juce::MouseEvent& e)
                                                           : juce::MouseCursor::DraggingHandCursor);
 }
 
-void ArrangementView::showClipMenu (tracktion::EditItemID clipID, bool isMidi, juce::Point<int> screenPosition)
+namespace
 {
-    enum { editNotes = 1, convertMelody, convertChords, convertDrums, separateToMidi, separateToAudio, loopClip, remove, keepTake, firstTake = 100 };
+    void addItemWithKeys (juce::PopupMenu& menu, int id, const juce::String& name, const char* keys, bool enabled = true)
+    {
+        juce::PopupMenu::Item item (name);
+        item.itemID = id;
+        item.isEnabled = enabled;
+        item.shortcutKeyDescription = juce::KeyPress::createFromDescription (keys).getTextDescriptionWithIcons();
+        menu.addItem (item);
+    }
+}
+
+void ArrangementView::showClipMenu (tracktion::EditItemID clipID, bool isMidi, double clickBeat, juce::Point<int> screenPosition)
+{
+    enum { editNotes = 1, convertMelody, convertChords, convertDrums, separateToMidi, separateToAudio, loopClip, remove, keepTake,
+           splitAtPlayhead, splitHere, cut, copy, duplicate, firstTake = 100 };
     juce::PopupMenu menu;
+
+    // Where the clip can be split: at the playhead, and at the beat nearest the click.
+    auto splitBeat = std::round (clickBeat);
+    auto isInside = [this, clipID] (double beat)
+    {
+        auto* clip = tracktion::findClipForID (edit, clipID);
+        return clip != nullptr && beat > clip->getStartBeat().inBeats() + 0.001 && beat < clip->getEndBeat().inBeats() - 0.001;
+    };
+
+    addItemWithKeys (menu, splitAtPlayhead, "Split at Playhead", "command + T", isInside (getPlayheadBeat()));
+    // Named by bar, and beat within it unless it's the downbeat.
+    auto beatsPerBar = juce::jmax (1, edit.tempoSequence.getTimeSig (0)->numerator.get());
+    auto beatNumber = juce::jmax (0, juce::roundToInt (splitBeat));
+    auto where = "Bar " + juce::String (beatNumber / beatsPerBar + 1)
+                 + (beatNumber % beatsPerBar != 0 ? ", Beat " + juce::String (beatNumber % beatsPerBar + 1) : juce::String());
+    menu.addItem (splitHere, "Split Here (" + where + ")", isInside (splitBeat));
+    menu.addSeparator();
+    addItemWithKeys (menu, cut, "Cut", "command + X");
+    addItemWithKeys (menu, copy, "Copy", "command + C");
+    addItemWithKeys (menu, duplicate, "Duplicate", "command + D");
+    menu.addSeparator();
 
     // Takes from a loop recording: choose the one that's heard.
     if (auto* clip = tracktion::findClipForID (edit, clipID); clip != nullptr && takes::getCount (*clip) > 1)
@@ -1063,12 +1105,25 @@ void ArrangementView::showClipMenu (tracktion::EditItemID clipID, bool isMidi, j
     menu.addItem (remove, "Delete");
 
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetScreenArea ({ screenPosition.x, screenPosition.y, 1, 1 }),
-                        [safe = juce::Component::SafePointer<ArrangementView> (this), clipID] (int result)
+                        [safe = juce::Component::SafePointer<ArrangementView> (this), clipID, splitBeat] (int result)
     {
         if (safe == nullptr)
             return;
 
-        if (result == editNotes && safe->onClipDoubleClicked != nullptr)
+        if (result == splitAtPlayhead || result == splitHere)
+        {
+            clips::split (safe->edit, clipID, result == splitHere ? splitBeat : safe->getPlayheadBeat());
+            safe->repaint();
+        }
+        else if (result == cut || result == copy || result == duplicate)
+        {
+            safe->selectedClipID = clipID;
+
+            if (result == cut)          safe->cutSelectedClip();
+            else if (result == copy)    safe->copySelectedClip();
+            else                        safe->duplicateSelectedClip();
+        }
+        else if (result == editNotes && safe->onClipDoubleClicked != nullptr)
             safe->onClipDoubleClicked (clipID);
         else if ((result == convertMelody || result == convertChords || result == convertDrums) && safe->onConvertToMidi != nullptr)
             safe->onConvertToMidi (clipID, result == convertDrums ? audio_to_midi::Mode::drums
@@ -1098,6 +1153,117 @@ void ArrangementView::showClipMenu (tracktion::EditItemID clipID, bool isMidi, j
                 safe->repaint();
             }
     });
+}
+
+void ArrangementView::showLaneMenu (juce::Point<int> screenPosition)
+{
+    enum { pasteHere = 1, splitAll };
+    juce::PopupMenu menu;
+    addItemWithKeys (menu, pasteHere, "Paste", "command + V", canPaste());
+    addItemWithKeys (menu, splitAll, "Split All Clips at Playhead", "command + T");
+
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetScreenArea ({ screenPosition.x, screenPosition.y, 1, 1 }),
+                        [safe = juce::Component::SafePointer<ArrangementView> (this)] (int result)
+    {
+        if (safe == nullptr)
+            return;
+
+        if (result == pasteHere)
+            safe->paste();
+        else if (result == splitAll)
+            safe->splitAtPlayhead();
+    });
+}
+
+bool ArrangementView::hasSelectedClip() const
+{
+    return selectedClipID.isValid() && tracktion::findClipForID (edit, selectedClipID) != nullptr;
+}
+
+bool ArrangementView::splitAtPlayhead()
+{
+    auto beat = getPlayheadBeat();
+
+    // The selected clip, if the playhead's in it; otherwise everything the playhead crosses.
+    if (hasSelectedClip())
+    {
+        auto* clip = tracktion::findClipForID (edit, selectedClipID);
+
+        if (beat > clip->getStartBeat().inBeats() && beat < clip->getEndBeat().inBeats())
+        {
+            auto split = clips::split (edit, selectedClipID, beat) != nullptr;
+            repaint();
+            return split;
+        }
+    }
+
+    auto count = clips::splitAll (edit, getSongTracks (edit), beat);
+    repaint();
+    return count > 0;
+}
+
+bool ArrangementView::copySelectedClip()
+{
+    if (! hasSelectedClip())
+        return false;
+
+    copiedClip = clips::copy (edit, selectedClipID);
+    return copiedClip.has_value();
+}
+
+bool ArrangementView::cutSelectedClip()
+{
+    return copySelectedClip() && deleteSelectedClip();
+}
+
+tracktion::AudioTrack* ArrangementView::getPasteTrack() const
+{
+    if (! copiedClip)
+        return nullptr;
+
+    auto tracks = getSongTracks (edit);
+
+    for (auto id : { clickedTrackID, copiedClip->track })
+        for (auto* track : tracks)
+            if (track->itemID == id && clips::canHold (*track, *copiedClip))
+                return track;
+
+    return nullptr;
+}
+
+bool ArrangementView::canPaste() const
+{
+    return getPasteTrack() != nullptr;
+}
+
+bool ArrangementView::paste()
+{
+    auto* track = getPasteTrack();
+
+    if (track == nullptr)
+        return false;
+
+    auto* clip = clips::paste (edit, *copiedClip, getPlayheadBeat(), *track);
+
+    if (clip != nullptr)
+        selectedClipID = clip->itemID;
+
+    repaint();
+    return clip != nullptr;
+}
+
+bool ArrangementView::duplicateSelectedClip()
+{
+    if (! hasSelectedClip())
+        return false;
+
+    auto* copy = clips::duplicate (edit, selectedClipID);
+
+    if (copy != nullptr)
+        selectedClipID = copy->itemID;
+
+    repaint();
+    return copy != nullptr;
 }
 
 bool ArrangementView::deleteSelectedClip()

@@ -263,7 +263,9 @@ The app talks to `purrlude::BluetoothMidiManager` (`src/devices/BluetoothMidiMan
 - **Not yet adapted:** drum loops and accompaniment patterns are 4/4 material, so they don't fit other meters.
 
 **Clip editing** (`src/model/ClipEditing.h`, `ArrangementView`):
-- **Operations:** `clips::move` (also copies), `setEnd` and `remove`. A clip put over others replaces what it covers, splitting them if needed.
+- **Operations:** `clips::move` (also copies), `setEnd`, `remove`, `split`/`splitAll` (Tracktion's `split`, which fixes up offsets and looping clips), `duplicate`, and `copy`/`paste`. A clip put over others replaces what it covers, splitting them if needed.
+- **Clipboard:** `clips::Copied` is a snapshot of the clip's state (its IDs remapped on each paste) with its length in beats. `ArrangementView` keeps it, so it's per song: an audio clip's file may be stored relative to its project. Paste goes at the playhead on the lane last clicked, else the track it came from.
+- **UI:** Cmd+T (split the selected clip at the playhead, or every clip it crosses), Cmd+X/C/V/D, the clip menu (also Split Here, at the nearest beat), a right-click on an empty lane (Paste), and the Edit menu.
 - **Undo:** each operation starts its own undo step. Tracktion re-sorts a track's clips asynchronously and records that as undo actions. It also closes the undo step 350 ms after a change (`UndoTransactionTimer`), so on a slow machine the re-sort could become a step of its own, and undo would revert only that.
   - So every edit that adds, moves or splits clips calls `sortAllClipsLikeTracktion` (`src/model/ClipOrder.h`, a copy of Tracktion's private sort) inside its step, leaving Tracktion nothing to move.
   - A test checks that no undo actions arrive after an edit.

@@ -6,6 +6,7 @@
 #include "model/ClipEditing.h"
 #include "model/EngineSetup.h"
 #include "model/LiveInstrument.h"
+#include "model/SharedReverb.h"
 #include "instruments/SoundFontPlugin.h"
 #include "notation/TrackNotation.h"
 
@@ -152,5 +153,36 @@ TEST_CASE ("Imported audio is heard in an export", "[audio-tracks][render]")
 
     reader = nullptr;
     files[0].deleteFile();
+    file.deleteFile();
+}
+
+TEST_CASE ("Audio clips split, copy and paste with the right part of the file", "[audio-tracks][clips]")
+{
+    Song song;
+    auto file = writeTone (2.0);
+    REQUIRE (purrlude::audio_import::importFile (*song.edit, song.live, file, 0).error.isEmpty());
+    pump();
+
+    auto& track = *purrlude::getSongTracks (*song.edit).getLast();
+    REQUIRE (track.getClips().size() == 1);
+    auto id = track.getClips()[0]->itemID;
+
+    // At 120 bpm, beat 2 is 1 s into the file: the right part plays on from there.
+    auto* right = purrlude::clips::split (*song.edit, id, 2.0);
+    REQUIRE (right != nullptr);
+    REQUIRE_THAT (right->getPosition().getStart().inSeconds(), WithinAbs (1.0, 0.001));
+    REQUIRE_THAT (right->getPosition().getOffset().inSeconds(), WithinAbs (1.0, 0.001));
+    REQUIRE_THAT (tracktion::findClipForID (*song.edit, id)->getPosition().getEnd().inSeconds(), WithinAbs (1.0, 0.001));
+
+    // Pasted elsewhere, the copy still starts 1 s into the file.
+    auto copied = purrlude::clips::copy (*song.edit, right->itemID);
+    REQUIRE (copied.has_value());
+    REQUIRE_FALSE (copied->isMidi());
+    auto* pasted = purrlude::clips::paste (*song.edit, *copied, 8.0, track);
+    REQUIRE (pasted != nullptr);
+    REQUIRE_THAT (pasted->getPosition().getStart().inSeconds(), WithinAbs (4.0, 0.001));
+    REQUIRE_THAT (pasted->getPosition().getLength().inSeconds(), WithinAbs (1.0, 0.001));
+    REQUIRE_THAT (pasted->getPosition().getOffset().inSeconds(), WithinAbs (1.0, 0.001));
+
     file.deleteFile();
 }

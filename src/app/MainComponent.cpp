@@ -1006,6 +1006,11 @@ bool MainComponent::keyPressed (const juce::KeyPress& key)
             case 'F':   if (! mods.isShiftDown()) return false;
                         setEditorsFullHeight (! (editorTabs.isVisible() && fullHeightButton.getToggleState()));     return true;
             case 'Z':   if (mods.isShiftDown()) project->getEdit().redo(); else project->getEdit().undo();      return true;
+            case 'T':   return arrangement != nullptr && arrangement->splitAtPlayhead();
+            case 'X':   return arrangement != nullptr && arrangement->cutSelectedClip();
+            case 'C':   return arrangement != nullptr && arrangement->copySelectedClip();
+            case 'V':   return arrangement != nullptr && arrangement->paste();
+            case 'D':   return arrangement != nullptr && arrangement->duplicateSelectedClip();
             default:    return false;
         }
     }
@@ -1069,6 +1074,16 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
         auto& undo = project->getEdit().getUndoManager();
         addItem (undoId, "Undo", "command + Z", undo.canUndo());
         addItem (redoId, "Redo", "command + shift + Z", undo.canRedo());
+        menu.addSeparator();
+
+        auto hasClip = arrangement != nullptr && arrangement->hasSelectedClip();
+        addItem (cutId, "Cut", "command + X", hasClip);
+        addItem (copyId, "Copy", "command + C", hasClip);
+        addItem (pasteId, "Paste", "command + V", arrangement != nullptr && arrangement->canPaste());
+        addItem (duplicateId, "Duplicate", "command + D", hasClip);
+        addItem (deleteId, "Delete", "backspace", hasClip);
+        menu.addSeparator();
+        addItem (splitId, "Split at Playhead", "command + T", arrangement != nullptr);
     }
 
     return menu;
@@ -1090,6 +1105,12 @@ void MainComponent::menuItemSelected (int id, int)
         case importAudioId:     chooseAudioFileToImport();              break;
         case undoId:    project->getEdit().undo();          break;
         case redoId:    project->getEdit().redo();          break;
+        case splitId:       if (arrangement != nullptr) arrangement->splitAtPlayhead();         break;
+        case cutId:         if (arrangement != nullptr) arrangement->cutSelectedClip();         break;
+        case copyId:        if (arrangement != nullptr) arrangement->copySelectedClip();        break;
+        case pasteId:       if (arrangement != nullptr) arrangement->paste();                   break;
+        case duplicateId:   if (arrangement != nullptr) arrangement->duplicateSelectedClip();   break;
+        case deleteId:      if (arrangement != nullptr) arrangement->deleteSelectedClip();      break;
         case aboutMenuId:   about::show (juce::JUCEApplication::getInstance()->getApplicationVersion());   break;
         default:        break;
     }

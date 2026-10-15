@@ -36,6 +36,16 @@ bool clips::canHold (const tracktion::AudioTrack& track, const tracktion::Clip& 
     return isMidi != TrackInstrument::isAudioTrack (track);
 }
 
+bool clips::Copied::isMidi() const
+{
+    return state.hasType (tracktion::IDs::MIDICLIP);
+}
+
+bool clips::canHold (const tracktion::AudioTrack& track, const Copied& copied)
+{
+    return copied.state.isValid() && copied.isMidi() != TrackInstrument::isAudioTrack (track);
+}
+
 tracktion::Clip* clips::move (tracktion::Edit& edit, tracktion::EditItemID clipID, double startBeat,
                               tracktion::AudioTrack& destination, bool copy)
 {
@@ -106,6 +116,95 @@ void clips::remove (tracktion::Edit& edit, tracktion::EditItemID clipID)
         edit.getUndoManager().beginNewTransaction ("Delete clip");
         clip->removeFromParent();
     }
+}
+
+namespace
+{
+    tracktion::Clip* splitClip (tracktion::Edit& edit, tracktion::Clip& clip, double beat)
+    {
+        auto time = beatToTime (edit, beat);
+
+        // Not right at either end, which would leave an empty clip.
+        if (! clip.getPosition().time.reduced (tracktion::TimeDuration::fromSeconds (0.001)).contains (time))
+            return nullptr;
+
+        return tracktion::split (clip, time);
+    }
+}
+
+tracktion::Clip* clips::split (tracktion::Edit& edit, tracktion::EditItemID clipID, double beat)
+{
+    auto* clip = tracktion::findClipForID (edit, clipID);
+
+    if (clip == nullptr || ! clip->getPosition().time.contains (beatToTime (edit, beat)))
+        return nullptr;
+
+    edit.getUndoManager().beginNewTransaction ("Split clip");
+    auto* right = splitClip (edit, *clip, beat);
+    sortAllClipsLikeTracktion (edit);   // see ClipOrder.h
+    return right;
+}
+
+int clips::splitAll (tracktion::Edit& edit, const juce::Array<tracktion::AudioTrack*>& tracks, double beat)
+{
+    edit.getUndoManager().beginNewTransaction ("Split clips");
+    int count = 0;
+
+    for (auto* track : tracks)
+        for (auto* clip : juce::Array<tracktion::Clip*> (track->getClips()))
+            if (splitClip (edit, *clip, beat) != nullptr)
+                ++count;
+
+    sortAllClipsLikeTracktion (edit);   // see ClipOrder.h
+    return count;
+}
+
+tracktion::Clip* clips::duplicate (tracktion::Edit& edit, tracktion::EditItemID clipID)
+{
+    auto* clip = tracktion::findClipForID (edit, clipID);
+    auto* track = clip != nullptr ? dynamic_cast<tracktion::AudioTrack*> (clip->getClipTrack()) : nullptr;
+
+    if (track == nullptr)
+        return nullptr;
+
+    return move (edit, clipID, clip->getEndBeat().inBeats(), *track, true);
+}
+
+std::optional<clips::Copied> clips::copy (tracktion::Edit& edit, tracktion::EditItemID clipID)
+{
+    auto* clip = tracktion::findClipForID (edit, clipID);
+
+    if (clip == nullptr || clip->getClipTrack() == nullptr)
+        return std::nullopt;
+
+    // Flush the clip's cached properties (e.g. a MIDI clip's notes) into its state first.
+    clip->flushStateToValueTree();
+    return Copied { clip->state.createCopy(), clip->getEndBeat().inBeats() - clip->getStartBeat().inBeats(),
+                    clip->getClipTrack()->itemID };
+}
+
+tracktion::Clip* clips::paste (tracktion::Edit& edit, const Copied& copied, double startBeat, tracktion::AudioTrack& destination)
+{
+    if (! canHold (destination, copied))
+        return nullptr;
+
+    edit.getUndoManager().beginNewTransaction ("Paste clip");
+
+    // New IDs, as duplicateClip does, so it's a clip of its own (and can be pasted again).
+    auto state = copied.state.createCopy();
+    tracktion::EditItemID::remapIDs (state, nullptr, edit);
+    tracktion::Clip::Ptr clip = tracktion::insertClipWithState (destination, state);
+
+    if (clip == nullptr)
+        return nullptr;
+
+    // Keep the length in beats, wherever the tempo puts it.
+    startBeat = juce::jmax (0.0, startBeat);
+    auto range = tracktion::TimeRange (beatToTime (edit, startBeat), beatToTime (edit, startBeat + copied.lengthBeats));
+    clip->setPosition ({ range, clip->getPosition().offset });
+    clearUnder (destination, range, *clip);
+    sortAllClipsLikeTracktion (edit);   // see ClipOrder.h
+    return clip.get();
 }
 
 } // namespace purrlude

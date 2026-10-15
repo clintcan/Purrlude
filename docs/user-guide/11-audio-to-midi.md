@@ -6,7 +6,7 @@ Purrlude can listen to an audio clip and write down its notes as MIDI. You can t
 
 Everything runs on your computer. No audio is sent anywhere.
 
-<img src="images/clip-menu-audio.png" alt="An audio clip's right-click menu: Convert Melody to MIDI..., Convert Notes and Chords to MIDI..., Convert Drums to MIDI..., Separate Instruments to MIDI..., Separate Instruments to Audio Tracks..., Loop This Clip, Delete" width="766">
+<img src="images/clip-menu-audio.png" alt="An audio clip's right-click menu: Split at Playhead, Split Here, Cut, Copy, Duplicate, Convert Melody to MIDI..., Convert Notes and Chords to MIDI..., Convert Drums to MIDI..., Separate Instruments to MIDI..., Separate Instruments to Audio Tracks..., Loop This Clip, Delete" width="766">
 
 Right-click an audio clip and choose a command. A progress window shows while it works, and **Cancel** (or Esc) stops it. Only one conversion runs at a time.
 

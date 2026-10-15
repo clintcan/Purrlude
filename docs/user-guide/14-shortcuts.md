@@ -33,6 +33,10 @@ On Windows and Linux, use **Ctrl** for **Cmd** and **Alt** for **Option**.
 | Cmd+Z | Undo |
 | Cmd+Shift+Z | Redo |
 | Delete / Backspace | Delete the selected clip, or the selected notes in the Piano Roll |
+| Cmd+T | Split the selected clip at the playhead (with none selected, every clip the playhead crosses) |
+| Cmd+X / Cmd+C | Cut / copy the selected clip |
+| Cmd+V | Paste at the playhead, on the track last clicked |
+| Cmd+D | Duplicate the selected clip (a copy right after it) |
 | Cmd+A | Select all notes (Piano Roll) |
 
 ## Arrangement view
@@ -55,7 +59,8 @@ On Windows and Linux, use **Ctrl** for **Cmd** and **Alt** for **Option**.
 | Option-drag a clip | Copy it |
 | Drag a clip's right edge | Change its length |
 | Double-click a MIDI clip | Edit its notes |
-| Right-click a clip | Clip menu |
+| Right-click a clip | Clip menu (split, cut, copy, duplicate, ...) |
+| Right-click an empty lane | Move the playhead there; Paste, Split All Clips at Playhead |
 | Click the ruler's bar numbers, or an empty lane | Move the playhead |
 | Drag along the top of the ruler | Set the loop range (Shift snaps to beats) |
 | Click the loop band | Loop on / off |

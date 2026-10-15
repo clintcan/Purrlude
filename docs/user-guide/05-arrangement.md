@@ -27,9 +27,21 @@ You don't draw empty clips. Clips are made by:
 | Move it | Drag it. It snaps to bars; hold **Shift** to snap to beats |
 | Move it to another track | Drag it up or down. MIDI clips go on instrument tracks, audio clips on audio tracks |
 | Copy it | Hold **Option** (Alt) while dragging; the clip shows *Copy* |
+| Split it in two | Put the playhead where to cut (click the ruler's bar numbers or an empty part of a lane), select the clip and press **Cmd+T**. Or right-click it > **Split at Playhead**, or **Split Here** to cut at the beat nearest the click (the menu names its bar and beat) |
+| Copy and paste it | Select it and press **Cmd+C** (or **Cmd+X** to cut it), click where it should go, then press **Cmd+V** |
+| Repeat it | **Cmd+D** (Duplicate) puts a copy right after it |
 | Make it longer or shorter | Drag its right edge (the cursor changes near it) |
 | Delete it | Select it and press **Delete** or **Backspace**, or right-click > **Delete** |
 | Edit its notes | Double-click a MIDI clip, or right-click > **Edit Notes** |
+
+**Splitting:**
+- The two parts play exactly what the clip played; a note that crosses the cut sounds in both parts, up to and from the cut.
+- With no clip selected (or the playhead outside the selected one), **Cmd+T** splits every clip the playhead crosses, on all tracks. That's a quick way to cut a whole section out of the song, to move or repeat it.
+
+**Pasting:**
+- The clip is pasted at the playhead, on the track you last clicked. If that track can't hold it (a MIDI clip on an audio track, or the other way round), it goes on the track it was copied from.
+- Paste as often as you like; each is a clip of its own. Right-click an empty part of a lane to move the playhead there and paste.
+- The copy is kept as it was when you copied it, even if you then change or delete the clip.
 
 **Overlapping clips:** a clip moved or copied onto others replaces what it covers. Clips it partly covers are shortened or split around it.
 
@@ -39,9 +51,10 @@ Every edit is one undo step.
 
 ### The clip menu
 
-<img src="images/clip-menu-midi.png" alt="A MIDI clip's right-click menu: Edit Notes, Loop This Clip, Delete" width="589">
+<img src="images/clip-menu-midi.png" alt="A MIDI clip's right-click menu: Split at Playhead, Split Here, Cut, Copy, Duplicate, Edit Notes, Loop This Clip, Delete" width="659">
 
 Right-click a clip for:
+- **Split at Playhead**, **Split Here**, **Cut**, **Copy** and **Duplicate**: see Editing clips above.
 - **Edit Notes** (MIDI clips) opens it in the [Piano Roll](07-piano-roll.md).
 - **Takes** (only clips recorded while looping) chooses which take is heard; see [Takes](06-recording.md#loop-recording-and-takes).
 - **Loop This Clip** sets the [loop range](03-transport.md#loop-playback) to the clip and turns looping on.
