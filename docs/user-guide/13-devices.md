@@ -93,7 +93,7 @@ Purrlude can play a whole song through one of these, each track with its own sou
 FluidSynth is free (`brew install fluid-synth`). Start it with a General MIDI SoundFont, such as GeneralUser GS:
 
 ```sh
-fluidsynth -a coreaudio -m coremidi -o midi.portname=FluidSynth -i GeneralUser-GS.sf2
+fluidsynth -a coreaudio -m coremidi -o midi.portname=FluidSynth GeneralUser-GS.sf2
 ```
 
-It appears in Purrlude's **MIDI outputs** as *FluidSynth*. Turn on **Multi** for it, then choose it as the tracks' sound. Press Ctrl+C in the terminal to stop it.
+It appears in Purrlude's **MIDI outputs** as *FluidSynth*. Turn on **Multi** for it, then choose it as the tracks' sound. To stop it, type `quit` in the terminal or press Ctrl+C.

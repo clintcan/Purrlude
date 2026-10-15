@@ -42,6 +42,8 @@ p, ul, ol { margin: 0 0 7pt; }
 li { margin-bottom: 2pt; }
 a { color: #1d5f99; text-decoration: none; }
 code { font-family: Menlo, Consolas, monospace; font-size: 8.8pt; background: #eef2f6; padding: 0 2pt; border-radius: 2pt; }
+pre { background: #eef2f6; padding: 6pt 8pt; border-radius: 3pt; white-space: pre-wrap; }
+pre code { padding: 0; }
 img { max-width: 100%; height: auto; border: 0.5pt solid #c9d2db; border-radius: 3pt; }
 img[align=right] { float: right; margin: 2pt 0 8pt 12pt; max-width: 45%; }
 p:has(> img:only-child) { break-inside: avoid; }
@@ -109,7 +111,7 @@ def sized_images(page_html):
 
 
 def to_html(text):
-    return markdown.markdown(github_lists(text), extensions=["tables", "toc"],
+    return markdown.markdown(github_lists(text), extensions=["tables", "toc", "fenced_code"],
                              extension_configs={"toc": {"slugify": slugify}})
 
 

@@ -74,6 +74,13 @@ public:
         options.osxLibrarySubFolder = "Application Support";
         settings.setStorageParameters (options);
 
+        // Toggle buttons without a colour of their own (Editors, Loops, MIDI Devices, Multi, the
+        // Loops panel's modes) light up in the app's blue when on. JUCE's default is near black,
+        // which looks pressed rather than on.
+        auto& look = juce::LookAndFeel::getDefaultLookAndFeel();
+        look.setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xff0072b2));   // Okabe-Ito blue
+        look.setColour (juce::TextButton::textColourOnId, juce::Colours::white);
+
         engine = createEngine (getApplicationName());
         bluetooth = std::make_unique<BluetoothMidiManager> (BleMidiService::createForPlatform(),
                                                             *settings.getUserSettings());
