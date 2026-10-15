@@ -7,6 +7,7 @@
 #include "model/TrackInstrument.h"
 
 #include "instruments/SoundFontPlugin.h"
+#include "ui/PluginWindows.h"
 
 namespace
 {
@@ -15,16 +16,23 @@ namespace
     struct Song
     {
         juce::ScopedJuceInitialiser_GUI juceInit;
-        std::unique_ptr<tracktion::Engine> engine = purrlude::createEngine ("PurrludeTests");
-        std::unique_ptr<tracktion::Edit> edit = tracktion::Edit::createSingleTrackEdit (*engine);
-        purrlude::LiveInstrument live { *edit };
+        std::unique_ptr<tracktion::Engine> engine;
+        std::unique_ptr<tracktion::Edit> edit;
+        std::unique_ptr<purrlude::LiveInstrument> liveInstrument;
 
         // The plugin list is saved in the engine's settings: start and finish empty.
-        Song()      { knownPlugins().clear(); pump(); }
+        explicit Song (std::unique_ptr<tracktion::UIBehaviour> ui = {})
+            : engine (purrlude::createEngine ("PurrludeTests", std::move (ui))),
+              edit (tracktion::Edit::createSingleTrackEdit (*engine)),
+              liveInstrument (std::make_unique<purrlude::LiveInstrument> (*edit))
+        {
+            knownPlugins().clear();
+            pump();
+        }
         ~Song()     { knownPlugins().clear(); }
 
         juce::KnownPluginList& knownPlugins()   { return engine->getPluginManager().knownPluginList; }
-        tracktion::AudioTrack& track()          { return *live.getTrack(); }
+        tracktion::AudioTrack& track()          { return *liveInstrument->getTrack(); }
         purrlude::TrackInstrument instrument()  { return { *edit, track() }; }
 
         int countSynths()
@@ -74,6 +82,7 @@ namespace
 
         return std::nullopt;
     }
+   #endif
 
     float renderPeak (tracktion::Edit& edit)
     {
@@ -103,7 +112,6 @@ namespace
         file.deleteFile();
         return audio.getMagnitude (0, audio.getNumSamples());
     }
-   #endif
 }
 
 TEST_CASE ("The plugin library lists instruments and effects by name", "[plugins]")
@@ -265,3 +273,88 @@ TEST_CASE ("An effect plugin goes with the track's effects", "[plugins]")
     CHECK (purrlude::track_effects::getEffects (song.track()).size() == 2);
 }
 #endif
+
+#if JUCE_MAC
+// Opens the window of each of Apple's Audio Units (effects), as Purrlude does (hidden: it puts
+// windows on screen). Their EQ and filter views once ended the app: see PluginWindow::setEditor.
+TEST_CASE ("Plugin windows open", "[.plugin-ui]")
+{
+    Song song { std::make_unique<purrlude::plugin_windows::Behaviour>() };
+
+    for (auto* format : song.engine->getPluginManager().pluginFormatManager.getFormats())
+    {
+        if (format->getName() != "AudioUnit")
+            continue;
+
+        for (auto& id : format->searchPathsForPlugins ({}, false, false))
+        {
+            if (! id.contains (",appl"))
+                continue;
+
+            juce::OwnedArray<juce::PluginDescription> found;
+            song.knownPlugins().scanAndAddFile (id, true, found, *format);
+
+            if (found.isEmpty() || found[0]->isInstrument)
+                continue;
+
+            INFO (found[0]->name);
+            REQUIRE (purrlude::track_effects::add (*song.edit, song.track(), *found[0]).isEmpty());
+            auto* plugin = purrlude::track_effects::getEffects (song.track()).getLast();
+            plugin->showWindowExplicitly();
+            pump (300);
+            plugin->windowState->closeWindowExplicitly();
+            purrlude::track_effects::remove (*song.edit, *plugin);
+            pump (100);
+        }
+    }
+}
+#endif
+
+// Checks a real plugin: PURRLUDE_PLUGIN_FILE=/path/Synth.vst3 PurrludeTests "[.plugin-file]" -s
+// loads it as an instrument or effect, opens its window, and renders a note through it.
+TEST_CASE ("A plugin file loads, opens and plays", "[.plugin-file]")
+{
+    auto path = juce::SystemStats::getEnvironmentVariable ("PURRLUDE_PLUGIN_FILE", {});
+
+    if (path.isEmpty())
+        SKIP ("Set PURRLUDE_PLUGIN_FILE");
+
+    Song song { std::make_unique<purrlude::plugin_windows::Behaviour>() };
+    juce::OwnedArray<juce::PluginDescription> found;
+
+    for (auto* format : song.engine->getPluginManager().pluginFormatManager.getFormats())
+        if (format->fileMightContainThisPluginType (path))
+            song.knownPlugins().scanAndAddFile (path, true, found, *format);
+
+    REQUIRE (! found.isEmpty());
+    auto description = *found[0];
+    std::cout << description.name << " by " << description.manufacturerName
+              << (description.isInstrument ? ": instrument" : ": effect") << std::endl;
+
+    tracktion::Plugin* plugin = nullptr;
+
+    if (description.isInstrument)
+    {
+        REQUIRE (song.instrument().setPluginInstrument (description).isEmpty());
+        plugin = song.instrument().getPluginInstrument();
+    }
+    else
+    {
+        REQUIRE (purrlude::track_effects::add (*song.edit, song.track(), description).isEmpty());
+        plugin = purrlude::track_effects::getEffects (song.track()).getLast();
+    }
+
+    REQUIRE (plugin != nullptr);
+    plugin->showWindowExplicitly();
+    pump (1000);
+    CHECK (plugin->windowState->pluginWindow != nullptr);
+    plugin->windowState->closeWindowExplicitly();
+
+    auto clip = song.track().insertMIDIClip ({ tracktion::TimePosition(), tracktion::TimePosition::fromSeconds (1.0) }, nullptr);
+    REQUIRE (clip != nullptr);
+    clip->getSequence().addNote (60, tracktion::BeatPosition(), tracktion::BeatDuration::fromBeats (1.5), 110, 0, nullptr);
+
+    auto peak = renderPeak (*song.edit);
+    std::cout << "Peak " << peak << std::endl;
+    CHECK (peak > 0.001f);
+}

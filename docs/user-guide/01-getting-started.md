@@ -2,6 +2,18 @@
 
 [← Contents](README.md) · [Next: Projects →](02-projects.md)
 
+## Starting Purrlude
+
+<img src="images/splash.png" alt="The splash screen: the Purrlude cat logo, the line Write, record, arrange and mix, and read it as sheet music, and the version" width="280" align="right">
+
+While Purrlude starts, its splash screen shows the logo and version. It goes once the window is ready; click it to close it sooner.
+
+**About Purrlude** shows the version, who made Purrlude, its license, and the acknowledgements: the libraries, fonts, sounds and models it's built on, with their authors and licenses. Open it from the **Purrlude** menu on macOS, or **Help** on Windows and Linux. **License Files...** shows the full license texts that come with the app.
+
+<br clear="right">
+
+<img src="images/about.png" alt="The About Purrlude window: the logo, version 0.1.0, Made by Clint Christopher Canada, the AGPL v3 license, a link to github.com/clintcan/Purrlude, and the acknowledgements" width="600">
+
 ## The window
 
 <img src="images/overview.png" alt="The Purrlude window" width="100%">

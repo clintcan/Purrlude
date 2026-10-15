@@ -21,7 +21,8 @@ namespace plugin_windows
     };
 
     /** Shows a plugin's own window (or brings it to the front). Does nothing for a plugin
-        that didn't load.
+        that didn't load. If something modal is open (a call-out, a dialog), it waits for it
+        to close, since Tracktion won't open a plugin window until then.
     */
     void show (tracktion::Plugin&);
 

@@ -174,9 +174,9 @@ The app talks to `purrlude::BluetoothMidiManager` (`src/devices/BluetoothMidiMan
   - **Instruments:** `TrackInstrument::setPluginInstrument` replaces the built-in synth (one undo step) and marks the track (`purrludePluginInstrument`), so `setUp` doesn't add the GM instrument when the plugin is missing on this computer. `useBuiltInInstrument` goes back. The instrument menu lists them under Plugins.
   - **Effects:** `track_effects::getEffects` includes `ExternalPlugin`s other than the instrument; `add (edit, track, PluginDescription)` puts one before the volume plugin. They have no knobs (`getControls` is empty): their rows have Open Window.
   - **Loading:** both load the plugin before touching the track, so a failure returns its error and changes nothing.
-  - **Windows:** `plugin_windows::Behaviour` (a `tracktion::UIBehaviour`) makes them from Tracktion's editor; Tracktion owns and closes them. Opening one from the FX panel dismisses the call-out, which would otherwise block clicks in it.
+  - **Windows:** `plugin_windows::Behaviour` (a `tracktion::UIBehaviour`) makes them from Tracktion's editor; Tracktion owns and closes them. Tracktion opens no plugin window while anything is modal (`isDialogOpen`), and the FX panel's call-out is, so `plugin_windows::show` waits (up to 2 s) for modal components to close, and the panel dismisses its call-out first. `PluginWindow::setEditor` sets the window's resizability before the editor goes in: changing it afterwards re-lays out the window at once, and Apple's EQ and filter views (AULowpass, AUNBandEQ, ...) then read parameters before they have their plugin and their failed assertion ends the app. The hidden `[.plugin-ui]` test opens every Apple effect's window.
   - **Not yet:** automating plugin parameters, and sidechains.
-  - **Tests:** `[plugins]` uses Apple's DLSMusicDevice and AUDelay on macOS (skipped elsewhere).
+  - **Tests:** `[plugins]` uses Apple's DLSMusicDevice and AUDelay on macOS (skipped elsewhere). `PURRLUDE_PLUGIN_FILE=/path/Synth.vst3 PurrludeTests "[.plugin-file]" -s` loads a real plugin as an instrument or effect, opens its window and renders a note through it.
 - **Shared reverb** (`src/model/SharedReverb.h`, namespace `shared_reverb`): one reverb for the whole song, fed by per-track sends.
   - **The bus** is a hidden audio track (`purrludeTrackKind="reverbBus"`) with an aux return, a fully wet reverb, volume and a meter, made with the first send. It's solo-isolated, so a soloed track keeps its reverb. `TrackInstrument::setUp` leaves it alone.
   - **Song tracks:** the bus is not a song track. Code that means "the user's tracks" (arrangement, score, live input, import, loops, export) uses `purrlude::getSongTracks`, never `tracktion::getAudioTracks`.
@@ -451,6 +451,12 @@ Only shapes with a `stroke-width` (lines, stems, ties) get the ink stroke. Strok
 **Checking real recordings:** `PURRLUDE_PROJECT=/path/song.purrlude PurrludeTests "[takes]" -s` writes `song.musicxml` and prints each measure.
 
 `purrlude_core` is a CMake **INTERFACE** library: JUCE modules are compiled into each final target, so core sources are compiled into both the app and the test runner. Add new non-UI-shell sources to `purrlude_core`, not to the `Purrlude` target.
+
+## Splash screen and About
+
+- **Splash** (`src/app/Splash.h`): shown in `PurrludeApplication::initialise` before the engine is made (drawn at once with `performAnyPendingRepaintsNow`, since the message loop isn't running yet), and dismissed when the window is up: it fades after 1.5 s on screen, or when clicked. Not shown with `--doc-screenshots`.
+- **About** (`src/app/AboutWindow.h`): the Purrlude application menu on macOS (`setMacMainMenu`'s extra Apple menu items), Help elsewhere (`MainComponent::aboutMenuId`). It shows the logo, version, "Made by Clint Christopher Canada", the AGPL, and `content/ACKNOWLEDGEMENTS.txt`.
+- **Acknowledgements:** keep `content/ACKNOWLEDGEMENTS.txt` in step with `content/LICENSES.md` when adding a dependency or asset. It's compiled in with the logo (`branding/purrlude-logo.jpg`, made by `tools/branding/make_icon.py`) as `PurrludeBranding`, and copied with `LICENSE` (as `LICENSE-Purrlude.txt`) and the GeneralUser GS license into the app's `licenses` folder, which License Files... reveals.
 
 ## User guide
 

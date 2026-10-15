@@ -5,7 +5,7 @@ Only content whose license permits redistribution inside the app may be added.
 
 | Asset | Used for | Source | Author | License |
 |---|---|---|---|---|
-| Purrlude logo (`docs/user-guide/images/Purrlude-Cat-Logo.png`) and app icon (`branding/purrlude-icon.png`, cropped from the logo by `tools/branding/make_icon.py`) | The app icon, README and user guide | Made for Purrlude | Purrlude's author | Purrlude's own artwork, under Purrlude's license |
+| Purrlude logo (`docs/user-guide/images/Purrlude-Cat-Logo.png`), app icon (`branding/purrlude-icon.png`, cropped from the logo by `tools/branding/make_icon.py`) and the smaller logo it makes (`branding/purrlude-logo.jpg`) | The app icon, splash screen, About window, README and user guide | Made for Purrlude | Purrlude's author | Purrlude's own artwork, under Purrlude's license |
 | GeneralUser GS v2.0.3 (`GeneralUser-GS.sf2`) | Built-in General MIDI instruments | [github.com/mrbumpy409/GeneralUser-GS](https://github.com/mrbumpy409/GeneralUser-GS) at `684543d`; [schristiancollins.com](https://www.schristiancollins.com) | S. Christian Collins | GeneralUser GS License v2.0 (copied next to the app as `LICENSE-GeneralUser-GS.txt`) |
 | GO:KEYS 3 / GO:KEYS 5 tone names and numbers (`devices/roland-go-keys-3-5.json`) | Choosing the keyboard's tones by name | Roland's published "GO:KEYS 3 / GO:KEYS 5 Tone List" (2024) | Roland Corporation | Factual reference data (tone names and MIDI addresses), used for interoperability; the PDF itself is not included |
 | Drum loops (`loops/groove.json`) | Built-in drum loops (Loops panel) | [Groove MIDI Dataset](https://magenta.tensorflow.org/datasets/groove) v1.0.0 (MIDI only), extracted by `tools/content/build_groove_loops.py` | Jon Gillick, Adam Roberts, Jesse Engel, Douglas Eck, David Bamman (Google Magenta) | CC BY 4.0; attribution shown in the Loops panel |
@@ -16,6 +16,8 @@ Only content whose license permits redistribution inside the app may be added.
 | ONNX Runtime 1.30.0 (shared library) | Running the basic-pitch model | [github.com/microsoft/onnxruntime](https://github.com/microsoft/onnxruntime) release binaries | Microsoft Corporation | MIT (`LICENSE-onnxruntime.txt` and `ThirdPartyNotices-onnxruntime.txt` in the app's licenses folder) |
 
 ## Notes
+
+- **In the app:** `content/ACKNOWLEDGEMENTS.txt` is shown in About Purrlude and copied into the app's `licenses` folder with the full license texts. Keep it in step with this file when adding a dependency or asset.
 
 - **Device definitions** (`content/devices/*.json`) are compiled into the app. Each lists a device's tone names with their Bank Select (MSB/LSB) and Program Change numbers.
   - **GO:KEYS:** bank and program are derived from Roland's tone numbers, which also corrects three misprinted entries (PR018–PR020).

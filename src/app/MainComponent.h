@@ -58,6 +58,9 @@ public:
     juce::PopupMenu getMenuForIndex (int, const juce::String&) override;
     void menuItemSelected (int, int) override;
 
+    /** About Purrlude: in the application menu on macOS (see MainWindow), Help elsewhere. */
+    static constexpr int aboutMenuId = 1000;
+
 private:
     friend class DocScreenshots;   // drives the window for the user guide's screenshots
 

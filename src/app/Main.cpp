@@ -1,5 +1,7 @@
 #include "DocScreenshots.h"
 #include "MainComponent.h"
+#include "AboutWindow.h"
+#include "Splash.h"
 #include "model/EngineSetup.h"
 #include "ui/PluginWindows.h"
 
@@ -10,7 +12,7 @@ class MainWindow final : public juce::DocumentWindow
 {
 public:
     MainWindow (const juce::String& name, tracktion::Engine& engine, BluetoothMidiManager& bluetooth,
-                MidiDeviceSettings& deviceSettings, juce::PropertiesFile& settings)
+                MidiDeviceSettings& deviceSettings, juce::PropertiesFile& settings, bool visible)
         : DocumentWindow (name,
                           juce::Desktop::getInstance().getDefaultLookAndFeel()
                               .findColour (juce::ResizableWindow::backgroundColourId),
@@ -21,10 +23,13 @@ public:
         setContentOwned (content, true);
         setResizable (true, true);
         centreWithSize (getWidth(), getHeight());
-        setVisible (true);
+        setVisible (visible);
 
        #if JUCE_MAC
-        juce::MenuBarModel::setMacMainMenu (content);
+        juce::PopupMenu appleMenu;
+        appleMenu.addItem (MainComponent::aboutMenuId, "About Purrlude");
+        appleMenu.addSeparator();
+        juce::MenuBarModel::setMacMainMenu (content, &appleMenu);
        #else
         setMenuBar (content);
        #endif
@@ -92,21 +97,40 @@ public:
         look.setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xff0072b2));   // Okabe-Ito blue
         look.setColour (juce::TextButton::textColourOnId, juce::Colours::white);
 
+        // While the engine starts (devices, the SoundFont, plugins) and the window opens. Not
+        // when taking screenshots, which would capture it.
+        if (screenshots == juce::File())
+            splash = std::make_unique<Splash> (getApplicationVersion());
+
         engine = createEngine (getApplicationName(), std::make_unique<plugin_windows::Behaviour>(), true);
         bluetooth = std::make_unique<BluetoothMidiManager> (BleMidiService::createForPlatform(),
                                                             *settings.getUserSettings());
         deviceSettings = std::make_unique<MidiDeviceSettings> (*settings.getUserSettings());
         mainWindow = std::make_unique<MainWindow> (getApplicationName(), *engine, *bluetooth, *deviceSettings,
-                                                   *settings.getUserSettings());
+                                                   *settings.getUserSettings(), splash == nullptr);
 
         if (screenshots != juce::File())
             docScreenshots = std::make_unique<DocScreenshots> (mainWindow->getMainComponent(), screenshots);
+
+        // The window appears when the splash screen has had its moment (the last project
+        // opens behind it meanwhile).
+        if (splash != nullptr)
+            splash->dismiss (3000, [this]
+            {
+                if (mainWindow != nullptr)
+                {
+                    mainWindow->setVisible (true);
+                    mainWindow->toFront (true);
+                }
+            });
     }
 
     void shutdown() override
     {
         // The window (and the Edit it owns) must go before the engine.
         docScreenshots = nullptr;
+        splash = nullptr;
+        about::close();
         mainWindow = nullptr;
         plugin_windows::closePluginList();
         ScoreView::waitForClosedRenderThreads();   // an engraving left running by the closed score view
@@ -163,6 +187,7 @@ private:
     std::unique_ptr<MidiDeviceSettings> deviceSettings;
     std::unique_ptr<MainWindow> mainWindow;
     std::unique_ptr<DocScreenshots> docScreenshots;
+    std::unique_ptr<Splash> splash;
     bool quitPending = false;
 };
 

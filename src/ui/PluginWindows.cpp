@@ -76,12 +76,17 @@ namespace
             JUCE_AUTORELEASEPOOL
             {
                 setConstrainer (nullptr);
+                clearContentComponent();
                 editor = std::move (newEditor);
+
+                // Before the editor goes in: changing it afterwards re-lays out the window at
+                // once, and some plugins' views can't take that yet. Apple's EQ and filter
+                // views then read their plugin's parameters before they have the plugin, and
+                // their failed assertion ends the app.
+                setResizable (editor == nullptr || editor->allowWindowResizing(), false);
 
                 if (editor != nullptr)
                     setContentNonOwned (editor.get(), true);
-
-                setResizable (editor == nullptr || editor->allowWindowResizing(), false);
 
                 if (editor != nullptr && editor->allowWindowResizing())
                     setConstrainer (editor->getBoundsConstrainer());
@@ -184,16 +189,34 @@ void Behaviour::recreatePluginWindowContentAsync (tracktion::Plugin& plugin)
 }
 
 //==============================================================================
+namespace
+{
+    void showWhenNothingModal (tracktion::Plugin::Ptr plugin, int triesLeft)
+    {
+        // Tracktion opens no plugin window while anything modal is up (a call-out, a menu,
+        // a dialog), so wait for it to close: the FX panel's call-out closes as its window opens.
+        if (juce::ModalComponentManager::getInstance()->getNumModalComponents() > 0)
+        {
+            if (triesLeft > 0)
+                juce::Timer::callAfterDelay (50, [plugin, triesLeft] { showWhenNothingModal (plugin, triesLeft - 1); });
+
+            return;
+        }
+
+        if (auto* window = plugin->windowState->pluginWindow.get(); window != nullptr && window->isShowing())
+            window->toFront (true);
+        else
+            plugin->showWindowExplicitly();
+    }
+}
+
 void show (tracktion::Plugin& plugin)
 {
     if (auto* external = dynamic_cast<tracktion::ExternalPlugin*> (&plugin))
         if (external->getAudioPluginInstance() == nullptr)
             return;
 
-    if (auto* window = plugin.windowState->pluginWindow.get(); window != nullptr && window->isShowing())
-        window->toFront (true);
-    else
-        plugin.showWindowExplicitly();
+    showWhenNothingModal (&plugin, 40);   // up to 2 s
 }
 
 void showPluginList (tracktion::Engine& engine)

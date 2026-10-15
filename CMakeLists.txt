@@ -245,8 +245,21 @@ juce_add_gui_app(Purrlude
     PLUGINHOST_AU TRUE
 )
 
+# The logo (made by tools/branding/make_icon.py) and acknowledgements, for the splash screen and
+# About window.
+juce_add_binary_data(purrlude_branding
+    HEADER_NAME PurrludeBranding.h
+    NAMESPACE PurrludeBranding
+    SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/branding/purrlude-logo.jpg
+            ${CMAKE_CURRENT_SOURCE_DIR}/content/ACKNOWLEDGEMENTS.txt
+)
+
 target_sources(Purrlude PRIVATE
     src/app/Main.cpp
+    src/app/Splash.h
+    src/app/Splash.cpp
+    src/app/AboutWindow.h
+    src/app/AboutWindow.cpp
     src/app/DocScreenshots.h
     src/app/DocScreenshots.cpp
     src/app/MainComponent.h
@@ -260,6 +273,7 @@ target_compile_definitions(Purrlude PRIVATE
 
 target_link_libraries(Purrlude PRIVATE
     purrlude_core
+    purrlude_branding
     juce::juce_recommended_config_flags
     juce::juce_recommended_lto_flags
     juce::juce_recommended_warning_flags
@@ -267,6 +281,22 @@ target_link_libraries(Purrlude PRIVATE
 
 purrlude_bundle_onnxruntime(Purrlude)
 purrlude_bundle_model_licenses(Purrlude)
+
+# Purrlude's own license and the acknowledgements join them (About > License Files...).
+if(APPLE)
+    set(PURRLUDE_LICENSES_DEST "$<TARGET_BUNDLE_CONTENT_DIR:Purrlude>/Resources/licenses")
+else()
+    set(PURRLUDE_LICENSES_DEST "$<TARGET_FILE_DIR:Purrlude>/licenses")
+endif()
+
+add_custom_command(TARGET Purrlude POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${PURRLUDE_LICENSES_DEST}"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE" "${PURRLUDE_LICENSES_DEST}/LICENSE-Purrlude.txt"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/content/ACKNOWLEDGEMENTS.txt" "${PURRLUDE_LICENSES_DEST}/ACKNOWLEDGEMENTS.txt"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PURRLUDE_SOUNDFONT_LICENSE}" "${PURRLUDE_LICENSES_DEST}/LICENSE-GeneralUser-GS.txt"
+    COMMENT "Copying Purrlude's license and acknowledgements"
+    VERBATIM
+)
 purrlude_bundle_demucs(Purrlude)
 
 # Verovio's fonts and glyph files ship with the app (see ScoreRenderer::findResourceDirectory).

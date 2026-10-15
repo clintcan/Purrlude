@@ -1,0 +1,92 @@
+Purrlude is built on the work of many people. Thank you.
+
+The full license texts are in the "licenses" folder that comes with the app (About Purrlude >
+License Files...). content/LICENSES.md in Purrlude's source lists every bundled asset with its
+source.
+
+
+FRAMEWORK AND AUDIO ENGINE
+
+JUCE 8
+  Copyright Raw Material Software Limited. Licensed under the GNU Affero GPL v3.
+  https://juce.com
+
+Tracktion Engine 3.2
+  Copyright Tracktion Corporation. Licensed under the GNU General Public License v3.
+  https://github.com/Tracktion/tracktion_engine
+
+Included with Tracktion Engine:
+  SoundTouch, copyright Olli Parviainen (GNU LGPL v2.1): time-stretching
+  libsamplerate, copyright Erik de Castro Lopo (BSD 2-clause): sample-rate conversion
+  CHOC, copyright Julian Storer (ISC)
+  crill, copyright Timur Doumler and Fabian Renn-Giles (Boost Software License 1.0)
+
+Plugin hosting:
+  VST 3 SDK, copyright Steinberg Media Technologies GmbH, used under the GNU GPL v3.
+  VST is a registered trademark of Steinberg Media Technologies GmbH.
+  LV2, lilv, serd, sord and sratom, copyright David Robillard, Steve Harris and others (ISC).
+  Audio Units are provided by Apple's macOS.
+
+
+SHEET MUSIC
+
+Verovio 6.3
+  Copyright RISM Digital Center and Verovio contributors. Licensed under the GNU LGPL v3.
+  https://www.verovio.org
+  Includes pugixml by Arseny Kapoulkine (MIT), humlib and midifile by Craig Stuart Sapp
+  (BSD 2-clause), and the tuning library by Paul Walker (MIT).
+
+Music fonts used by Verovio, under the SIL Open Font License 1.1:
+  Leipzig (Etienne Darbellay, Jean-Francois Marti, Laurent Pugin)
+  Bravura and Petaluma (Steinberg Media Technologies GmbH)
+  Leland (MuseScore)
+  Gootville (Klaus Rettinghaus)
+
+
+SOUNDS AND LOOPS
+
+GeneralUser GS 2.0.3 SoundFont
+  Copyright S. Christian Collins. Licensed under the GeneralUser GS License v2.0.
+  https://www.schristiancollins.com
+
+TinySoundFont
+  Copyright Bernhard Schelling. MIT License.
+  https://github.com/schellingb/TinySoundFont
+
+Drum loops
+  Adapted from the Groove MIDI Dataset by Jon Gillick, Adam Roberts, Jesse Engel, Douglas Eck
+  and David Bamman (Google Magenta), licensed under CC BY 4.0
+  (https://creativecommons.org/licenses/by/4.0/).
+  https://magenta.tensorflow.org/datasets/groove
+  Changes: 4-bar excerpts of the performances, with the Roland TD-11 kit's notes mapped to
+  General MIDI drums.
+
+Accompaniment patterns are original to Purrlude.
+
+
+AUDIO TO MIDI AND INSTRUMENT SEPARATION
+
+Basic Pitch
+  Copyright 2022 Spotify AB. Licensed under the Apache License 2.0.
+  https://github.com/spotify/basic-pitch
+  NOTICE: This product includes software developed at Spotify AB (http://www.spotify.com/).
+  It includes software from Librosa (ISC, copyright 2013-2017 librosa development team),
+  mir_eval (MIT, copyright 2014 Colin Raffel), numpy (BSD, copyright 2005-2022 NumPy
+  Developers), pretty-midi (MIT, copyright 2014 Colin Raffel) and resampy (ISC, copyright
+  2016 Brian McFee).
+
+ONNX Runtime 1.30
+  Copyright Microsoft Corporation. MIT License. Its usage telemetry is switched off.
+  https://onnxruntime.ai
+
+Demucs v4 (htdemucs_6s model)
+  Copyright Meta Platforms, Inc. (Alexandre Defossez, Simon Rouard). MIT License.
+  https://github.com/facebookresearch/demucs
+  ONNX adaptation by Sevag Hanssian (demucs.onnx, MIT License).
+
+
+DEVICES
+
+Tone names for the Roland GO:KEYS 3 and GO:KEYS 5 come from Roland's published tone list.
+Roland and GO:KEYS are trademarks of Roland Corporation. Purrlude isn't affiliated with or
+endorsed by Roland.

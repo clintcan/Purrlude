@@ -53,15 +53,15 @@ namespace
 
 namespace
 {
-    /** Opens a plugin's window, closing the call-out: while it's open, other windows can't
-        be clicked.
+    /** Opens a plugin's window, closing the call-out: it's modal, so while it's open the
+        window couldn't open or be clicked. The window opens once the call-out has gone.
     */
     void showPluginWindow (juce::Component& inPanel, tracktion::Plugin& plugin)
     {
-        plugin_windows::show (plugin);
-
         if (auto* box = inPanel.findParentComponentOfClass<juce::CallOutBox>())
             box->dismiss();
+
+        plugin_windows::show (plugin);
     }
 }
 

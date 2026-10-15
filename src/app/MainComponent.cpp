@@ -2,6 +2,7 @@
 
 #include "ui/ExportAudioDialog.h"
 #include "ui/PluginWindows.h"
+#include "AboutWindow.h"
 
 #include "notation/MusicXmlWriter.h"
 #include "notation/ScorePdf.h"
@@ -203,7 +204,21 @@ void MainComponent::startUp()
     auto recoverable = Project::findRecoverable (getAutosaveDirectory());
 
     if (! recoverable.empty())
+    {
+        // Ask once the window is on screen (it stays hidden behind the splash screen for a moment).
+        if (! isShowing())
+        {
+            juce::Timer::callAfterDelay (200, [safe = juce::WeakReference<MainComponent> (this)]
+            {
+                if (safe != nullptr)
+                    safe->startUp();
+            });
+
+            return;
+        }
+
         offerRecovery (std::move (recoverable));
+    }
     else
         reopenLastProject();
 }
@@ -1009,7 +1024,11 @@ bool MainComponent::keyPressed (const juce::KeyPress& key)
 //==============================================================================
 juce::StringArray MainComponent::getMenuBarNames()
 {
-    return { "File", "Edit" };
+   #if JUCE_MAC
+    return { "File", "Edit" };   // About is in the application menu
+   #else
+    return { "File", "Edit", "Help" };
+   #endif
 }
 
 juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
@@ -1041,6 +1060,10 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
         addItem (exportMusicXmlId, "Export MusicXML...", "");
         addItem (exportAudioId, "Export Audio...", "command + shift + E", audioExport == nullptr);
     }
+    else if (index == 2)
+    {
+        menu.addItem (aboutMenuId, "About Purrlude");
+    }
     else
     {
         auto& undo = project->getEdit().getUndoManager();
@@ -1067,6 +1090,7 @@ void MainComponent::menuItemSelected (int id, int)
         case importAudioId:     chooseAudioFileToImport();              break;
         case undoId:    project->getEdit().undo();          break;
         case redoId:    project->getEdit().redo();          break;
+        case aboutMenuId:   about::show (juce::JUCEApplication::getInstance()->getApplicationVersion());   break;
         default:        break;
     }
 }

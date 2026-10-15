@@ -9,6 +9,7 @@
 #include "model/LoopRange.h"
 #include "model/NoteEditing.h"
 #include "ui/PluginWindows.h"
+#include "Splash.h"
 #include "model/SharedReverb.h"
 #include "model/TrackEffects.h"
 #include "model/TrackInstrument.h"
@@ -395,6 +396,26 @@ void DocScreenshots::addSteps()
     {
         capture ("plugins", popupArea());
         closePopups();
+    });
+
+    then (300, [this] { main.menuItemSelected (MainComponent::aboutMenuId, 0); });
+
+    then (1000, [this]
+    {
+        capture ("about", popupArea());
+        closePopups();
+    });
+
+    // The splash screen is its own window: drawn on its own, with its transparent corners.
+    then (300, [this]
+    {
+        Splash splash (juce::JUCEApplication::getInstance()->getApplicationVersion());
+        auto image = splash.createComponentSnapshot (splash.getLocalBounds(), true, imageScale);
+        auto file = folder.getChildFile ("splash.png");
+        file.deleteFile();
+
+        if (auto stream = file.createOutputStream(); stream == nullptr || ! juce::PNGImageFormat().writeImageToStream (image, *stream))
+            ++failures;
     });
 
     // Converting the hummed melody to MIDI.
