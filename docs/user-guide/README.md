@@ -2,6 +2,8 @@
 
 Purrlude is a music workstation for writing, recording, arranging and mixing songs, and for seeing them as sheet music. This guide covers what it can do today, one topic per page.
 
+> **Status: beta on macOS, alpha on Windows and Linux.** There are no prebuilt downloads yet: Purrlude is built from source ([README](../../README.md#building)). Project files may still change format before 1.0.
+
 <img src="images/overview.png" alt="The Purrlude window: the transport bar at the top, the arrangement with four tracks, the score below, and the Loops panel on the right" width="100%">
 
 To make a PDF of the whole guide, run `python3 tools/docs/build_user_guide_pdf.py`. It writes `Purrlude User Guide.pdf` here.

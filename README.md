@@ -4,7 +4,7 @@ Purrlude is a cross-platform music workstation for writing, recording, arranging
 
 <img src="docs/user-guide/images/overview.png" alt="Purrlude: the arrangement with melody, piano, bass and drum tracks, the live score with chord symbols below, and the Loops panel on the right" width="100%">
 
-> **Status: early development.** Purrlude is developed and tested on macOS (Apple Silicon). Windows and Linux build and pass the tests in CI but have seen little real use. Expect rough edges, and project files that may change format.
+> **Status: beta on macOS, alpha on Windows and Linux.** The main features work and are in daily use on macOS (Apple Silicon). There are no prebuilt downloads yet: build from source (below). Windows and Linux build and pass the tests in CI but haven't seen real use. Project files may still change format before 1.0.
 
 ## What it does
 
@@ -17,6 +17,14 @@ Purrlude is a cross-platform music workstation for writing, recording, arranging
 - **Devices.** It works with any audio interface and any USB or Bluetooth MIDI keyboard. It can play a keyboard's own sounds, and play songs through multi-timbral sound modules and software synths.
 
 The **[user guide](docs/user-guide/README.md)** covers all of it, with screenshots.
+
+## Road to 1.0
+
+- **Releases:** a signed, notarised macOS app to download, then Windows and Linux installers.
+- **Instrument separation for everyone:** host the Demucs model so builds can fetch it.
+- **Testing:** real use on Windows and Linux, and beta testers on other machines and devices.
+- **Missing DAW features:** automation, punch-in recording, tempo and time-signature changes within a song, MIDI learn, and loading third-party plugins (VST3/AU) from the interface.
+- **A stable project format** from 1.0 on, so songs saved then keep opening.
 
 ## Building
 
