@@ -1,6 +1,6 @@
 # 11. Audio to MIDI
 
-[← Effects and Reverb](10-effects.md) · [Contents](README.md) · [Next: Importing and Exporting →](12-import-export.md)
+[← Effects, Reverb and Plugins](10-effects.md) · [Contents](README.md) · [Next: Importing and Exporting →](12-import-export.md)
 
 Purrlude can listen to an audio clip and write down its notes as MIDI. You can then edit them in the Piano Roll and see them as sheet music. It can also split a recorded song into its instruments.
 

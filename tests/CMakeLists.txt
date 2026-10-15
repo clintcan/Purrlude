@@ -36,6 +36,7 @@ target_sources(PurrludeTests PRIVATE
     TakesTests.cpp
     LoopRecordingTests.cpp
     NoteEditingTests.cpp
+    PluginTests.cpp
     CrashHandler.cpp
     $<$<PLATFORM_ID:Windows>:BleMidiGattProbe_windows.cpp>
 )

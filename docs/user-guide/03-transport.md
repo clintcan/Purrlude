@@ -2,7 +2,7 @@
 
 [← Projects](02-projects.md) · [Contents](README.md) · [Next: Tracks and Mixing →](04-tracks.md)
 
-<img src="images/transport-bar.png" alt="The transport bar: |&lt;, Play, Record, Loop, the position, the tempo, 4/4, Metronome and Count-in" width="100%">
+<img src="images/transport-bar.png" alt="The transport bar: |&lt;, Play, Record, Loop, the position, the tempo, 4/4, Metronome and Count-in, then Editors, Audio Settings, Plugins, Loops and MIDI Devices" width="100%">
 
 ## Playing
 

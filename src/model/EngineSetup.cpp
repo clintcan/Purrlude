@@ -5,9 +5,24 @@
 namespace purrlude
 {
 
-std::unique_ptr<tracktion::Engine> createEngine (const juce::String& applicationName)
+namespace
 {
-    auto engine = std::make_unique<tracktion::Engine> (applicationName);
+    struct Behaviour final : public tracktion::EngineBehaviour
+    {
+        explicit Behaviour (bool separateProcess) : scanInSeparateProcess (separateProcess) {}
+
+        bool canScanPluginsOutOfProcess() override      { return scanInSeparateProcess; }
+
+        const bool scanInSeparateProcess;
+    };
+}
+
+std::unique_ptr<tracktion::Engine> createEngine (const juce::String& applicationName,
+                                                 std::unique_ptr<tracktion::UIBehaviour> ui,
+                                                 bool scanPluginsInSeparateProcess)
+{
+    auto engine = std::make_unique<tracktion::Engine> (applicationName, std::move (ui),
+                                                       std::make_unique<Behaviour> (scanPluginsInSeparateProcess));
     engine->getPluginManager().createBuiltInType<SoundFontPlugin>();
 
     // The GM SoundFont takes a moment to load; start now so the first instrument is ready.

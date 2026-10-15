@@ -8,7 +8,7 @@ Purrlude is a cross-platform digital audio workstation (DAW) for composing, reco
 >   - prebuilt releases (signed, notarised macOS app; Windows/Linux installers)
 >   - hosting the Demucs model
 >   - real use on Windows/Linux
->   - recording automation (drawing it works), punch-in, tempo/time-signature changes within a song, MIDI learn, plugin loading in the UI
+>   - recording automation (drawing it works), punch-in, tempo/time-signature changes within a song, MIDI learn, automating plugin controls
 >   - a frozen project format
 > - **Public:** github.com/clintcan/Purrlude, AGPLv3.
 
@@ -98,7 +98,7 @@ These are what set Purrlude apart. Treat them as first-class, not add-ons.
 | Instrument separation | Demucs v4 `htdemucs_6s` on ONNX Runtime, exported by `tools/models/export_demucs.py` | MIT |
 | Built-in instruments | TinySoundFont (SF2) + GeneralUser GS v2.0.3 GM bank; sfizz (SFZ) _(planned)_ | MIT / GeneralUser GS License v2.0 |
 | Time-stretch | Signalsmith Stretch _(planned)_; Tracktion's SoundTouch is used until then | MIT / LGPL |
-| Plugin formats | VST3 / AU / LV2 via JUCE; CLAP via clap-juce-extensions _(planned)_ | — |
+| Plugin formats | VST3 / AU / LV2 via JUCE and Tracktion (scan, instruments, effects, windows); CLAP via clap-juce-extensions _(planned)_ | — |
 | Tests / CI | Catch2 v3, GitHub Actions (Windows/macOS/Linux) | BSL-1.0 |
 
 **Licensing:** Purrlude is released under **AGPLv3** (`LICENSE`), as JUCE (AGPL) and Tracktion Engine (GPL) require; a closed-source version would need commercial licenses for both. Every new dependency must be license-compatible; prefer permissive (MIT/BSD/Apache) or LGPL. Avoid aubio (GPL) and Rubber Band (GPL) unless the project commits to GPL.
@@ -168,6 +168,15 @@ The app talks to `purrlude::BluetoothMidiManager` (`src/devices/BluetoothMidiMan
   - **Editing:** `ArrangementView` draws the curve over the dimmed clips. A click adds a point, a drag moves it (`movePoint` keeps it between its neighbours; Shift snaps to beats), a double-click or the lane's menu removes it. `addPoint`, `removePoint` and `clear` are one undo step each. A drag holds an `automation::PointDrag` (an UndoTransactionInhibitor) so it's one step too.
   - **Automated controls** follow their curve and are disabled: the header's volume and pan, and the effects panel's knobs and send.
   - **Not done:** recording automation from control moves, and moving automation with clips.
+- **Third-party plugins** (VST3, AU, LV2; `src/model/PluginLibrary.h`, `src/ui/PluginWindows.h`):
+  - **Scanning:** the toolbar's Plugins button opens JUCE's `PluginListComponent` on Tracktion's `knownPluginList`, which Tracktion saves in its own settings (`~/Library/Purrlude/Settings.xml` on macOS). Plugins load only once they're in that list.
+  - **Out of process:** the app's engine (`createEngine (name, plugin_windows::Behaviour, true)`) scans in a child process: the app itself, started with a `PluginScan` command line. `PurrludeApplication::initialise` hands that to `PluginManager::startChildProcessPluginScan` before anything else, and such instances are allowed alongside the running app. Tests scan in-process.
+  - **Instruments:** `TrackInstrument::setPluginInstrument` replaces the built-in synth (one undo step) and marks the track (`purrludePluginInstrument`), so `setUp` doesn't add the GM instrument when the plugin is missing on this computer. `useBuiltInInstrument` goes back. The instrument menu lists them under Plugins.
+  - **Effects:** `track_effects::getEffects` includes `ExternalPlugin`s other than the instrument; `add (edit, track, PluginDescription)` puts one before the volume plugin. They have no knobs (`getControls` is empty): their rows have Open Window.
+  - **Loading:** both load the plugin before touching the track, so a failure returns its error and changes nothing.
+  - **Windows:** `plugin_windows::Behaviour` (a `tracktion::UIBehaviour`) makes them from Tracktion's editor; Tracktion owns and closes them. Opening one from the FX panel dismisses the call-out, which would otherwise block clicks in it.
+  - **Not yet:** automating plugin parameters, and sidechains.
+  - **Tests:** `[plugins]` uses Apple's DLSMusicDevice and AUDelay on macOS (skipped elsewhere).
 - **Shared reverb** (`src/model/SharedReverb.h`, namespace `shared_reverb`): one reverb for the whole song, fed by per-track sends.
   - **The bus** is a hidden audio track (`purrludeTrackKind="reverbBus"`) with an aux return, a fully wet reverb, volume and a meter, made with the first send. It's solo-isolated, so a soloed track keeps its reverb. `TrackInstrument::setUp` leaves it alone.
   - **Song tracks:** the bus is not a song track. Code that means "the user's tracks" (arrangement, score, live input, import, loops, export) uses `purrlude::getSongTracks`, never `tracktion::getAudioTracks`.
@@ -290,7 +299,7 @@ content/                Bundled content: LICENSES.md manifest, devices/*.json de
 src/model/              Project model on top of tracktion::Edit (Project, LiveInstrument)
 src/notation/           Notation layer: performed notes -> Score -> MusicXML (no UI)
 src/analysis/           Analysis layer: melody, chord (basic-pitch) and drum transcription, instrument separation (Demucs) (no UI, no Tracktion)
-src/ui/                 UI components (TransportBar, ArrangementView, ScoreView, PianoRoll, MidiDevicesPanel, LoopsPanel, EffectsPanel)
+src/ui/                 UI components (TransportBar, ArrangementView, ScoreView, PianoRoll, MidiDevicesPanel, LoopsPanel, EffectsPanel, PluginWindows)
 tools/content/          Scripts that generate bundled content (run by hand; output is committed)
 tools/models/           Scripts that make the ML models that are too big to commit (run by hand)
 branding/               The app icon (made from the logo by tools/branding/make_icon.py; ICON_BIG in CMakeLists.txt)

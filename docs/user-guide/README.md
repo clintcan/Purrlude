@@ -23,7 +23,7 @@ To make a PDF of the whole guide, run `python3 tools/docs/build_user_guide_pdf.p
 | 7 | [Piano Roll](07-piano-roll.md) | Adding and editing notes, quantizing |
 | 8 | [Sheet Music](08-score.md) | The live score, transposing instruments, and exporting PDF and MusicXML |
 | 9 | [Loops and Accompaniment](09-loops-and-accompaniment.md) | Drum loops, bass lines and chord parts in any key |
-| 10 | [Effects and Reverb](10-effects.md) | Reverb, delay, EQ, compressor and the shared reverb |
+| 10 | [Effects, Reverb and Plugins](10-effects.md) | Reverb, delay, EQ, compressor, the shared reverb, and VST3/AU/LV2 plugins |
 | 11 | [Audio to MIDI](11-audio-to-midi.md) | Turning melodies, chords and drums into notes, and separating a song into instruments |
 | 12 | [Importing and Exporting](12-import-export.md) | MIDI and audio files in; audio, stems, PDF and MusicXML out |
 | 13 | [Audio and MIDI Devices](13-devices.md) | Audio interfaces, MIDI keyboards, Bluetooth MIDI and playing a keyboard's own sounds |

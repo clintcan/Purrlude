@@ -1,6 +1,7 @@
 #include "MainComponent.h"
 
 #include "ui/ExportAudioDialog.h"
+#include "ui/PluginWindows.h"
 
 #include "notation/MusicXmlWriter.h"
 #include "notation/ScorePdf.h"
@@ -37,6 +38,8 @@ MainComponent::MainComponent (tracktion::Engine& e, BluetoothMidiManager& blueto
     };
 
     audioSettingsButton.onClick = [this] { showAudioSettings(); };
+    pluginsButton.setTooltip ("Third-party instruments and effects (VST3, AU, LV2): scan for them here");
+    pluginsButton.onClick = [this] { plugin_windows::showPluginList (engine); };
     devicesButton.setClickingTogglesState (true);
     devicesButton.setToggleState (true, juce::dontSendNotification);
     devicesButton.onClick = [this] { showSidePanel (devicesButton.getToggleState() ? &devicesPanel : nullptr); };
@@ -71,6 +74,7 @@ MainComponent::MainComponent (tracktion::Engine& e, BluetoothMidiManager& blueto
     addAndMakeVisible (editorTabs);
     addAndMakeVisible (fullHeightButton);   // after the tabs, so it sits on their bar
     addAndMakeVisible (audioSettingsButton);
+    addAndMakeVisible (pluginsButton);
     addAndMakeVisible (devicesButton);
     addAndMakeVisible (loopsButton);
     addAndMakeVisible (devicesPanel);
@@ -900,7 +904,8 @@ void MainComponent::resized()
 
     devicesButton.setBounds (toolbar.removeFromRight (136).reduced (6));
     loopsButton.setBounds (toolbar.removeFromRight (80).reduced (6));
-    audioSettingsButton.setBounds (toolbar.removeFromRight (186).reduced (6));
+    pluginsButton.setBounds (toolbar.removeFromRight (84).reduced (6));
+    audioSettingsButton.setBounds (toolbar.removeFromRight (130).reduced (6));
     editorsButton.setBounds (toolbar.removeFromRight (90).reduced (6));
 
     if (transportBar != nullptr)

@@ -8,6 +8,7 @@
 #include "model/LoopLibrary.h"
 #include "model/LoopRange.h"
 #include "model/NoteEditing.h"
+#include "ui/PluginWindows.h"
 #include "model/SharedReverb.h"
 #include "model/TrackEffects.h"
 #include "model/TrackInstrument.h"
@@ -385,6 +386,14 @@ void DocScreenshots::addSteps()
     then (1500, [this]
     {
         capture ("audio-settings", popupArea());
+        closePopups();
+    });
+
+    then (300, [this] { plugin_windows::showPluginList (main.engine); });
+
+    then (1500, [this]
+    {
+        capture ("plugins", popupArea());
         closePopups();
     });
 

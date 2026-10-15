@@ -124,6 +124,7 @@ private:
     std::unique_ptr<juce::FileChooser> fileChooser;
 
     juce::TextButton audioSettingsButton { "Audio Settings" };
+    juce::TextButton pluginsButton { "Plugins" };
     juce::TextButton devicesButton { "MIDI Devices" };
     juce::TextButton loopsButton { "Loops" };
     juce::TextButton editorsButton { "Editors" };

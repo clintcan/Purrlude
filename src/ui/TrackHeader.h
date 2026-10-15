@@ -76,7 +76,10 @@ private:
     juce::StringArray soundIDs, soundNames;   ///< Parallel to soundBox items; ID "" is the built-in instrument
     std::vector<DeviceTone> toneChoices;      ///< Instrument menu items when playing through a device
     int firstLearnedToneId = 0;               ///< Items from here on are learned (renamable) tones
+    std::vector<juce::PluginDescription> pluginChoices;   ///< Instrument plugins in the menu
     juce::String instrumentMenuSource;        ///< Sound source the instrument menu was built for
+    juce::String instrumentMenuPlugins;       ///< Plugin instrument and plugin list it was built for (getPluginsKey)
+    juce::String getPluginsKey() const;
     int shownChannel = 0;                     ///< The track's own channel the Sound menu shows (0: none)
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TrackHeader)

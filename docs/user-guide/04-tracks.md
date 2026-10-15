@@ -17,7 +17,7 @@ A song is made of tracks, shown top to bottom in the arrangement. There are two 
 
 Tracks are also added for you when you add loops, import files or convert audio to MIDI.
 
-<img src="images/track-menu.png" alt="A track header's right-click menu: Rename..., Delete Track" width="202">
+<img src="images/track-menu.png" alt="A track header's right-click menu: Rename..., Delete Track, Automation" width="202">
 
 <br clear="right">
 
@@ -37,6 +37,7 @@ Tracks are also added for you when you add loops, import files or convert audio 
 **The two menus:**
 - **The instrument menu** (here *Flute*) chooses the sound.
   - With built-in sounds, it lists the 128 General MIDI instruments by family (Piano, Organ, Guitar, Bass, Strings, Brass, Reed, Synth Lead, ...) and **Standard Drum Kit** under Drums.
+  - Under **Plugins** it lists the instrument plugins (VST3, AU, LV2) found on your computer. Choosing one opens its window; **Show Plugin Window** at the top of the menu opens it again. See [Plugins](10-effects.md#plugins).
   - When the track plays an external keyboard, it lists that keyboard's tones instead; see [Devices](13-devices.md#playing-a-keyboards-own-sounds).
 - **The sound menu** (here *Built-in instruments*) chooses where the track is heard: Purrlude's built-in instruments, or a connected MIDI device's own sounds.
 
@@ -65,7 +66,7 @@ A MIDI keyboard never plays an audio track: clicking one leaves the keyboard on 
 
 Every track's volume, pan, mute and solo are saved with the song and can be undone; a whole fader drag is one undo step. The **Master** meter at the left end of the ruler shows the level of the whole mix, with the same over-0 dB light as the track meters.
 
-For reverb, echo, tone and dynamics, see [Effects and Reverb](10-effects.md).
+For reverb, echo, tone and dynamics, see [Effects, Reverb and Plugins](10-effects.md).
 
 ## Automation
 

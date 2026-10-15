@@ -130,6 +130,8 @@ target_sources(purrlude_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/InstrumentSeparation.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/NoteEditing.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/NoteEditing.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/PluginLibrary.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/PluginLibrary.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/Project.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/Project.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/notation/Score.h
@@ -167,6 +169,8 @@ target_sources(purrlude_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/PianoRoll.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/TransportBar.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/TransportBar.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/PluginWindows.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/PluginWindows.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/EffectsPanel.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/EffectsPanel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/TrackHeader.h

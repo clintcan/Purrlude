@@ -14,7 +14,7 @@ Purrlude is a cross-platform music workstation for writing, recording, arranging
 - **Audio to MIDI.** It turns a recorded melody, chords or drums into notes, and can separate a mixed song into drums, bass, vocals, guitar, piano and the rest. Everything runs on your computer; no audio is sent anywhere.
 - **Recording.** It records MIDI and audio, with count-in, metronome, and loop recording into takes.
 - **Arranging and editing.** Clips can be moved, copied and resized, and there's a piano roll. Every edit can be undone, and projects autosave with crash recovery.
-- **Built-in sounds.** It has the 128 General MIDI instruments, drum loops in 14 styles, and bass and chord accompaniment in any key.
+- **Built-in sounds and plugins.** It has the 128 General MIDI instruments, drum loops in 14 styles, and bass and chord accompaniment in any key. It also loads third-party instruments and effects (VST3, Audio Units, LV2).
 - **Mixing.** Each track has volume, pan, mute and solo, plus reverb, delay, EQ and a compressor, and there's a shared reverb. Volume, pan, the reverb send and every effect control can be automated. Export as WAV, FLAC or Ogg, or as stems.
 - **Devices.** It works with any audio interface and any USB or Bluetooth MIDI keyboard. It can play a keyboard's own sounds, and play songs through multi-timbral sound modules and software synths.
 
@@ -25,7 +25,7 @@ The **[user guide](docs/user-guide/README.md)** covers all of it, with screensho
 - **Releases:** a signed, notarised macOS app to download, then Windows and Linux installers.
 - **Instrument separation for everyone:** host the Demucs model so builds can fetch it.
 - **Testing:** real use on Windows and Linux, and beta testers on other machines and devices.
-- **Missing DAW features:** recording automation (drawing it works), punch-in recording, tempo and time-signature changes within a song, MIDI learn, and loading third-party plugins (VST3/AU) from the interface.
+- **Missing DAW features:** recording automation (drawing it works), punch-in recording, tempo and time-signature changes within a song, MIDI learn, and automating plugins' controls.
 - **A stable project format** from 1.0 on, so songs saved then keep opening.
 
 ## Building

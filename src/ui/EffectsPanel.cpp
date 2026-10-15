@@ -1,6 +1,8 @@
 #include "EffectsPanel.h"
 
+#include "model/PluginLibrary.h"
 #include "model/SharedReverb.h"
+#include "ui/PluginWindows.h"
 
 namespace purrlude
 {
@@ -49,8 +51,24 @@ namespace
     };
 }
 
+namespace
+{
+    /** Opens a plugin's window, closing the call-out: while it's open, other windows can't
+        be clicked.
+    */
+    void showPluginWindow (juce::Component& inPanel, tracktion::Plugin& plugin)
+    {
+        plugin_windows::show (plugin);
+
+        if (auto* box = inPanel.findParentComponentOfClass<juce::CallOutBox>())
+            box->dismiss();
+    }
+}
+
 //==============================================================================
-/** One effect: on/off, its name, its knobs (and a delay's time), and remove. */
+/** One effect: on/off, its name, its knobs (and a delay's time), and remove. A third-party
+    plugin has a button for its own window instead of knobs.
+*/
 class EffectsPanel::EffectRow final : public juce::Component
 {
 public:
@@ -88,6 +106,25 @@ public:
         for (auto& control : track_effects::getControls (plugin))
             addKnob (plugin, control);
 
+        if (auto* external = dynamic_cast<tracktion::ExternalPlugin*> (&plugin))
+        {
+            auto loaded = external->getAudioPluginInstance() != nullptr;
+            openButton.setTooltip ("Open the plugin's own window, with all its controls");
+            openButton.setEnabled (loaded);
+            openButton.onClick = [this]
+            {
+                if (auto* p = getPlugin())
+                    showPluginWindow (*this, *p);
+            };
+            addAndMakeVisible (openButton);
+
+            pluginInfo.setText (loaded ? external->getVendor() : "Not found on this computer: install it, or remove it here",
+                                juce::dontSendNotification);
+            pluginInfo.setFont (juce::FontOptions (13.0f));
+            pluginInfo.setColour (juce::Label::textColourId, juce::Colours::lightgrey);
+            addAndMakeVisible (pluginInfo);
+        }
+
         if (kind == track_effects::Kind::delay)
         {
             for (int i = 0; i < (int) std::size (track_effects::delayTimes); ++i)
@@ -111,7 +148,7 @@ public:
             addAndMakeVisible (delayTimeLabel);
         }
 
-        for (auto* c : std::initializer_list<juce::Component*> { &power, &removeButton, &delayTime })
+        for (auto* c : std::initializer_list<juce::Component*> { &power, &removeButton, &delayTime, &openButton })
             c->setWantsKeyboardFocus (false);
 
         refresh();
@@ -158,6 +195,9 @@ public:
         }
     }
 
+    /** Third-party plugins' rows are short: their controls are in their own windows. */
+    int getPreferredHeight() const      { return openButton.isVisible() ? 76 : rowHeight; }
+
     void resized() override
     {
         auto r = getLocalBounds().reduced (8, 6);
@@ -167,6 +207,14 @@ public:
         removeButton.setBounds (top.removeFromRight (24));
         name.setBounds (top);
         r.removeFromTop (4);
+
+        if (openButton.isVisible())
+        {
+            auto line = r.removeFromTop (32);
+            openButton.setBounds (line.removeFromLeft (120).reduced (0, 2));
+            line.removeFromLeft (8);
+            pluginInfo.setBounds (line);
+        }
 
         if (delayTime.isVisible())
         {
@@ -261,6 +309,8 @@ private:
     juce::OwnedArray<Knob> knobs;
     juce::ComboBox delayTime;
     juce::Label delayTimeLabel { {}, "Time" };
+    juce::TextButton openButton { "Open Window" };
+    juce::Label pluginInfo;
 };
 
 //==============================================================================
@@ -421,8 +471,13 @@ void EffectsPanel::rebuild()
         }
     }
 
+    auto rowsHeight = rows.isEmpty() ? 60 : 0;
+
+    for (auto* row : rows)
+        rowsHeight += row->getPreferredHeight();
+
     emptyLabel.setVisible (rows.isEmpty());
-    setSize (width, headerHeight + (isBus ? 0 : sendHeight) + juce::jmax (1, rows.size()) * (rows.isEmpty() ? 60 : rowHeight) + footerHeight);
+    setSize (width, headerHeight + (isBus ? 0 : sendHeight) + rowsHeight + footerHeight);
     resized();
 }
 
@@ -450,19 +505,48 @@ void EffectsPanel::timerCallback()
 
 void EffectsPanel::showAddMenu()
 {
+    constexpr int findPluginsId = 999, firstPluginId = 1000;
+
     juce::PopupMenu menu;
     int id = 1;
 
     for (auto kind : track_effects::allKinds)
         menu.addItem (id++, track_effects::getName (kind));
 
+    // Third-party effects found on this computer.
+    auto plugins = plugin_library::getEffects (edit.engine);
+    menu.addSectionHeader ("Plugins");
+    plugin_windows::addToMenu (menu, plugins, firstPluginId);
+    menu.addItem (findPluginsId, plugins.empty() ? "Find Plugins..." : "More Plugins...");
+
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&addButton),
-                        [safe = juce::Component::SafePointer<EffectsPanel> (this)] (int result)
+                        [safe = juce::Component::SafePointer<EffectsPanel> (this), plugins] (int result)
     {
         if (safe == nullptr || result <= 0)
             return;
 
-        if (auto* track = safe->getTrack())
+        auto* track = safe->getTrack();
+
+        if (result == findPluginsId)
+        {
+            plugin_windows::showPluginList (safe->edit.engine);
+        }
+        else if (juce::isPositiveAndBelow (result - firstPluginId, (int) plugins.size()) && track != nullptr)
+        {
+            auto description = plugins[(size_t) (result - firstPluginId)];
+
+            if (auto error = track_effects::add (safe->edit, *track, description); error.isNotEmpty())
+            {
+                juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't load " + description.name, error);
+                return;
+            }
+
+            safe->rebuild();
+
+            if (auto effects = track_effects::getEffects (*track); ! effects.isEmpty())
+                showPluginWindow (*safe, *effects.getLast());
+        }
+        else if (juce::isPositiveAndBelow (result - 1, (int) std::size (track_effects::allKinds)) && track != nullptr)
         {
             track_effects::add (safe->edit, *track, track_effects::allKinds[result - 1]);
             safe->rebuild();
@@ -506,7 +590,7 @@ void EffectsPanel::resized()
         emptyLabel.setBounds (r);
 
     for (auto* row : rows)
-        row->setBounds (r.removeFromTop (rowHeight));
+        row->setBounds (r.removeFromTop (row->getPreferredHeight()));
 }
 
 } // namespace purrlude

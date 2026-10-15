@@ -6,7 +6,8 @@ namespace purrlude
 {
 
 /** A track's effects: Tracktion's built-in reverb, delay, EQ and compressor, each with a few
-    friendly controls.
+    friendly controls, and third-party effect plugins (VST3, AU, LV2), which have their own
+    windows.
 
     Effects go after the track's instrument (or its audio clips) and before its volume
     plugin, so the fader and meter still show the final level. Adding, removing and
@@ -23,7 +24,9 @@ namespace track_effects
     /** Which kind an effect plugin is, or nullopt if it isn't one of ours. */
     std::optional<Kind> getKind (const tracktion::Plugin&);
 
-    /** The track's effects, in the order the sound goes through them. */
+    /** The track's effects, in the order the sound goes through them: built-in ones and
+        third-party plugins (not a plugin playing as the track's instrument).
+    */
     juce::Array<tracktion::Plugin*> getEffects (tracktion::AudioTrack&);
 
     /** Adds an effect at the end of the track's effects, with sensible settings (e.g. a reverb
@@ -31,13 +34,20 @@ namespace track_effects
     */
     tracktion::Plugin* add (tracktion::Edit&, tracktion::AudioTrack&, Kind);
 
+    /** Adds a third-party effect plugin at the end of the track's effects. One undo step.
+        Returns why it couldn't be loaded (nothing is added then), or an empty string.
+    */
+    juce::String add (tracktion::Edit&, tracktion::AudioTrack&, const juce::PluginDescription&);
+
     /** Removes an effect. One undo step. */
     void remove (tracktion::Edit&, tracktion::Plugin&);
 
     /** Switches an effect on or off (off, the sound passes through untouched). One undo step. */
     void setEnabled (tracktion::Edit&, tracktion::Plugin&, bool);
 
-    /** An effect's controls: its main parameters, with short names. */
+    /** An effect's controls: its main parameters, with short names. None for a third-party
+        plugin: its own window has them.
+    */
     struct Control
     {
         juce::String label;

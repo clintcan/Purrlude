@@ -17,6 +17,7 @@ namespace
     const juce::Identifier toneProperty            { "purrludeDeviceTone" };   // "msb lsb program" or absent
     const juce::Identifier toneNameProperty        { "purrludeDeviceToneName" };
     const juce::Identifier kindProperty            { "purrludeTrackKind" };   // "audio", or absent for instrument tracks
+    const juce::Identifier pluginInstrumentProperty { "purrludePluginInstrument" };   // true: a third-party instrument plays
 
     constexpr const char* allMidiInsID = "all_midi_in";
 
@@ -83,8 +84,9 @@ void TrackInstrument::setUp (tracktion::Edit& edit, tracktion::AudioTrack& track
     TrackInstrument instrument (edit, track);
     auto* existing = findSynth (track);
 
-    // Audio tracks play their clips: no instrument, just volume, pan and a meter.
-    if (isAudioTrack (track))
+    // Audio tracks play their clips: no instrument, just volume, pan and a meter. A
+    // third-party instrument stays, even when it isn't installed here.
+    if (isAudioTrack (track) || findPluginInstrument (track) != nullptr)
     {
         addMixPlugins (edit, track);
         return;
@@ -132,6 +134,85 @@ void TrackInstrument::addMixPlugins (tracktion::Edit& edit, tracktion::AudioTrac
     if (track.getLevelMeterPlugin() == nullptr)
         if (auto meter = edit.getPluginCache().createNewPlugin (tracktion::LevelMeterPlugin::xmlTypeName, {}))
             track.pluginList.insertPlugin (meter, -1, nullptr);
+}
+
+//==============================================================================
+juce::String TrackInstrument::setPluginInstrument (const juce::PluginDescription& description)
+{
+    auto* track = getTrack();
+
+    if (track == nullptr)
+        return "The track is gone.";
+
+    // Loaded before it's put on the track, so a plugin that fails leaves the track alone.
+    auto plugin = edit.getPluginCache().createNewPlugin (tracktion::ExternalPlugin::xmlTypeName, description);
+    auto* external = dynamic_cast<tracktion::ExternalPlugin*> (plugin.get());
+
+    if (external == nullptr)
+        return "Purrlude couldn't create " + description.name + ".";
+
+    if (auto error = external->getLoadError(); error.isNotEmpty())
+        return error;
+
+    auto& um = edit.getUndoManager();
+    um.beginNewTransaction ("Choose " + description.name);
+
+    // Where the old instrument was (after a sound source's patch bay), else first.
+    auto* old = getPluginInstrument() != nullptr ? getPluginInstrument() : findSynth (*track);
+    auto index = old != nullptr ? track->pluginList.indexOf (old) : 0;
+
+    if (old != nullptr)
+        old->deleteFromParent();
+
+    track->pluginList.insertPlugin (plugin, index, nullptr);
+    track->state.setProperty (pluginInstrumentProperty, true, &um);
+    plugin->setEnabled (getSoundSourceID().isEmpty());   // off while a device plays: MIDI passes through
+    return {};
+}
+
+void TrackInstrument::useBuiltInInstrument()
+{
+    auto* track = getTrack();
+    auto* plugin = track != nullptr ? findPluginInstrument (*track) : nullptr;
+
+    if (plugin == nullptr)
+        return;
+
+    auto& um = edit.getUndoManager();
+    um.beginNewTransaction ("Choose a built-in instrument");
+
+    auto index = track->pluginList.indexOf (plugin);
+    plugin->deleteFromParent();
+    track->state.removeProperty (pluginInstrumentProperty, &um);
+
+    auto type = SoundFontPlugin::isAvailable() ? SoundFontPlugin::xmlTypeName : tracktion::FourOscPlugin::xmlTypeName;
+
+    if (auto synth = edit.getPluginCache().createNewPlugin (type, {}))
+    {
+        track->pluginList.insertPlugin (synth, index, nullptr);
+        synth->setEnabled (getSoundSourceID().isEmpty());
+    }
+
+    setProgram (getProgram());
+}
+
+tracktion::ExternalPlugin* TrackInstrument::getPluginInstrument() const
+{
+    auto* track = getTrack();
+    return track != nullptr ? findPluginInstrument (*track) : nullptr;
+}
+
+tracktion::ExternalPlugin* TrackInstrument::findPluginInstrument (tracktion::AudioTrack& track)
+{
+    if (! (bool) track.state.getProperty (pluginInstrumentProperty, false))
+        return nullptr;
+
+    // The first third-party plugin: it took the built-in instrument's place, before any effects.
+    for (auto* plugin : track.pluginList)
+        if (auto* external = dynamic_cast<tracktion::ExternalPlugin*> (plugin))
+            return external;
+
+    return nullptr;
 }
 
 tracktion::AudioTrack* TrackInstrument::getTrack() const

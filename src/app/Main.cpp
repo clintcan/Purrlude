@@ -1,6 +1,7 @@
 #include "DocScreenshots.h"
 #include "MainComponent.h"
 #include "model/EngineSetup.h"
+#include "ui/PluginWindows.h"
 
 namespace purrlude
 {
@@ -56,10 +57,20 @@ class PurrludeApplication final : public juce::JUCEApplication
 public:
     const juce::String getApplicationName() override       { return JUCE_APPLICATION_NAME_STRING; }
     const juce::String getApplicationVersion() override    { return JUCE_APPLICATION_VERSION_STRING; }
-    bool moreThanOneInstanceAllowed() override             { return getScreenshotFolder() != juce::File(); }
+    bool moreThanOneInstanceAllowed() override             { return getScreenshotFolder() != juce::File() || isPluginScanner(); }
 
-    void initialise (const juce::String&) override
+    void initialise (const juce::String& commandLine) override
     {
+        // Started by the Plugins window to scan plugins (so a plugin that crashes takes only
+        // this process down): scan, and quit when the app is done with it.
+        if (tracktion::PluginManager::startChildProcessPluginScan (commandLine))
+        {
+           #if JUCE_MAC
+            juce::Process::setDockIconVisible (false);
+           #endif
+            return;
+        }
+
         juce::PropertiesFile::Options options;
         options.applicationName = getApplicationName();
         options.folderName = getApplicationName();
@@ -81,7 +92,7 @@ public:
         look.setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xff0072b2));   // Okabe-Ito blue
         look.setColour (juce::TextButton::textColourOnId, juce::Colours::white);
 
-        engine = createEngine (getApplicationName());
+        engine = createEngine (getApplicationName(), std::make_unique<plugin_windows::Behaviour>(), true);
         bluetooth = std::make_unique<BluetoothMidiManager> (BleMidiService::createForPlatform(),
                                                             *settings.getUserSettings());
         deviceSettings = std::make_unique<MidiDeviceSettings> (*settings.getUserSettings());
@@ -97,6 +108,7 @@ public:
         // The window (and the Edit it owns) must go before the engine.
         docScreenshots = nullptr;
         mainWindow = nullptr;
+        plugin_windows::closePluginList();
         ScoreView::waitForClosedRenderThreads();   // an engraving left running by the closed score view
         deviceSettings = nullptr;
         bluetooth = nullptr;
@@ -126,6 +138,12 @@ public:
     }
 
 private:
+    static bool isPluginScanner()
+    {
+        // Tracktion's PluginScanHelpers::commandLineUID, which its public headers don't include.
+        return getCommandLineParameters().contains ("PluginScan");
+    }
+
     /** `--doc-screenshots <folder>`: take the user guide's screenshots there (DocScreenshots). */
     static juce::File getScreenshotFolder()
     {

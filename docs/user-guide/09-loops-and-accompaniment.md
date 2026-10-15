@@ -1,6 +1,6 @@
 # 9. Loops and Accompaniment
 
-[← Sheet Music](08-score.md) · [Contents](README.md) · [Next: Effects and Reverb →](10-effects.md)
+[← Sheet Music](08-score.md) · [Contents](README.md) · [Next: Effects, Reverb and Plugins →](10-effects.md)
 
 <img src="images/loops-drums.png" alt="The Loops panel in Drums mode, with Rock loops listed" width="340" align="right">
 

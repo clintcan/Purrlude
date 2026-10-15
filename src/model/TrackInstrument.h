@@ -79,6 +79,25 @@ public:
     /** Sends the device tone (Bank Select + Program Change) if there is one. */
     void sendToneToDevice() const;
 
+    //==============================================================================
+    /** A third-party instrument plugin (VST3, AU, LV2) in place of the built-in one. One
+        undo step. Returns why it couldn't be loaded (the track is then left as it was), or
+        an empty string.
+
+        The track is marked as playing a plugin, so the GM instrument doesn't replace one
+        that's missing on this computer: the plugin comes back where it's installed.
+    */
+    juce::String setPluginInstrument (const juce::PluginDescription&);
+
+    /** Back to the built-in General MIDI instrument, on the track's program. One undo step. */
+    void useBuiltInInstrument();
+
+    /** The instrument plugin, or nullptr when the built-in instrument plays. It may have
+        failed to load (getLoadError()).
+    */
+    tracktion::ExternalPlugin* getPluginInstrument() const;
+    static tracktion::ExternalPlugin* findPluginInstrument (tracktion::AudioTrack&);
+
     /** False if the GM SoundFont wasn't found and the placeholder synth plays instead. */
     bool hasGeneralMidiSynth() const;
 

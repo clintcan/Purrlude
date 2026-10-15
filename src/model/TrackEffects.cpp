@@ -1,6 +1,7 @@
 #include "TrackEffects.h"
 
 #include "SharedReverb.h"
+#include "TrackInstrument.h"
 
 namespace purrlude::track_effects
 {
@@ -18,6 +19,16 @@ namespace
         }
 
         return "";
+    }
+
+    /** Puts an effect at the end of the track's effects: before the volume plugin, so the
+        fader and meter come last.
+    */
+    void insertEffect (tracktion::AudioTrack& track, const tracktion::Plugin::Ptr& plugin)
+    {
+        auto* volume = track.getVolumePlugin();
+        auto index = volume != nullptr ? track.pluginList.indexOf (volume) : -1;
+        track.pluginList.insertPlugin (plugin, index, nullptr);
     }
 
     void setParameter (tracktion::Plugin& plugin, const char* id, float value)
@@ -60,9 +71,10 @@ std::optional<Kind> getKind (const tracktion::Plugin& plugin)
 juce::Array<tracktion::Plugin*> getEffects (tracktion::AudioTrack& track)
 {
     juce::Array<tracktion::Plugin*> effects;
+    auto* instrument = TrackInstrument::findPluginInstrument (track);
 
     for (auto* plugin : track.pluginList.getPlugins())
-        if (getKind (*plugin))
+        if (getKind (*plugin) || (dynamic_cast<tracktion::ExternalPlugin*> (plugin) != nullptr && plugin != instrument))
             effects.add (plugin);
 
     return effects;
@@ -78,11 +90,7 @@ tracktion::Plugin* add (tracktion::Edit& edit, tracktion::AudioTrack& track, Kin
     if (plugin == nullptr)
         return nullptr;
 
-    // Before the volume plugin (and so after any effects already there), so the fader and
-    // meter come last.
-    auto* volume = track.getVolumePlugin();
-    auto index = volume != nullptr ? track.pluginList.indexOf (volume) : -1;
-    track.pluginList.insertPlugin (plugin, index, nullptr);
+    insertEffect (track, plugin);
 
     // Starting points that make the effect clearly heard without overwhelming the track. On
     // the shared reverb's bus, reverbs and delays are fully wet: the dry sound comes from the
@@ -122,9 +130,26 @@ tracktion::Plugin* add (tracktion::Edit& edit, tracktion::AudioTrack& track, Kin
     return plugin.get();
 }
 
+juce::String add (tracktion::Edit& edit, tracktion::AudioTrack& track, const juce::PluginDescription& description)
+{
+    // Loaded before it's put on the track, so a plugin that fails changes nothing.
+    auto plugin = edit.getPluginCache().createNewPlugin (tracktion::ExternalPlugin::xmlTypeName, description);
+    auto* external = dynamic_cast<tracktion::ExternalPlugin*> (plugin.get());
+
+    if (external == nullptr)
+        return "Purrlude couldn't create " + description.name + ".";
+
+    if (auto error = external->getLoadError(); error.isNotEmpty())
+        return error;
+
+    edit.getUndoManager().beginNewTransaction ("Add " + description.name);
+    insertEffect (track, plugin);
+    return {};
+}
+
 void remove (tracktion::Edit& edit, tracktion::Plugin& plugin)
 {
-    edit.getUndoManager().beginNewTransaction ("Remove " + (getKind (plugin) ? getName (*getKind (plugin)) : juce::String ("effect")));
+    edit.getUndoManager().beginNewTransaction ("Remove " + (getKind (plugin) ? getName (*getKind (plugin)) : plugin.getName()));
     plugin.deleteFromParent();
 }
 
@@ -138,7 +163,10 @@ std::vector<Control> getControls (tracktion::Plugin& plugin)
 {
     std::vector<std::pair<const char*, const char*>> ids;   // label, parameter id
 
-    switch (getKind (plugin).value_or (Kind::reverb))
+    if (! getKind (plugin))
+        return {};
+
+    switch (*getKind (plugin))
     {
         case Kind::reverb:      ids = { { "Size", "room size" }, { "Damping", "damping" }, { "Amount", "wet level" } }; break;
         case Kind::delay:       ids = { { "Feedback", "feedback" }, { "Mix", "mix proportion" } }; break;

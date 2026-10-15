@@ -10,6 +10,8 @@
 #include "ui/EffectsPanel.h"
 #include "instruments/GeneralMidi.h"
 #include "model/SharedReverb.h"
+#include "model/PluginLibrary.h"
+#include "ui/PluginWindows.h"
 
 namespace purrlude
 {
@@ -58,6 +60,10 @@ namespace
     constexpr int firstToneId = 2;        // device mode: tones
     constexpr int renameToneId = 10000;   // device mode: rename the selected tone
     constexpr int gmDrumKitId = 10001;    // device mode, General MIDI: the drum kit (channel 10)
+    constexpr int pluginInstrumentId = 19997;   // built-in mode: the plugin playing now
+    constexpr int showPluginId = 19998;         // built-in mode: open the plugin's window
+    constexpr int findPluginsId = 19999;        // built-in mode: the Plugins window
+    constexpr int firstPluginId = 20000;        // built-in mode: instrument plugins
 }
 
 TrackHeader::TrackHeader (tracktion::Edit& e, LiveInstrument& l, MidiDeviceSettings& s, tracktion::EditItemID id)
@@ -188,7 +194,7 @@ TrackHeader::TrackHeader (tracktion::Edit& e, LiveInstrument& l, MidiDeviceSetti
     };
     addAndMakeVisible (panKnob);
 
-    instrumentBox.setTooltip ("The instrument this track plays: a built-in sound, or a tone on the device");
+    instrumentBox.setTooltip ("The instrument this track plays: a built-in sound, a plugin, or a tone on the device");
     instrumentBox.onChange = [this] { instrumentChosen(); };
     addAndMakeVisible (instrumentBox);
 
@@ -285,7 +291,7 @@ void TrackHeader::refresh()
     effectsButton.setEnabled (! external);
     effectsButton.setTooltip (external ? "Effects work on Purrlude's built-in sounds; this track plays on "
                                              + instrument.getSoundSourceName() + "."
-                                       : "Effects: the shared reverb, and this track's reverb, delay, EQ and compressor");
+                                       : "Effects: the shared reverb, and this track's reverb, delay, EQ, compressor and plugins");
 
     // An automated volume or pan follows its curve: the control shows it and can't be moved.
     auto* volumePlugin = track != nullptr ? track->getVolumePlugin() : nullptr;
@@ -308,7 +314,8 @@ void TrackHeader::refresh()
     {
         auto channel = instrument.hasOwnChannel() ? instrument.getOutputChannel() : 0;
 
-        if (instrumentMenuSource != getInstrument().getSoundSourceID() || channel != shownChannel)
+        if (instrumentMenuSource != getInstrument().getSoundSourceID() || channel != shownChannel
+             || instrumentMenuPlugins != getPluginsKey())
             updateChoices();
         else if (instrumentBox.getSelectedId() != getSelectedInstrumentId())
             instrumentBox.setSelectedId (getSelectedInstrumentId(), juce::dontSendNotification);
@@ -574,7 +581,8 @@ int TrackHeader::getSelectedInstrumentId() const
     auto instrument = getInstrument();
 
     if (instrument.getSoundSourceID().isEmpty())
-        return instrument.getProgram() + 1;   // GM program + 1
+        return instrument.getPluginInstrument() != nullptr ? pluginInstrumentId
+                                                           : instrument.getProgram() + 1;   // GM program + 1
 
     if (instrument.playsDrumKit())
         return gmDrumKitId;
@@ -591,11 +599,22 @@ void TrackHeader::updateInstrumentChoices()
 {
     auto instrument = getInstrument();
     instrumentMenuSource = instrument.getSoundSourceID();
+    instrumentMenuPlugins = getPluginsKey();
     instrumentBox.clear (juce::dontSendNotification);
     toneChoices.clear();
+    pluginChoices.clear();
 
     if (instrumentMenuSource.isEmpty())
     {
+        // A plugin playing: its name (it's what the box shows), and its window.
+        if (auto* plugin = instrument.getPluginInstrument())
+        {
+            auto loaded = plugin->getAudioPluginInstance() != nullptr;
+            instrumentBox.addItem (plugin->getName() + (loaded ? juce::String() : juce::String (" (not found)")), pluginInstrumentId);
+            instrumentBox.getRootMenu()->addItem (showPluginId, "Show Plugin Window", loaded);
+            instrumentBox.addSeparator();
+        }
+
         // Built-in: the 128 General MIDI sounds by family, plus the drum kit. Item ID = program + 1.
         for (size_t family = 0; family < gm::familyNames.size(); ++family)
         {
@@ -610,6 +629,12 @@ void TrackHeader::updateInstrumentChoices()
 
         instrumentBox.addSectionHeading ("Drums");
         instrumentBox.addItem (gm::getName (gm::drumKit), gm::drumKit + 1);
+
+        // Third-party instruments found on this computer.
+        pluginChoices = plugin_library::getInstruments (edit.engine);
+        instrumentBox.addSectionHeading ("Plugins");
+        plugin_windows::addToMenu (*instrumentBox.getRootMenu(), pluginChoices, firstPluginId);
+        instrumentBox.addItem (pluginChoices.empty() ? "Find Plugins..." : "More Plugins...", findPluginsId);
     }
     else
     {
@@ -704,8 +729,31 @@ void TrackHeader::instrumentChosen()
 
     if (instrument.getSoundSourceID().isEmpty())
     {
-        if (id > 0)
+        if (id == showPluginId || id == findPluginsId || id == pluginInstrumentId)
+        {
+            instrumentBox.setSelectedId (getSelectedInstrumentId(), juce::dontSendNotification);
+
+            if (id == findPluginsId)
+                plugin_windows::showPluginList (edit.engine);
+            else if (auto* plugin = instrument.getPluginInstrument(); plugin != nullptr && id == showPluginId)
+                plugin_windows::show (*plugin);
+        }
+        else if (juce::isPositiveAndBelow (id - firstPluginId, (int) pluginChoices.size()))
+        {
+            auto description = pluginChoices[(size_t) (id - firstPluginId)];
+            auto error = instrument.setPluginInstrument (description);
+            updateChoices();
+
+            if (error.isNotEmpty())
+                juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't load " + description.name, error);
+            else if (auto* plugin = instrument.getPluginInstrument())
+                plugin_windows::show (*plugin);
+        }
+        else if (id > 0)
+        {
+            instrument.useBuiltInInstrument();
             instrument.setProgram (id - 1);
+        }
 
         return;
     }
@@ -745,6 +793,13 @@ void TrackHeader::instrumentChosen()
 
         instrument.setDeviceTone (tone);
     }
+}
+
+juce::String TrackHeader::getPluginsKey() const
+{
+    auto* plugin = getInstrument().getPluginInstrument();
+    return (plugin != nullptr ? plugin->itemID.toString() + (plugin->getAudioPluginInstance() != nullptr ? "+" : "-") : juce::String())
+           + "/" + juce::String (edit.engine.getPluginManager().knownPluginList.getNumTypes());
 }
 
 void TrackHeader::renameCurrentTone()
