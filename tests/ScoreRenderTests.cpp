@@ -193,11 +193,28 @@ TEST_CASE ("A score drawing looks like the JUCE drawable, and highlights notes",
         return image;
     };
 
-    auto drawable = juce::Drawable::createFromSVG (*prepared);
+    // The music is compared without its text: JUCE's DrawableText and ScoreDrawing's glyph outlines
+    // can place text a fraction of a pixel apart, and further apart with Linux's fonts.
+    auto music = std::make_unique<juce::XmlElement> (*prepared);
+    std::function<void (juce::XmlElement&)> removeText = [&] (juce::XmlElement& e)
+    {
+        for (int i = e.getNumChildElements(); --i >= 0;)
+            if (e.getChildElement (i)->hasTagName ("text"))
+                e.removeChildElement (e.getChildElement (i), true);
+            else
+                removeText (*e.getChildElement (i));
+    };
+    removeText (*music);
+
+    auto musicDrawing = ScoreDrawing::create (*music);
+    auto drawable = juce::Drawable::createFromSVG (*music);
+    REQUIRE (musicDrawing != nullptr);
     REQUIRE (drawable != nullptr);
-    auto expected = render ([&] (juce::Graphics& g) { drawScore (g, *drawable, *prepared, { 10.0f, 10.0f }); });
+    CHECK (drawing->getNumShapes() > musicDrawing->getNumShapes());   // the text is there too
+
+    auto expected = render ([&] (juce::Graphics& g) { drawScore (g, *drawable, *music, { 10.0f, 10.0f }); });
     auto transform = getScoreTransform (*prepared, { 10.0f, 10.0f });
-    auto actual = render ([&] (juce::Graphics& g) { drawing->draw (g, transform, juce::Colours::blue); });
+    auto actual = render ([&] (juce::Graphics& g) { musicDrawing->draw (g, transform, juce::Colours::blue); });
 
     int inked = 0, different = 0;
 
@@ -213,10 +230,9 @@ TEST_CASE ("A score drawing looks like the JUCE drawable, and highlights notes",
                 ++different;
         }
 
-    // The music matches exactly; text can sit a fraction of a pixel differently, which shows at its edges.
     INFO (different << " of " << inked << " inked pixels differ");
     CHECK (inked > 2000);
-    CHECK (different < inked / 25);
+    CHECK (different < inked / 100);
 
     if (auto dump = juce::SystemStats::getEnvironmentVariable ("PURRLUDE_PNG_DUMP", {}); juce::File::isAbsolutePath (dump))
     {
