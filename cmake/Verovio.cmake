@@ -5,6 +5,18 @@
 # Its glyph data (fonts and the text glyph files) is needed at runtime: tests read it from
 # the source tree (PURRLUDE_VEROVIO_DATA) and the app copies it next to itself.
 
+# CPM applies PATCHES with the first `patch` on the PATH. On Windows that can be Strawberry
+# Perl's, which fails with "Assertation failed!" (it did on GitHub's windows-latest runners), so
+# use the one that comes with Git for Windows.
+if(WIN32 AND NOT PATCH_EXECUTABLE)
+    find_package(Git QUIET)
+
+    if(GIT_EXECUTABLE)
+        get_filename_component(git_dir "${GIT_EXECUTABLE}" DIRECTORY)
+        find_program(PATCH_EXECUTABLE patch HINTS "${git_dir}/../usr/bin" "${git_dir}/../../usr/bin" NO_DEFAULT_PATH)
+    endif()
+endif()
+
 CPMAddPackage(
     NAME verovio
     URL https://github.com/rism-digital/verovio/archive/refs/tags/version-6.3.0.tar.gz
