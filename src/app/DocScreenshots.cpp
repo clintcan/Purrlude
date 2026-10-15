@@ -4,6 +4,7 @@
 
 #include "model/Accompaniment.h"
 #include "model/AudioImport.h"
+#include "model/Automation.h"
 #include "model/LoopLibrary.h"
 #include "model/LoopRange.h"
 #include "model/NoteEditing.h"
@@ -151,6 +152,45 @@ void DocScreenshots::addSteps()
     });
 
     then (1500, [this] { capture ("arrangement"); });
+
+    // Automation: the melody fades in over two bars, holds, and dips at the end.
+    then (0, [getEdit, trackAt]
+    {
+        auto& edit = getEdit();
+        auto* melody = trackAt (0);
+        auto targets = automation::getTargets (*melody);
+
+        if (targets.empty())
+            return;
+
+        auto& volume = *automation::findParameter (*melody, targets[0]);
+        auto at = [&] (double beat) { return edit.tempoSequence.toTime (tracktion::BeatPosition::fromBeats (beat)); };
+        auto db = [] (float decibels) { return tracktion::decibelsToVolumeFaderPosition (decibels); };
+
+        automation::addPoint (edit, volume, at (0.0), db (-30.0f));
+        automation::addPoint (edit, volume, at (8.0), db (0.0f));
+        automation::addPoint (edit, volume, at (24.0), db (0.0f));
+        automation::addPoint (edit, volume, at (28.0), db (-9.0f));
+        automation::addPoint (edit, volume, at (32.0), db (-3.0f));
+        automation::setShown (*melody, targets[0]);
+    });
+
+    then (1200, [this, headerFor]
+    {
+        if (auto* header = headerFor (0))
+            capture ("automation", boundsInMain (*header).withRight (main.getWidth()).withTop (boundsInMain (*header).getY() - 40).expanded (0, 6));
+    });
+
+    then (0, [getEdit, trackAt]
+    {
+        auto* melody = trackAt (0);
+
+        if (auto targets = automation::getTargets (*melody); ! targets.empty())
+        {
+            automation::clear (getEdit(), *automation::findParameter (*melody, targets[0]));
+            automation::setShown (*melody, std::nullopt);
+        }
+    });
 
     then (0, [this]
     {

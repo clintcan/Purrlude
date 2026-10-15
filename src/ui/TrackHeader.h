@@ -12,7 +12,7 @@ namespace purrlude
 /** The header of one track in the arrangement: its name (double-click to rename),
     record arm, mute, solo, effects (FX), volume, pan and level meter; for an instrument track the
     Instrument and Sound menus, for an audio track its input and input monitoring. Clicking an instrument track's header selects it for live
-    input; right-click for Rename and Delete (and, on a multi-part device, the track's MIDI channel).
+    input; right-click for Rename, Delete, Automation (and, on a multi-part device, the track's MIDI channel).
 */
 class TrackHeader final : public juce::Component
 {
@@ -24,6 +24,9 @@ public:
 
     /** Brings the controls in line with the model (selection, arm, menus). Call regularly. */
     void refresh();
+
+    /** The automation menu: which parameter's curve the track's lane shows (or none). */
+    void showAutomationMenu (juce::Rectangle<int> screenArea);
 
     /** Rebuilds the Sound and Instrument menus (devices or learned tones changed). */
     void updateChoices();

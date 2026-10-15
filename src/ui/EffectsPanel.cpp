@@ -134,9 +134,16 @@ public:
         power.setToggleState (plugin->isEnabled(), juce::dontSendNotification);
         power.setButtonText (plugin->isEnabled() ? "On" : "Off");
 
+        // An automated control follows its curve: it shows the value and can't be turned.
         for (auto* knob : knobs)
+        {
+            auto automated = knob->parameter->hasAutomationPoints();
+            knob->slider.setEnabled (! automated);
+            knob->slider.setTooltip (automated ? "Follows its automation (right-click the track > Automation)" : juce::String());
+
             if (! knob->slider.isMouseButtonDown())
                 knob->slider.setValue (knob->parameter->getCurrentValue(), juce::dontSendNotification);
+        }
 
         if (delayTime.isVisible() && ! delayTime.isPopupActive())
         {
@@ -364,6 +371,10 @@ void EffectsPanel::refreshSend()
 
     auto* track = getTrack();
     auto* send = track != nullptr ? shared_reverb::findSend (*track) : nullptr;
+    auto automated = send != nullptr && send->gain->hasAutomationPoints();
+    sendKnob.setEnabled (! automated);
+    sendKnob.setTooltip (automated ? "The send follows its automation (right-click the track > Automation)"
+                                   : "How much of this track goes to the shared reverb (double-click for none)");
     sendKnob.setValue (send != nullptr ? send->gain->getCurrentValue() : 0.0f, juce::dontSendNotification);
     sendKnob.updateText();
 }

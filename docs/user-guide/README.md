@@ -17,7 +17,7 @@ To make a PDF of the whole guide, run `python3 tools/docs/build_user_guide_pdf.p
 | 1 | [Getting Started](01-getting-started.md) | The window, and a first song in a few minutes |
 | 2 | [Projects](02-projects.md) | New, open, save, autosave and recovering unsaved work |
 | 3 | [Transport, Tempo and Looping](03-transport.md) | Play, record, tempo, time signature, metronome, count-in and loop playback |
-| 4 | [Tracks and Mixing](04-tracks.md) | Instrument and audio tracks, sounds, volume, pan, mute and solo |
+| 4 | [Tracks and Mixing](04-tracks.md) | Instrument and audio tracks, sounds, volume, pan, mute, solo and automation |
 | 5 | [Arranging Clips](05-arrangement.md) | Moving, copying, resizing and deleting clips, zooming and scrolling |
 | 6 | [Recording](06-recording.md) | Recording MIDI and audio, inputs, monitoring, and loop recording with takes |
 | 7 | [Piano Roll](07-piano-roll.md) | Adding and editing notes, quantizing |

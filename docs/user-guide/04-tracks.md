@@ -67,4 +67,37 @@ Every track's volume, pan, mute and solo are saved with the song and can be undo
 
 For reverb, echo, tone and dynamics, see [Effects and Reverb](10-effects.md).
 
+## Automation
+
+Automation makes a setting change over time: a fade-in, a louder chorus, a pan from left to right, or more echo at the end.
+
+<img src="images/automation.png" alt="The Melody track showing its volume automation: a line fading in over two bars, holding, and dipping near the end, drawn over the dimmed clips" width="100%">
+
+**Choosing what to automate:**
+1. Right-click the track's header and open **Automation**.
+2. Choose what to automate:
+   - **Volume** or **Pan**
+   - **Reverb send**, if the track sends to the shared reverb
+   - any control of the track's effects, such as **Delay Mix** or **EQ Low**
+3. The setting's line appears over the track's lane, with the clips dimmed beneath it. A dot (•) in the menu marks settings that already have automation.
+
+**Drawing it:**
+- **Add a point:** click in the lane. Drag as you click to place it.
+- **Move a point:** drag it. It stays between its neighbours. Hold **Shift** to snap it to beats.
+- **Remove a point:** double-click it, or right-click it and choose **Delete Point**.
+- **Remove all of it:** right-click the lane and choose **Clear … Automation**. The setting goes back to its own value.
+- **Show another setting, or none:** click the label at the top left of the lane (it shows the setting and its value at the playhead), or right-click the lane and choose **Hide Automation**. Hiding the line doesn't remove it: the setting keeps following it.
+
+**How it plays:**
+- Between points the setting changes in a straight line. Before the first point and after the last, it holds that point's value.
+- Automation is heard in playback and in exported audio.
+- An automated control follows its line and can't be moved by hand; its tooltip says why. Clear the automation to set it by hand again.
+- Points stay on their beats when you change the tempo.
+- Every change can be undone, and a whole drag is one step.
+
+**Limits:**
+- **No recording:** moving a control during playback doesn't record automation yet; draw it instead.
+- **Tracks playing a keyboard's own sounds** can't be automated, as with effects.
+- **Clips:** moving a clip doesn't move the automation over it.
+
 **External sounds:** when a track plays a MIDI keyboard's own sounds, its volume and pan are sent to the keyboard (as MIDI CC 7 and 10). Its meter stays empty and effects aren't available, since the sound is made by the keyboard.

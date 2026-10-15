@@ -1,6 +1,7 @@
 #include "TrackHeader.h"
 
 #include "model/AudioInputs.h"
+#include "model/Automation.h"
 #include "model/DeviceChannels.h"
 
 #include "devices/DeviceLibrary.h"
@@ -286,11 +287,21 @@ void TrackHeader::refresh()
                                              + instrument.getSoundSourceName() + "."
                                        : "Effects: the shared reverb, and this track's reverb, delay, EQ and compressor");
 
+    // An automated volume or pan follows its curve: the control shows it and can't be moved.
+    auto* volumePlugin = track != nullptr ? track->getVolumePlugin() : nullptr;
+    auto automatedVolume = volumePlugin != nullptr && automation::isAutomated (*volumePlugin->volParam);
+    auto automatedPan = volumePlugin != nullptr && automation::isAutomated (*volumePlugin->panParam);
+    volumeSlider.setEnabled (! automatedVolume);
+    panKnob.setEnabled (! automatedPan);
+    volumeSlider.setTooltip (automatedVolume ? "Volume follows its automation (right-click the track > Automation)" : "Volume (double-click for 0 dB)");
+    panKnob.setTooltip (automatedPan ? "Pan follows its automation (right-click the track > Automation)" : "Pan (double-click to centre)");
+
     if (! volumeSlider.isMouseButtonDown())
-        volumeSlider.setValue (juce::jmax (-60.0f, instrument.getVolumeDb()), juce::dontSendNotification);
+        volumeSlider.setValue (juce::jmax (-60.0f, automatedVolume ? tracktion::volumeFaderPositionToDB (volumePlugin->volParam->getCurrentValue())
+                                                                   : instrument.getVolumeDb()), juce::dontSendNotification);
 
     if (! panKnob.isMouseButtonDown())
-        panKnob.setValue (instrument.getPan(), juce::dontSendNotification);
+        panKnob.setValue (automatedPan ? volumePlugin->panParam->getCurrentValue() : instrument.getPan(), juce::dontSendNotification);
 
     // The sound source, undo, or a tone picked on the keyboard can change the instrument behind the menu's back.
     if (! audio && ! instrumentBox.isPopupActive())
@@ -442,6 +453,30 @@ void TrackHeader::showMenu()
     menu.addItem (1, "Rename...");
     menu.addItem (2, "Delete Track", live.canDeleteTrack (trackID));   // never the last instrument track
 
+    // Automation: which parameter's curve the lane shows.
+    constexpr int firstAutomationId = 200, hideAutomationId = 199;
+    auto* track = getInstrument().getTrack();
+    auto targets = track != nullptr ? automation::getTargets (*track) : std::vector<automation::Target>();
+    auto shown = track != nullptr ? automation::getShown (*track) : std::nullopt;
+
+    if (! targets.empty())
+    {
+        juce::PopupMenu automationMenu;
+        automationMenu.addItem (hideAutomationId, "Hide", shown.has_value(), ! shown.has_value());
+        automationMenu.addSeparator();
+
+        for (size_t i = 0; i < targets.size(); ++i)
+        {
+            auto* parameter = automation::findParameter (*track, targets[i]);
+            auto automated = parameter != nullptr && automation::isAutomated (*parameter);
+            automationMenu.addItem (firstAutomationId + (int) i, targets[i].name + (automated ? juce::String::fromUTF8 (" \xe2\x80\xa2") : juce::String()),
+                                    true, shown && *shown == targets[i]);
+        }
+
+        menu.addSeparator();
+        menu.addSubMenu ("Automation", automationMenu);
+    }
+
     // A track on a multi-part device: the channel it has there.
     constexpr int firstChannelId = 100;
 
@@ -459,10 +494,18 @@ void TrackHeader::showMenu()
     }
 
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this),
-                        [safe = juce::Component::SafePointer<TrackHeader> (this)] (int result)
+                        [safe = juce::Component::SafePointer<TrackHeader> (this), targets] (int result)
     {
         if (safe == nullptr)
             return;
+
+        if (result == hideAutomationId || juce::isPositiveAndBelow (result - firstAutomationId, (int) targets.size()))
+        {
+            if (auto* t = safe->getInstrument().getTrack())
+                automation::setShown (*t, result == hideAutomationId ? std::nullopt
+                                                                     : std::optional (targets[(size_t) (result - firstAutomationId)]));
+            return;
+        }
 
         if (result == 1)
         {
@@ -473,11 +516,44 @@ void TrackHeader::showMenu()
             safe->edit.getUndoManager().beginNewTransaction ("Delete track");
             safe->live.deleteTrack (safe->trackID);   // destroys this header later, via the arrangement
         }
-        else if (result > firstChannelId)
+        else if (result > firstChannelId && result < hideAutomationId)
         {
             safe->getInstrument().setOwnChannel (result - firstChannelId);
             safe->refresh();
         }
+    });
+}
+
+void TrackHeader::showAutomationMenu (juce::Rectangle<int> screenArea)
+{
+    auto* track = getInstrument().getTrack();
+
+    if (track == nullptr)
+        return;
+
+    auto targets = automation::getTargets (*track);
+    auto shown = automation::getShown (*track);
+    juce::PopupMenu menu;
+    menu.addItem (1, "Hide Automation");
+    menu.addSeparator();
+
+    for (size_t i = 0; i < targets.size(); ++i)
+    {
+        auto* parameter = automation::findParameter (*track, targets[i]);
+        auto automated = parameter != nullptr && automation::isAutomated (*parameter);
+        menu.addItem (100 + (int) i, targets[i].name + (automated ? juce::String::fromUTF8 (" \xe2\x80\xa2") : juce::String()),
+                      true, shown && *shown == targets[i]);
+    }
+
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetScreenArea (screenArea),
+                        [safe = juce::Component::SafePointer<TrackHeader> (this), targets] (int result)
+    {
+        auto* t = safe != nullptr ? safe->getInstrument().getTrack() : nullptr;
+
+        if (t == nullptr || result == 0)
+            return;
+
+        automation::setShown (*t, result == 1 ? std::nullopt : std::optional (targets[(size_t) (result - 100)]));
     });
 }
 

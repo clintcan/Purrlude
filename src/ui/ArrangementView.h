@@ -4,6 +4,7 @@
 #include "TimelineView.h"
 #include "TrackHeader.h"
 #include "model/AudioToMidi.h"
+#include "model/Automation.h"
 #include "model/InstrumentSeparation.h"
 
 #include <tracktion_engine/tracktion_engine.h>
@@ -143,6 +144,37 @@ private:
     };
 
     std::optional<ClipDrag> clipDrag;
+
+    // Automation, drawn over a track's lane when its header shows a parameter's curve.
+    struct ShownAutomation
+    {
+        tracktion::AudioTrack* track = nullptr;
+        automation::Target target;
+        tracktion::AutomatableParameter* parameter = nullptr;
+    };
+
+    std::optional<ShownAutomation> getShownAutomation (int laneIndex) const;
+    juce::Rectangle<float> getAutomationArea (int laneIndex) const;
+    juce::Rectangle<float> getAutomationLabel (int laneIndex) const;
+    float valueToY (const tracktion::AutomatableParameter&, float value, juce::Rectangle<float> area) const;
+    float yToValue (const tracktion::AutomatableParameter&, float y, juce::Rectangle<float> area) const;
+    float timeToX (tracktion::TimePosition) const;
+    tracktion::TimePosition xToTime (float x, bool snapToBeats) const;
+    int findAutomationPoint (const ShownAutomation&, int laneIndex, juce::Point<float>) const;
+    void drawAutomation (juce::Graphics&, const ShownAutomation&, int laneIndex);
+    bool automationMouseDown (const juce::MouseEvent&, int laneIndex);
+
+    /** A point being dragged: its track and parameter, and the open undo step. */
+    struct AutomationDrag
+    {
+        tracktion::EditItemID track;
+        automation::Target target;
+        int index = 0;
+        std::unique_ptr<automation::PointDrag> undoStep;
+    };
+
+    std::optional<AutomationDrag> automationDrag;
+    std::optional<std::pair<int, int>> hoveredPoint;   ///< lane, point
     tracktion::EditItemID selectedClipID;
 
     tracktion::Edit& edit;

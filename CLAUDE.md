@@ -8,7 +8,7 @@ Purrlude is a cross-platform digital audio workstation (DAW) for composing, reco
 >   - prebuilt releases (signed, notarised macOS app; Windows/Linux installers)
 >   - hosting the Demucs model
 >   - real use on Windows/Linux
->   - automation, punch-in, tempo/time-signature changes within a song, MIDI learn, plugin loading in the UI
+>   - recording automation (drawing it works), punch-in, tempo/time-signature changes within a song, MIDI learn, plugin loading in the UI
 >   - a frozen project format
 > - **Public:** github.com/clintcan/Purrlude, AGPLv3.
 
@@ -162,6 +162,12 @@ The app talks to `purrlude::BluetoothMidiManager` (`src/devices/BluetoothMidiMan
   - **Knob undo:** Tracktion records a parameter change in the song's state (through the UndoManager), but undo restores only the state, not the parameter that's heard. `track_effects::ParameterSync` (owned by `LiveInstrument`) listens to the Edit and, after any plugin state change, sets effects' and sends' parameters from their state (asynchronously: setting a parameter writes state, which isn't allowed during an undo). A test checks the undone value is heard.
   - **One step per drag:** `track_effects::ControlDrag` starts an undo step and holds a `tracktion::Edit::UndoTransactionInhibitor`, so a pause mid-drag doesn't split it (Tracktion closes a step 350 ms after the last change). A click uses `setControl`. Don't add custom UndoableActions that set parameters: setting one writes state through the UndoManager, which asserts during undo.
   - **UI:** the FX button on the header's name row (lit when the track has effects or a reverb send, disabled for external sound sources) opens `EffectsPanel` (`src/ui/`) in a CallOutBox. It holds the track by id and polls for changes (undo).
+- **Automation** (`src/model/Automation.h`, namespace `automation`): Tracktion's curves on a track's volume, pan, reverb send and effect controls (`getTargets`; none for external sound sources).
+  - **The curves** are Tracktion's: saved with the song, followed in playback and export, points in seconds. `TempoSetting::setBpm` remaps them with the clips, so they stay on their beats (tested).
+  - **Showing:** each track shows at most one parameter's curve over its lane (`getShown`/`setShown`, the `purrludeAutomation` track property: a view setting, not undoable). The track menu's Automation submenu and the lane's label choose it.
+  - **Editing:** `ArrangementView` draws the curve over the dimmed clips. A click adds a point, a drag moves it (`movePoint` keeps it between its neighbours; Shift snaps to beats), a double-click or the lane's menu removes it. `addPoint`, `removePoint` and `clear` are one undo step each. A drag holds an `automation::PointDrag` (an UndoTransactionInhibitor) so it's one step too.
+  - **Automated controls** follow their curve and are disabled: the header's volume and pan, and the effects panel's knobs and send.
+  - **Not done:** recording automation from control moves, and moving automation with clips.
 - **Shared reverb** (`src/model/SharedReverb.h`, namespace `shared_reverb`): one reverb for the whole song, fed by per-track sends.
   - **The bus** is a hidden audio track (`purrludeTrackKind="reverbBus"`) with an aux return, a fully wet reverb, volume and a meter, made with the first send. It's solo-isolated, so a soloed track keeps its reverb. `TrackInstrument::setUp` leaves it alone.
   - **Song tracks:** the bus is not a song track. Code that means "the user's tracks" (arrangement, score, live input, import, loops, export) uses `purrlude::getSongTracks`, never `tracktion::getAudioTracks`.

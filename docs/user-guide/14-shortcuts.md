@@ -62,6 +62,16 @@ On Windows and Linux, use **Ctrl** for **Cmd** and **Alt** for **Option**.
 | Pinch, or Cmd+scroll | Zoom |
 | Sideways swipe, or Shift+scroll | Scroll through time |
 
+**Automation lane** (right-click the track header > Automation):
+
+| Gesture | Action |
+|---|---|
+| Click | Add a point |
+| Drag a point | Move it (Shift snaps to beats) |
+| Double-click a point | Remove it |
+| Right-click | Delete Point, Clear Automation, Hide Automation |
+| Click the label | Choose another setting |
+
 **Track header:**
 
 | Gesture | Action |

@@ -76,6 +76,8 @@ target_sources(purrlude_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/instruments/SoundFontPlugin.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/instruments/SoundFontPlugin.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/TrackInstrument.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/Automation.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/Automation.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/DeviceChannels.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/DeviceChannels.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/TrackInstrument.cpp

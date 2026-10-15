@@ -15,7 +15,7 @@ Purrlude is a cross-platform music workstation for writing, recording, arranging
 - **Recording.** It records MIDI and audio, with count-in, metronome, and loop recording into takes.
 - **Arranging and editing.** Clips can be moved, copied and resized, and there's a piano roll. Every edit can be undone, and projects autosave with crash recovery.
 - **Built-in sounds.** It has the 128 General MIDI instruments, drum loops in 14 styles, and bass and chord accompaniment in any key.
-- **Mixing.** Each track has volume, pan, mute and solo, plus reverb, delay, EQ and a compressor, and there's a shared reverb. Export as WAV, FLAC or Ogg, or as stems.
+- **Mixing.** Each track has volume, pan, mute and solo, plus reverb, delay, EQ and a compressor, and there's a shared reverb. Volume, pan, the reverb send and every effect control can be automated. Export as WAV, FLAC or Ogg, or as stems.
 - **Devices.** It works with any audio interface and any USB or Bluetooth MIDI keyboard. It can play a keyboard's own sounds, and play songs through multi-timbral sound modules and software synths.
 
 The **[user guide](docs/user-guide/README.md)** covers all of it, with screenshots.
@@ -25,7 +25,7 @@ The **[user guide](docs/user-guide/README.md)** covers all of it, with screensho
 - **Releases:** a signed, notarised macOS app to download, then Windows and Linux installers.
 - **Instrument separation for everyone:** host the Demucs model so builds can fetch it.
 - **Testing:** real use on Windows and Linux, and beta testers on other machines and devices.
-- **Missing DAW features:** automation, punch-in recording, tempo and time-signature changes within a song, MIDI learn, and loading third-party plugins (VST3/AU) from the interface.
+- **Missing DAW features:** recording automation (drawing it works), punch-in recording, tempo and time-signature changes within a song, MIDI learn, and loading third-party plugins (VST3/AU) from the interface.
 - **A stable project format** from 1.0 on, so songs saved then keep opening.
 
 ## Building
