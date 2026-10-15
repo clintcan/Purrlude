@@ -104,7 +104,8 @@ struct Transposition
 
 struct Measure
 {
-    std::vector<std::vector<Event>> staves;   ///< One event list per staff
+    std::vector<std::vector<Event>> staves;        ///< One event list per staff: its upper (or only) voice
+    std::vector<std::vector<Event>> lowerVoices;   ///< Per staff: a second, lower voice, or empty
 };
 
 /** A chord symbol above a part, e.g. "Bbmaj7/D". */

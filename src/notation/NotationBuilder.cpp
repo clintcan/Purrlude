@@ -1,4 +1,6 @@
 #include "NotationBuilder.h"
+#include <functional>
+#include <numeric>
 
 #include "ChordDetection.h"
 
@@ -84,6 +86,105 @@ namespace
 
         return segments;
     }
+
+    /** Notes that start and end together, played as one chord. */
+    struct NoteGroup
+    {
+        int start = 0, end = 0;
+        std::vector<QuantizedNote> notes;
+        double pitch = 0.0;   ///< Average
+        int voice = 0;        ///< 0 upper, 1 lower
+    };
+
+    /** True if two groups overlap as separate lines rather than one note running into the next:
+        a legato overlap, or a note held a moment too long, is shorter than half of either note.
+    */
+    bool overlapAsLines (const NoteGroup& a, const NoteGroup& b)
+    {
+        auto overlap = std::min (a.end, b.end) - std::max (a.start, b.start);
+        return overlap > 0 && overlap * 2 > std::min (a.end - a.start, b.end - b.start);
+    }
+}
+
+//==============================================================================
+std::pair<std::vector<QuantizedNote>, std::vector<QuantizedNote>> separateVoices (const std::vector<QuantizedNote>& notes)
+{
+    // Chords: the notes that start and end together.
+    std::map<std::pair<int, int>, NoteGroup> byTime;
+
+    for (const auto& n : notes)
+    {
+        auto& g = byTime[{ n.start, n.start + n.length }];
+        g.start = n.start;
+        g.end = n.start + n.length;
+        g.notes.push_back (n);
+    }
+
+    std::vector<NoteGroup> groups;
+
+    for (auto& [time, g] : byTime)
+    {
+        for (const auto& n : g.notes)
+            g.pitch += n.pitch;
+
+        g.pitch /= (double) g.notes.size();
+        groups.push_back (std::move (g));
+    }
+
+    // In time order, the higher first where they start together, each into a voice it doesn't
+    // overlap. With both free, the upper; with neither, whichever is free soonest (it's cut there).
+    std::sort (groups.begin(), groups.end(), [] (const NoteGroup& a, const NoteGroup& b)
+    {
+        return a.start != b.start ? a.start < b.start : a.pitch > b.pitch;
+    });
+
+    std::array<int, 2> last { -1, -1 };   // each voice's latest group
+
+    for (int i = 0; i < (int) groups.size(); ++i)
+    {
+        auto free = [&] (int voice) { return last[(size_t) voice] < 0 || ! overlapAsLines (groups[(size_t) last[(size_t) voice]], groups[(size_t) i]); };
+        int voice = free (0) ? 0 : free (1) ? 1 : (groups[(size_t) last[0]].end <= groups[(size_t) last[1]].end ? 0 : 1);
+        groups[(size_t) i].voice = voice;
+        last[(size_t) voice] = i;
+    }
+
+    // Where the two lines sound together, the higher one is the upper voice: a held note under
+    // a tune that started above it comes out the right way up.
+    std::vector<int> component (groups.size());
+    std::iota (component.begin(), component.end(), 0);
+
+    std::function<int (int)> find = [&] (int i) { return component[(size_t) i] == i ? i : component[(size_t) i] = find (component[(size_t) i]); };
+
+    for (size_t i = 0; i < groups.size(); ++i)
+        for (size_t j = i + 1; j < groups.size() && groups[j].start < groups[i].end; ++j)
+            if (groups[i].voice != groups[j].voice && overlapAsLines (groups[i], groups[j]))
+                component[(size_t) find ((int) j)] = find ((int) i);
+
+    std::map<int, std::array<double, 4>> heights;   // component -> per voice: pitch x duration, duration
+
+    for (size_t i = 0; i < groups.size(); ++i)
+    {
+        auto& h = heights[find ((int) i)];
+        auto length = (double) (groups[i].end - groups[i].start);
+        h[(size_t) groups[i].voice * 2] += groups[i].pitch * length;
+        h[(size_t) groups[i].voice * 2 + 1] += length;
+    }
+
+    for (size_t i = 0; i < groups.size(); ++i)
+    {
+        auto& h = heights[find ((int) i)];
+
+        if (h[1] > 0.0 && h[3] > 0.0 && h[2] / h[3] > h[0] / h[1])
+            groups[i].voice = 1 - groups[i].voice;
+    }
+
+    std::pair<std::vector<QuantizedNote>, std::vector<QuantizedNote>> voices;
+
+    for (const auto& g : groups)
+        for (const auto& n : g.notes)
+            (g.voice == 0 ? voices.first : voices.second).push_back (n);
+
+    return voices;
 }
 
 //==============================================================================
@@ -341,6 +442,11 @@ KeySignature transposeKey (KeySignature concert, Transposition transposition)
     return { fifths, concert.minor };
 }
 
+bool isDrumPlayedByFoot (int gmNote)
+{
+    return gmNote == 35 || gmNote == 36 || gmNote == 44;   // acoustic and bass drum, pedal hi-hat
+}
+
 Pitch drumPitch (int gmNote)
 {
     struct Position { char step; int octave; const char* notehead; bool open = false; };
@@ -578,24 +684,6 @@ Part buildPart (const std::vector<NoteEvent>& performed, TimeSignature time, Key
     part.percussion = percussion;
     part.key = percussion ? KeySignature() : key;
 
-    if (percussion)
-    {
-        // Drum hits are short; written, each lasts until the next hit (or the barline).
-        std::vector<int> onsets;
-
-        for (const auto& n : notes)
-            onsets.push_back (n.start);
-
-        std::sort (onsets.begin(), onsets.end());
-
-        for (auto& n : notes)
-        {
-            auto barline = (n.start / measureTicks + 1) * measureTicks;
-            auto next = std::upper_bound (onsets.begin(), onsets.end(), n.start);
-            n.length = std::min (barline, next != onsets.end() ? *next : barline) - n.start;
-        }
-    }
-
     // Choose one staff when the music fits a clef comfortably, otherwise a grand staff.
 
     int lowest = 127, highest = 0;
@@ -639,11 +727,33 @@ Part buildPart (const std::vector<NoteEvent>& performed, TimeSignature time, Key
     part.measures.resize ((size_t) numMeasures);
 
     for (auto& m : part.measures)
-        m.staves.resize (numStaves);
-
-    for (size_t staff = 0; staff < numStaves; ++staff)
     {
-        for (const auto& segment : segmentStaff (staffNotes[staff], numMeasures * measureTicks))
+        m.staves.resize (numStaves);
+        m.lowerVoices.resize (numStaves);
+    }
+
+    // One voice's notes as events in each measure's staff (or its lower voice).
+    auto writeVoice = [&] (std::vector<QuantizedNote> voiceNotes, size_t staff, bool lowerVoice)
+    {
+        if (percussion)
+        {
+            // Drum hits are short; written, each lasts until the voice's next hit (or the barline).
+            std::vector<int> onsets;
+
+            for (const auto& n : voiceNotes)
+                onsets.push_back (n.start);
+
+            std::sort (onsets.begin(), onsets.end());
+
+            for (auto& n : voiceNotes)
+            {
+                auto barline = (n.start / measureTicks + 1) * measureTicks;
+                auto next = std::upper_bound (onsets.begin(), onsets.end(), n.start);
+                n.length = std::min (barline, next != onsets.end() ? *next : barline) - n.start;
+            }
+        }
+
+        for (const auto& segment : segmentStaff (voiceNotes, numMeasures * measureTicks))
         {
             std::vector<Pitch> pitches;
 
@@ -669,7 +779,8 @@ Part buildPart (const std::vector<NoteEvent>& performed, TimeSignature time, Key
                 auto measureStart = measure * measureTicks;
                 auto from = std::max (segment.start, measureStart) - measureStart;
                 auto to = std::min (segment.end, measureStart + measureTicks) - measureStart;
-                auto& events = part.measures[(size_t) measure].staves[staff];
+                auto& measureData = part.measures[(size_t) measure];
+                auto& events = lowerVoice ? measureData.lowerVoices[staff] : measureData.staves[staff];
 
                 if (pitches.empty() && from == 0 && to == measureTicks)
                 {
@@ -708,7 +819,42 @@ Part buildPart (const std::vector<NoteEvent>& performed, TimeSignature time, Key
                 }
             }
         }
+    };
+
+    for (size_t staff = 0; staff < numStaves; ++staff)
+    {
+        // Two lines on a staff are two voices: a drum kit's hands above its feet, or where pitched
+        // notes overlap as separate lines (a held note under a tune).
+        std::vector<QuantizedNote> upper, lower;
+
+        if (percussion)
+        {
+            for (const auto& n : staffNotes[staff])
+                (isDrumPlayedByFoot (n.pitch) ? lower : upper).push_back (n);
+
+            // A kit of only hands, or only feet, is one voice.
+            if (upper.empty() || lower.empty())
+            {
+                upper = staffNotes[staff];
+                lower.clear();
+            }
+        }
+        else
+        {
+            std::tie (upper, lower) = separateVoices (staffNotes[staff]);
+        }
+
+        writeVoice (upper, staff, false);
+
+        if (! lower.empty())
+            writeVoice (lower, staff, true);
     }
+
+    // The lower voice is written only in the measures where it plays.
+    for (auto& m : part.measures)
+        for (auto& voice : m.lowerVoices)
+            if (std::all_of (voice.begin(), voice.end(), [] (const Event& e) { return e.isRest(); }))
+                voice.clear();
 
     return part;
 }

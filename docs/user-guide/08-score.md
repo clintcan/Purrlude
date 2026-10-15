@@ -28,6 +28,9 @@ Played music is rarely exactly on the beat, so the score tidies it for reading. 
 **Drums:**
 - Drum tracks (Standard Drum Kit) are written on a percussion staff.
 - Kick, snare, toms, hi-hats and cymbals each have their usual place and notehead.
+- As drum parts usually are, they're written in two voices: the hands (snare, hi-hats, cymbals, toms) with stems up, the feet (kick, pedal hi-hat) with stems down.
+
+**Two voices on a staff:** where two lines overlap on one staff, such as a note held under a moving tune, they're written as two voices: the upper with stems up, the lower with stems down, each with its own rhythm. The held note keeps its full length instead of being cut short. Notes that just run into the next one, as in legato playing, stay in one voice.
 
 ## Chord symbols
 
@@ -73,7 +76,7 @@ All of these are in the **File** menu. After an export, Purrlude shows the file 
 ## Not written yet
 
 These aren't handled yet:
-- two voices on one staff
+- more than two voices on one staff
 - tempo or time signature changes within a song
 - tuplets other than triplets within a beat
 - the metronome mark in the on-screen score

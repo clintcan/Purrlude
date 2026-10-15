@@ -79,6 +79,16 @@ std::vector<QuantizedNote> quantize (const std::vector<NoteEvent>&, int gridTick
 */
 std::vector<QuantizedNote> removeSamePitchOverlaps (std::vector<QuantizedNote>);
 
+/** Splits a staff's notes into an upper and a lower voice where they overlap as separate lines
+    (a held note under a moving tune): chords are the notes that start and end together, and
+    where two lines sound at once, the higher is the upper voice. Notes that only run into the
+    next one a little (legato) stay in one voice. Most music comes back as one voice, the lower empty.
+*/
+std::pair<std::vector<QuantizedNote>, std::vector<QuantizedNote>> separateVoices (const std::vector<QuantizedNote>&);
+
+/** True for the drums played with the feet: the kick drums and the pedal hi-hat. */
+bool isDrumPlayedByFoot (int gmNote);
+
 /** Krumhansl-Schmuckler key finding, weighted by note length. C major if there are no notes. */
 KeySignature estimateKey (const std::vector<NoteEvent>&);
 

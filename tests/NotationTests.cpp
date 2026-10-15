@@ -450,7 +450,8 @@ TEST_CASE ("Drum parts are written as drum notation", "[notation]")
     REQUIRE (part.clefs == std::vector<Clef> { Clef::percussion });
     REQUIRE (part.measures.size() == 1);
 
-    // Eight 8th-note hits, no rests or ties: each lasts until the next.
+    // Two voices, as drum parts are written: the hands above, the feet below.
+    // The hands: eight 8th-note hits, no rests or ties, each lasting until the next.
     const auto& events = part.measures[0].staves[0];
     REQUIRE (events.size() == 8);
 
@@ -461,13 +462,23 @@ TEST_CASE ("Drum parts are written as drum notation", "[notation]")
         REQUIRE_FALSE (e.isRest());
     }
 
-    REQUIRE (events[0].pitches.size() == 2);                      // kick + hi-hat
-    REQUIRE (events[0].pitches[0].step == 'F');                  // kick on F4
-    REQUIRE (events[0].pitches[1].step == 'G');                  // hi-hat on G5
-    REQUIRE (events[0].pitches[1].notehead == "x");
-    REQUIRE (events[2].pitches[0].step == 'C');                  // snare on C5
+    REQUIRE (events[0].pitches.size() == 1);                     // the hi-hat; the kick is below
+    REQUIRE (events[0].pitches[0].step == 'G');                  // hi-hat on G5
+    REQUIRE (events[0].pitches[0].notehead == "x");
+    REQUIRE (events[2].pitches[0].step == 'C');                  // snare on C5, with the hi-hat
     REQUIRE (events[7].pitches.size() == 1);
     REQUIRE (events[7].pitches[0].notehead == "x");              // closed, sorted first
+
+    // The feet: two kicks, each lasting until the next (or the barline).
+    const auto& feet = part.measures[0].lowerVoices[0];
+    REQUIRE (feet.size() == 2);
+
+    for (const auto& e : feet)
+    {
+        REQUIRE (e.type == "half");
+        REQUIRE (e.pitches.size() == 1);
+        REQUIRE (e.pitches[0].step == 'F');                      // kick on F4
+    }
 
     auto doc = juce::parseXML (toMusicXml (score));
     REQUIRE (doc != nullptr);
@@ -480,24 +491,31 @@ TEST_CASE ("Drum parts are written as drum notation", "[notation]")
 
     auto* note = measure->getChildByName ("note");
     REQUIRE (note->getChildByName ("pitch") == nullptr);
-    REQUIRE (note->getChildByName ("unpitched")->getChildByName ("display-step")->getAllSubText() == "F");
-    REQUIRE (note->getChildByName ("unpitched")->getChildByName ("display-octave")->getAllSubText() == "4");
+    REQUIRE (note->getChildByName ("unpitched")->getChildByName ("display-step")->getAllSubText() == "G");
+    REQUIRE (note->getChildByName ("unpitched")->getChildByName ("display-octave")->getAllSubText() == "5");
     REQUIRE (note->getChildByName ("accidental") == nullptr);
+    REQUIRE (note->getChildByName ("voice")->getAllSubText() == "1");
     REQUIRE (note->getChildByName ("stem")->getAllSubText() == "up");
-    REQUIRE (note->getNextElementWithTagName ("note")->getChildByName ("notehead")->getAllSubText() == "x");
+    REQUIRE (note->getChildByName ("notehead")->getAllSubText() == "x");
 
     // 8ths beamed in pairs (beams on each chord's first note).
     REQUIRE (note->getChildByName ("beam")->getAllSubText() == "begin");
-    REQUIRE (note->getNextElementWithTagName ("note")->getChildByName ("beam") == nullptr);
 
-    // The open hi-hat is an x with an "o".
-    auto* lastNote = measure->getChildByName ("note");
+    // The kicks follow, after a backup: voice 2, stems down.
+    std::vector<juce::XmlElement*> kicks;
 
-    for (auto* n = lastNote; n != nullptr; n = n->getNextElementWithTagName ("note"))
-        lastNote = n;
+    for (auto* n : measure->getChildWithTagNameIterator ("note"))
+        if (n->getChildElementAllSubText ("voice", {}) == "2")
+            kicks.push_back (n);
 
-    REQUIRE (lastNote->getChildByName ("beam")->getAllSubText() == "end");
-    REQUIRE (lastNote->getChildByName ("notations") == nullptr);   // the closed hi-hat won
+    REQUIRE (kicks.size() == 2);
+    REQUIRE (measure->getChildByName ("backup") != nullptr);
+
+    for (auto* kick : kicks)
+    {
+        REQUIRE (kick->getChildByName ("unpitched")->getChildElementAllSubText ("display-step", {}) == "F");
+        REQUIRE (kick->getChildElementAllSubText ("stem", {}) == "down");
+    }
 }
 
 TEST_CASE ("Short notes are beamed within each beat", "[notation]")
@@ -651,4 +669,133 @@ TEST_CASE ("Export a saved project's instrument track as MusicXML", "[.][takes]"
             juce::PNGImageFormat().writeImageToStream (image, pngStream);
         }
     }
+}
+
+//==============================================================================
+namespace
+{
+    std::vector<int> midiOf (const Event& e)
+    {
+        std::vector<int> result;
+
+        for (auto& p : e.pitches)
+            result.push_back (p.midi);
+
+        return result;
+    }
+
+    std::vector<std::string> typesOf (const std::vector<Event>& events)
+    {
+        std::vector<std::string> result;
+
+        for (auto& e : events)
+            result.push_back ((e.isRest() ? "rest " : "") + e.type);
+
+        return result;
+    }
+}
+
+TEST_CASE ("A note held under a moving tune is written as a second voice", "[notation][voices]")
+{
+    // A G4 held for the bar, under C5 D5 E5 F5 in quarters: one treble staff.
+    std::vector<NoteEvent> notes { { 0, 4, 67, 90 }, { 0, 1, 72, 90 }, { 1, 1, 74, 90 }, { 2, 1, 76, 90 }, { 3, 1, 77, 90 } };
+    auto part = buildScore (notes, {}).parts[0];
+    REQUIRE (part.clefs.size() == 1);
+
+    const auto& m = part.measures[0];
+    CHECK (typesOf (m.staves[0]) == std::vector<std::string> { "quarter", "quarter", "quarter", "quarter" });
+    CHECK (midiOf (m.staves[0][0]) == std::vector<int> { 72 });
+
+    // The held note is whole, not cut short at the next note.
+    REQUIRE (m.lowerVoices[0].size() == 1);
+    CHECK (m.lowerVoices[0][0].type == "whole");
+    CHECK (midiOf (m.lowerVoices[0][0]) == std::vector<int> { 67 });
+}
+
+TEST_CASE ("A tune held over moving notes stays the upper voice", "[notation][voices]")
+{
+    // An E5 half note over G4 A4 quarters, then a C5 half note alone.
+    std::vector<NoteEvent> notes { { 0, 2, 76, 90 }, { 0, 1, 67, 90 }, { 1, 1, 69, 90 }, { 2, 2, 72, 90 } };
+    auto score = buildScore (notes, {});
+    const auto& m = score.parts[0].measures[0];
+
+    CHECK (typesOf (m.staves[0]) == std::vector<std::string> { "half", "half" });
+    CHECK (midiOf (m.staves[0][0]) == std::vector<int> { 76 });
+    CHECK (typesOf (m.lowerVoices[0]) == std::vector<std::string> { "quarter", "quarter", "rest half" });
+}
+
+TEST_CASE ("A tune that comes in above a held note is the upper voice", "[notation][voices]")
+{
+    // G4 sounds first, alone, then E5 D5 C5 come in above it.
+    std::vector<NoteEvent> notes { { 0, 4, 67, 90 }, { 1, 1, 76, 90 }, { 2, 1, 74, 90 }, { 3, 1, 72, 90 } };
+    auto score = buildScore (notes, {});
+    const auto& m = score.parts[0].measures[0];
+
+    CHECK (typesOf (m.staves[0]) == std::vector<std::string> { "rest quarter", "quarter", "quarter", "quarter" });
+    REQUIRE (m.lowerVoices[0].size() == 1);
+    CHECK (midiOf (m.lowerVoices[0][0]) == std::vector<int> { 67 });
+}
+
+TEST_CASE ("Legato playing and block chords stay one voice", "[notation][voices]")
+{
+    SECTION ("Each note running a little into the next")
+    {
+        std::vector<NoteEvent> notes;
+
+        for (int i = 0; i < 4; ++i)
+            notes.push_back ({ (double) i, 1.2, 72 + i * 2, 90 });
+
+        auto score = buildScore (notes, {});
+        const auto& m = score.parts[0].measures[0];
+        CHECK (m.lowerVoices[0].empty());
+        CHECK (typesOf (m.staves[0]) == std::vector<std::string> { "quarter", "quarter", "quarter", "quarter" });
+    }
+
+    SECTION ("Chords that start and end together")
+    {
+        std::vector<NoteEvent> notes;
+
+        for (int i = 0; i < 4; ++i)
+            for (int pitch : { 60, 64, 67 })
+                notes.push_back ({ (double) i, 1.0, pitch + i, 90 });
+
+        auto score = buildScore (notes, {});
+        const auto& m = score.parts[0].measures[0];
+        CHECK (m.lowerVoices[0].empty());
+        CHECK (m.staves[0].size() == 4);
+        CHECK (m.staves[0][0].pitches.size() == 3);
+    }
+}
+
+TEST_CASE ("Two voices are written to MusicXML and engraved", "[notation][voices][render]")
+{
+    juce::ScopedJuceInitialiser_GUI juceInit;
+
+    // A grand staff: the treble with a held note under a tune, the bass a plain line.
+    std::vector<NoteEvent> notes { { 0, 4, 67, 90 }, { 0, 1, 72, 90 }, { 1, 1, 74, 90 }, { 2, 1, 76, 90 }, { 3, 1, 77, 90 },
+                                   { 0, 2, 43, 90 }, { 2, 2, 48, 90 } };
+    auto score = buildScore (notes, {});
+    REQUIRE (score.parts[0].clefs.size() == 2);
+
+    auto xml = toMusicXml (score, { .tempoMark = false });
+    auto doc = juce::parseXML (xml);
+    REQUIRE (doc != nullptr);
+
+    std::map<juce::String, juce::StringArray> stemsByVoice;
+
+    for (auto* note : doc->getChildByName ("part")->getChildByName ("measure")->getChildWithTagNameIterator ("note"))
+        if (note->getChildByName ("rest") == nullptr)
+            stemsByVoice[note->getChildElementAllSubText ("voice", {})].add (note->getChildElementAllSubText ("stem", {}));
+
+    CHECK (stemsByVoice["1"] == juce::StringArray ("up", "up", "up", "up"));
+    CHECK (stemsByVoice["2"] == juce::StringArray ("down"));
+    CHECK (stemsByVoice["5"].size() == 2);   // the bass staff's one voice: stems as Verovio likes
+    CHECK (stemsByVoice["5"][0].isEmpty());
+
+    ScoreRenderer renderer (ScoreRenderer::findResourceDirectory());
+    juce::String error;
+    auto svg = renderer.renderMusicXml (xml, 900, error);
+    INFO (error);
+    CHECK (svg.contains ("class=\"layer\""));
+    CHECK (error.isEmpty());
 }

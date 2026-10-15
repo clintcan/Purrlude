@@ -233,150 +233,164 @@ juce::String toMusicXml (const Score& score, const MusicXmlOptions& options)
                     addText (*harmony, "offset", juce::String (chord.offset));
             }
 
-            const auto& staves = part.measures[m].staves;
+            const auto& measureData = part.measures[m];
+            const auto& staves = measureData.staves;
 
             for (size_t staff = 0; staff < staves.size(); ++staff)
             {
                 if (staff > 0)
                     addText (*measure->createNewChildElement ("backup"), "duration", juce::String (measureTicks));
 
-                // Alterations in force in this measure and staff, keyed by step + octave.
-                std::map<juce::String, int> alterInForce;
-                auto beams = getBeams (staves[staff], score.time);
+                // A second, lower voice where two lines overlap on this staff.
+                const auto* lower = staff < measureData.lowerVoices.size() && ! measureData.lowerVoices[staff].empty()
+                                        ? &measureData.lowerVoices[staff] : nullptr;
 
-                for (size_t eventIndex = 0; eventIndex < staves[staff].size(); ++eventIndex)
+                for (int voiceIndex = 0; voiceIndex < (lower != nullptr ? 2 : 1); ++voiceIndex)
                 {
-                    const auto& events = staves[staff];
-                    const auto& event = events[eventIndex];
+                    if (voiceIndex == 1)
+                        addText (*measure->createNewChildElement ("backup"), "duration", juce::String (measureTicks));
 
-                    // Each beat's triplets are one bracketed group.
-                    auto sameTripletGroup = [&] (size_t other)
+                    const auto& events = voiceIndex == 0 ? staves[staff] : *lower;
+                    auto voiceNumber = juce::String ((staff == 0 ? 1 : 5) + voiceIndex);
+
+                    // Two voices: the upper one's stems up, the lower one's down. A drum kit in one voice: up.
+                    juce::String stem = lower != nullptr ? (voiceIndex == 0 ? "up" : "down") : part.percussion ? "up" : "";
+
+                    // Alterations in force in this measure and voice, keyed by step + octave. Each voice
+                    // keeps its own, so an accidental is never missed (at worst one is repeated).
+                    std::map<juce::String, int> alterInForce;
+                    auto beams = getBeams (events, score.time);
+
+                    for (size_t eventIndex = 0; eventIndex < events.size(); ++eventIndex)
                     {
-                        return events[other].triplet && events[other].start / ticksPerQuarter == event.start / ticksPerQuarter;
-                    };
+                        const auto& event = events[eventIndex];
 
-                    auto tupletStarts = event.triplet && (eventIndex == 0 || ! sameTripletGroup (eventIndex - 1));
-                    auto tupletStops = event.triplet && (eventIndex + 1 == events.size() || ! sameTripletGroup (eventIndex + 1));
-
-                    auto addNote = [&] (const Pitch* pitch, bool isChordMember)
-                    {
-                        auto* note = measure->createNewChildElement ("note");
-
-                        if (isChordMember)
-                            note->createNewChildElement ("chord");
-
-                        if (pitch == nullptr)
+                        // Each beat's triplets are one bracketed group.
+                        auto sameTripletGroup = [&] (size_t other)
                         {
-                            auto* rest = note->createNewChildElement ("rest");
+                            return events[other].triplet && events[other].start / ticksPerQuarter == event.start / ticksPerQuarter;
+                        };
 
-                            if (event.wholeMeasureRest)
-                                rest->setAttribute ("measure", "yes");
-                        }
-                        else if (part.percussion)
+                        auto tupletStarts = event.triplet && (eventIndex == 0 || ! sameTripletGroup (eventIndex - 1));
+                        auto tupletStops = event.triplet && (eventIndex + 1 == events.size() || ! sameTripletGroup (eventIndex + 1));
+
+                        auto addNote = [&] (const Pitch* pitch, bool isChordMember)
                         {
-                            auto* unpitched = note->createNewChildElement ("unpitched");
-                            addText (*unpitched, "display-step", juce::String::charToString (pitch->step));
-                            addText (*unpitched, "display-octave", juce::String (pitch->octave));
+                            auto* note = measure->createNewChildElement ("note");
+
+                            if (isChordMember)
+                                note->createNewChildElement ("chord");
+
+                            if (pitch == nullptr)
+                            {
+                                auto* rest = note->createNewChildElement ("rest");
+
+                                if (event.wholeMeasureRest)
+                                    rest->setAttribute ("measure", "yes");
+                            }
+                            else if (part.percussion)
+                            {
+                                auto* unpitched = note->createNewChildElement ("unpitched");
+                                addText (*unpitched, "display-step", juce::String::charToString (pitch->step));
+                                addText (*unpitched, "display-octave", juce::String (pitch->octave));
+                            }
+                            else
+                            {
+                                auto* pitchElement = note->createNewChildElement ("pitch");
+                                addText (*pitchElement, "step", juce::String::charToString (pitch->step));
+
+                                if (pitch->alter != 0)
+                                    addText (*pitchElement, "alter", juce::String (pitch->alter));
+
+                                addText (*pitchElement, "octave", juce::String (pitch->octave));
+                            }
+
+                            addText (*note, "duration", juce::String (event.duration));
+
+                            juce::XmlElement* notations = nullptr;
+
+                            if (pitch != nullptr && event.tieStop)    addTie (*note, notations, "stop");
+                            if (pitch != nullptr && event.tieStart)   addTie (*note, notations, "start");
+
+                            addText (*note, "voice", voiceNumber);
+
+                            if (! event.wholeMeasureRest)
+                            {
+                                addText (*note, "type", juce::String (event.type));
+
+                                for (int d = 0; d < event.dots; ++d)
+                                    note->createNewChildElement ("dot");
+                            }
+
+                            // MusicXML's order: accidental, time-modification, stem, notehead.
+                            if (pitch != nullptr && ! part.percussion)
+                            {
+                                auto key = juce::String::charToString (pitch->step) + juce::String (pitch->octave);
+                                auto it = alterInForce.find (key);
+                                auto expected = it != alterInForce.end() ? it->second : keyAlterationFor (pitch->step, part.key);
+
+                                // A tied continuation never repeats its accidental.
+                                if (pitch->alter != expected && ! event.tieStop)
+                                    addText (*note, "accidental", accidentalName (pitch->alter));
+
+                                alterInForce[key] = pitch->alter;
+                            }
+
+                            if (event.triplet)
+                            {
+                                auto* modification = note->createNewChildElement ("time-modification");
+                                addText (*modification, "actual-notes", "3");
+                                addText (*modification, "normal-notes", "2");
+                            }
+
+                            if (pitch != nullptr && stem.isNotEmpty())
+                                addText (*note, "stem", stem);
+
+                            if (pitch != nullptr && part.percussion && ! pitch->notehead.empty())
+                                addText (*note, "notehead", juce::String (pitch->notehead));
+
+                            if (staves.size() > 1)
+                                addText (*note, "staff", juce::String ((int) staff + 1));
+
+                            // Beams go on the first note of a chord.
+                            if (! isChordMember)
+                                for (int level = 0; level < beams[eventIndex].size(); ++level)
+                                    addText (*note, "beam", beams[eventIndex][level])->setAttribute ("number", level + 1);
+
+                            // The bracket (and its 3) goes on the first note of the group's first chord.
+                            if (! isChordMember && (tupletStarts || tupletStops))
+                            {
+                                if (notations == nullptr)
+                                    notations = new juce::XmlElement ("notations");
+
+                                if (tupletStarts)
+                                    notations->createNewChildElement ("tuplet")->setAttribute ("type", "start");
+
+                                if (tupletStops)
+                                    notations->createNewChildElement ("tuplet")->setAttribute ("type", "stop");
+                            }
+
+                            if (pitch != nullptr && pitch->open)
+                            {
+                                if (notations == nullptr)
+                                    notations = new juce::XmlElement ("notations");
+
+                                notations->createNewChildElement ("technical")->createNewChildElement ("open-string");
+                            }
+
+                            if (notations != nullptr)
+                                note->addChildElement (notations);
+                        };
+
+                        if (event.isRest())
+                        {
+                            addNote (nullptr, false);
                         }
                         else
                         {
-                            auto* pitchElement = note->createNewChildElement ("pitch");
-                            addText (*pitchElement, "step", juce::String::charToString (pitch->step));
-
-                            if (pitch->alter != 0)
-                                addText (*pitchElement, "alter", juce::String (pitch->alter));
-
-                            addText (*pitchElement, "octave", juce::String (pitch->octave));
+                            for (size_t i = 0; i < event.pitches.size(); ++i)
+                                addNote (&event.pitches[i], i > 0);
                         }
-
-                        addText (*note, "duration", juce::String (event.duration));
-
-                        juce::XmlElement* notations = nullptr;
-
-                        if (pitch != nullptr && event.tieStop)    addTie (*note, notations, "stop");
-                        if (pitch != nullptr && event.tieStart)   addTie (*note, notations, "start");
-
-                        addText (*note, "voice", staff == 0 ? "1" : "5");
-
-                        if (! event.wholeMeasureRest)
-                        {
-                            addText (*note, "type", juce::String (event.type));
-
-                            for (int d = 0; d < event.dots; ++d)
-                                note->createNewChildElement ("dot");
-                        }
-
-                        // MusicXML's order: accidental, time-modification, stem, notehead.
-                        if (pitch != nullptr && ! part.percussion)
-                        {
-                            auto key = juce::String::charToString (pitch->step) + juce::String (pitch->octave);
-                            auto it = alterInForce.find (key);
-                            auto expected = it != alterInForce.end() ? it->second : keyAlterationFor (pitch->step, part.key);
-
-                            // A tied continuation never repeats its accidental.
-                            if (pitch->alter != expected && ! event.tieStop)
-                                addText (*note, "accidental", accidentalName (pitch->alter));
-
-                            alterInForce[key] = pitch->alter;
-                        }
-
-                        if (event.triplet)
-                        {
-                            auto* modification = note->createNewChildElement ("time-modification");
-                            addText (*modification, "actual-notes", "3");
-                            addText (*modification, "normal-notes", "2");
-                        }
-
-                        if (pitch != nullptr && part.percussion)
-                        {
-                            // One voice for the whole kit: stems up, as drum parts are usually written.
-                            addText (*note, "stem", "up");
-
-                            if (! pitch->notehead.empty())
-                                addText (*note, "notehead", juce::String (pitch->notehead));
-                        }
-
-                        if (staves.size() > 1)
-                            addText (*note, "staff", juce::String ((int) staff + 1));
-
-                        // Beams go on the first note of a chord.
-                        if (! isChordMember)
-                            for (int level = 0; level < beams[eventIndex].size(); ++level)
-                                addText (*note, "beam", beams[eventIndex][level])->setAttribute ("number", level + 1);
-
-                        // The bracket (and its 3) goes on the first note of the group's first chord.
-                        if (! isChordMember && (tupletStarts || tupletStops))
-                        {
-                            if (notations == nullptr)
-                                notations = new juce::XmlElement ("notations");
-
-                            if (tupletStarts)
-                                notations->createNewChildElement ("tuplet")->setAttribute ("type", "start");
-
-                            if (tupletStops)
-                                notations->createNewChildElement ("tuplet")->setAttribute ("type", "stop");
-                        }
-
-                        if (pitch != nullptr && pitch->open)
-                        {
-                            if (notations == nullptr)
-                                notations = new juce::XmlElement ("notations");
-
-                            notations->createNewChildElement ("technical")->createNewChildElement ("open-string");
-                        }
-
-                        if (notations != nullptr)
-                            note->addChildElement (notations);
-                    };
-
-                    if (event.isRest())
-                    {
-                        addNote (nullptr, false);
-                    }
-                    else
-                    {
-                        for (size_t i = 0; i < event.pitches.size(); ++i)
-                            addNote (&event.pitches[i], i > 0);
                     }
                 }
             }

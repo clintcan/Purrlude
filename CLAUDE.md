@@ -345,7 +345,7 @@ docs/user-guide/        End-user guide: README.md index, one page per topic, ima
 2. Merge repeated same-pitch notes.
 3. Estimate the key (Krumhansl-Schmuckler).
 4. Choose the staves: a single staff if every note is within two ledger lines of it, otherwise a grand staff split at middle C.
-5. Lay out one voice per staff: each chord lasts until the next onset, and gaps become rests.
+5. Separate voices (`separateVoices`): notes that start and end together are a chord; chords that overlap as separate lines (by more than half the shorter one, so legato overlaps don't count) go into an upper and a lower voice, the higher line upper wherever the two sound together. Most music stays one voice. Each voice is laid out with each chord lasting until its next onset, gaps as rests; a third overlapping line is cut, as everything was before. The lower voice (`Measure::lowerVoices`) is written only in measures where it plays: stems up for the upper, down for the lower, MusicXML voices 1/2 (5/6 on a grand staff's lower staff) with a `<backup>` between.
 6. Split notes at barlines into readable values with ties. Dotted values start only on strong subdivisions.
 7. Spell pitches for the key.
 
@@ -354,8 +354,8 @@ MusicXML uses 48 divisions per quarter and writes accidentals explicitly, once p
 **Drums:** a built-in drum-kit track (`TrackInstrument::playsDrumKit`) becomes a percussion part.
 - It has one staff with a percussion clef and no key signature, and is left out of key estimation.
 - `drumPitch` places each GM drum (kick F4, snare C5, hi-hat G5 x, ride F5 x, crash A5 x), and drums sharing a position are written once.
-- Each hit lasts until the next one in its measure, with no ties.
-- MusicXML uses `<unpitched>`, `<notehead>` and stems up. An open hi-hat is an x with `<technical><open-string/>`, because Verovio draws `circle-x` as a slash.
+- Two voices: hands (stems up) and feet (kick 35/36, pedal hi-hat 44; stems down, `isDrumPlayedByFoot`), unless the kit has only one. Each hit lasts until the next one in its voice and measure, with no ties.
+- MusicXML uses `<unpitched>` and `<notehead>`; one voice has stems up. An open hi-hat is an x with `<technical><open-string/>`, because Verovio draws `circle-x` as a slash.
 
 **Beams:** notes shorter than a quarter are beamed within each beat (each dotted quarter in compound time), with hooks for lone 16ths. Rests break beams.
 
@@ -386,7 +386,7 @@ A note quantized past the end of the performance moves back onto the last grid s
 - **MusicXML:** `<harmony>` with `<kind text="m7">`, `<bass>`, and `<offset>` from the measure start (Verovio honours it).
 - **Accidentals:** Verovio writes chord-symbol accidentals as SMuFL characters (U+EA63–EA67) in its Leipzig font, which JUCE can't draw. `prepareVerovioSvg` turns them into "b"/"#" in the text's font (its size is on the sibling tspan).
 
-**Not handled yet:** multiple voices per staff, tempo or time-signature changes, and other tuplets (quintuplets, triplets spanning two beats).
+**Not handled yet:** more than two voices per staff, tempo or time-signature changes, and other tuplets (quintuplets, triplets spanning two beats).
 
 **On-screen score:** `ScoreView` (`src/ui/`) reads the song's notes twice a second on the message thread (`notation::getEditScoreInput`), skipping while recording. When they or the width change, its render thread builds the score and MusicXML (`buildEditScore (EditScoreInput)`), and, if the MusicXML changed, engraves it with `notation::ScoreRenderer` (Verovio) and builds a `notation::ScoreDrawing`. Verovio has global state, so it is only ever used from that one thread.
 - **ScoreDrawing, not Drawable:** a `juce::Drawable` is a tree of Components, one per shape, and Components may only be used on the message thread (building one elsewhere fires a JUCE assertion per shape: tens of thousands for a song). `ScoreDrawing` (`src/notation/`) reads the prepared SVG into plain paths, fills and strokes in the drawing's units, so it's built on the render thread. It draws only the shapes in the area being painted, and finds and highlights shapes by element id.
