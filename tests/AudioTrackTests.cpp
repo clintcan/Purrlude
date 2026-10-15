@@ -177,12 +177,65 @@ TEST_CASE ("Audio clips split, copy and paste with the right part of the file", 
     // Pasted elsewhere, the copy still starts 1 s into the file.
     auto copied = purrlude::clips::copy (*song.edit, right->itemID);
     REQUIRE (copied.has_value());
-    REQUIRE_FALSE (copied->isMidi());
-    auto* pasted = purrlude::clips::paste (*song.edit, *copied, 8.0, track);
-    REQUIRE (pasted != nullptr);
+    REQUIRE_FALSE (copied->items[0].isMidi());
+    auto pastedClips = purrlude::clips::paste (*song.edit, *copied, 8.0, &track);
+    REQUIRE (pastedClips.size() == 1);
+    auto* pasted = pastedClips[0];
     REQUIRE_THAT (pasted->getPosition().getStart().inSeconds(), WithinAbs (4.0, 0.001));
     REQUIRE_THAT (pasted->getPosition().getLength().inSeconds(), WithinAbs (1.0, 0.001));
     REQUIRE_THAT (pasted->getPosition().getOffset().inSeconds(), WithinAbs (1.0, 0.001));
 
+    file.deleteFile();
+}
+
+TEST_CASE ("An audio clip's fades are heard", "[audio-tracks][clips][render]")
+{
+    Song song;
+    auto file = writeTone (2.0);
+    REQUIRE (purrlude::audio_import::importFile (*song.edit, song.live, file, 0).error.isEmpty());
+    pump();
+
+    auto& track = *purrlude::getSongTracks (*song.edit).getLast();
+    auto id = track.getClips()[0]->itemID;
+    purrlude::clips::setFades (*song.edit, id, tracktion::TimeDuration::fromSeconds (1.0), tracktion::TimeDuration::fromSeconds (0.5));
+
+    auto* clip = dynamic_cast<tracktion::AudioClipBase*> (tracktion::findClipForID (*song.edit, id));
+    REQUIRE_THAT (clip->getFadeIn().inSeconds(), WithinAbs (1.0, 0.001));
+    REQUIRE_THAT (clip->getFadeOut().inSeconds(), WithinAbs (0.5, 0.001));
+
+    auto out = juce::File::createTempFile (".wav");
+    std::optional<juce::String> error;
+    juce::Array<juce::File> files;
+
+    {
+        purrlude::AudioExport exporter (*song.edit, {}, out, [&] (const juce::String& e, const juce::Array<juce::File>& f) { error = e; files = f; });
+
+        for (auto end = juce::Time::getMillisecondCounter() + 20000; ! error && juce::Time::getMillisecondCounter() < end;)
+            pump (20);
+    }
+
+    REQUIRE (error.has_value());
+    INFO (*error);
+    REQUIRE (error->isEmpty());
+
+    juce::AudioFormatManager formats;
+    formats.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (files[0]));
+    REQUIRE (reader != nullptr);
+    juce::AudioBuffer<float> audio ((int) reader->numChannels, (int) reader->lengthInSamples);
+    reader->read (&audio, 0, (int) reader->lengthInSamples, 0, true, true);
+
+    auto rate = reader->sampleRate;
+    auto level = [&] (double from, double to) { return audio.getMagnitude (0, (int) (from * rate), (int) ((to - from) * rate)); };
+
+    // Rising through the fade-in, full between the fades, falling in the fade-out.
+    INFO ("levels " << level (0.0, 0.1) << " " << level (0.45, 0.55) << " " << level (1.2, 1.4) << " " << level (1.85, 1.95));
+    REQUIRE (level (0.0, 0.1) < 0.1f * level (1.2, 1.4));
+    REQUIRE (level (0.0, 0.1) < level (0.45, 0.55));
+    REQUIRE (level (0.45, 0.55) < level (1.2, 1.4));
+    REQUIRE (level (1.85, 1.95) < 0.5f * level (1.2, 1.4));
+
+    reader = nullptr;
+    files[0].deleteFile();
     file.deleteFile();
 }

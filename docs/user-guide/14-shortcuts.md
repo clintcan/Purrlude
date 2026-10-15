@@ -32,12 +32,12 @@ On Windows and Linux, use **Ctrl** for **Cmd** and **Alt** for **Option**.
 |---|---|
 | Cmd+Z | Undo |
 | Cmd+Shift+Z | Redo |
-| Delete / Backspace | Delete the selected clip, or the selected notes in the Piano Roll |
-| Cmd+T | Split the selected clip at the playhead (with none selected, every clip the playhead crosses) |
-| Cmd+X / Cmd+C | Cut / copy the selected clip |
+| Delete / Backspace | Delete the selected clips, or the selected notes in the Piano Roll |
+| Cmd+T | Split the selected clips at the playhead (with none under it, every clip the playhead crosses) |
+| Cmd+X / Cmd+C | Cut / copy the selected clips |
 | Cmd+V | Paste at the playhead, on the track last clicked |
-| Cmd+D | Duplicate the selected clip (a copy right after it) |
-| Cmd+A | Select all notes (Piano Roll) |
+| Cmd+D | Duplicate the selected clips (copies right after them) |
+| Cmd+A | Select every clip, or every note in the Piano Roll |
 
 ## Arrangement view
 
@@ -54,10 +54,15 @@ On Windows and Linux, use **Ctrl** for **Cmd** and **Alt** for **Option**.
 
 | Gesture | Action |
 |---|---|
-| Drag a clip | Move it (snaps to bars) |
-| Shift-drag a clip | Move it, snapping to beats |
-| Option-drag a clip | Copy it |
+| Click a clip | Select it (and, when stopped, move the playhead there) |
+| Cmd-click a clip | Add it to the selection, or take it out |
+| Drag across empty space | Select the clips the box touches (Cmd adds to the selection) |
+| Drag a clip | Move the selected clips (snaps to bars) |
+| Shift-drag a clip | Move them, snapping to beats |
+| Option-drag a clip | Copy them |
 | Drag a clip's right edge | Change its length |
+| Drag a clip's left edge | Trim its start |
+| Drag an audio clip's top corner squares | Fade in / fade out |
 | Double-click a MIDI clip | Edit its notes |
 | Right-click a clip | Clip menu (split, cut, copy, duplicate, ...) |
 | Right-click an empty lane | Move the playhead there; Paste, Split All Clips at Playhead |

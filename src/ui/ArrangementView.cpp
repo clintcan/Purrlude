@@ -18,7 +18,8 @@ namespace
     const auto loopColour     = juce::Colour (0xffe69f00);   // orange
     const auto automationColour = juce::Colour (0xff56b4e9); // sky blue
     constexpr int minimumBars = 16;
-    constexpr int edgeGrabWidth = 6;   ///< pixels at a clip's right edge that resize it
+    constexpr int edgeGrabWidth = 6;   ///< pixels at a clip's edges that trim it
+    constexpr float handleSize = 9.0f; ///< an audio clip's fade handles
 }
 
 /** Draws the playhead on top of everything in the lanes (child components paint over
@@ -605,15 +606,24 @@ void ArrangementView::paint (juce::Graphics& g)
             auto startBeat = clip->getStartBeat().inBeats();
             auto endBeat = clip->getEndBeat().inBeats();
             auto area = getClipArea (i, startBeat, endBeat);
-            auto isDragged = clipDrag && clipDrag->moved && clipDrag->clipID == clip->itemID;
+            auto selected = isSelected (clip->itemID);
 
-            // A clip being moved (not copied) is shown faintly where it was.
-            auto alpha = isDragged && ! clipDrag->copying && ! clipDrag->resizing ? 0.3f : 1.0f;
+            // Clips being moved (not copied) are shown faintly where they were, as is one
+            // whose edge is being dragged.
+            auto alpha = 1.0f;
+
+            if (clipDrag && clipDrag->moved)
+            {
+                if (clipDrag->part == ClipPart::body && selected && ! clipDrag->copying)
+                    alpha = 0.3f;
+                else if ((clipDrag->part == ClipPart::start || clipDrag->part == ClipPart::end) && clipDrag->clipID == clip->itemID)
+                    alpha = 0.3f;
+            }
 
             g.setColour (clipColour.withAlpha (0.6f * alpha));
             g.fillRoundedRectangle (area, 4.0f);
 
-            if (clip->itemID == selectedClipID)
+            if (selected)
             {
                 g.setColour (juce::Colours::white.withAlpha (alpha));
                 g.drawRoundedRectangle (area.reduced (0.5f), 4.0f, 2.0f);
@@ -628,6 +638,7 @@ void ArrangementView::paint (juce::Graphics& g)
             if (auto* audioClip = dynamic_cast<tracktion::WaveAudioClip*> (clip))
             {
                 drawWaveform (g, *audioClip, area.reduced (2.0f, 4.0f), alpha);
+                drawFades (g, *audioClip, area, selected || clip->itemID == hoveredClipID);
                 continue;
             }
 
@@ -708,20 +719,52 @@ void ArrangementView::paint (juce::Graphics& g)
             drawAutomation (g, *shown, i);
     }
 
-    // Where a dragged clip will go.
-    if (clipDrag && clipDrag->moved)
+    // Where dragged clips will go: the selection when moving, the one clip when trimming.
+    if (clipDrag && clipDrag->moved && clipDrag->part != ClipPart::fadeIn && clipDrag->part != ClipPart::fadeOut)
     {
-        auto area = getClipArea (clipDrag->newLaneIndex, clipDrag->newStart, clipDrag->newEnd);
-        g.setColour (clipColour.withAlpha (0.45f));
-        g.fillRoundedRectangle (area, 4.0f);
-        g.setColour (juce::Colours::white);
-        g.drawRoundedRectangle (area.reduced (0.5f), 4.0f, 2.0f);
-
-        if (clipDrag->copying)
+        auto drawGhost = [&] (int lane, double start, double end)
         {
-            g.setFont (juce::FontOptions (13.0f, juce::Font::bold));
-            g.drawText ("Copy", area.reduced (8.0f, 4.0f), juce::Justification::topLeft);
+            auto area = getClipArea (lane, start, end);
+            g.setColour (clipColour.withAlpha (0.45f));
+            g.fillRoundedRectangle (area, 4.0f);
+            g.setColour (juce::Colours::white);
+            g.drawRoundedRectangle (area.reduced (0.5f), 4.0f, 2.0f);
+
+            if (clipDrag->copying)
+            {
+                g.setFont (juce::FontOptions (13.0f, juce::Font::bold));
+                g.drawText ("Copy", area.reduced (8.0f, 4.0f), juce::Justification::topLeft);
+            }
+        };
+
+        if (clipDrag->part == ClipPart::body)
+        {
+            auto delta = clipDrag->newStart - clipDrag->startBeat;
+            auto laneDelta = clipDrag->newLaneIndex - clipDrag->laneIndex;
+
+            for (auto id : getSelectedClips())
+            {
+                auto* clip = tracktion::findClipForID (edit, id);
+                auto lane = tracks.indexOf (dynamic_cast<tracktion::AudioTrack*> (clip->getClipTrack()));
+
+                if (lane >= 0)
+                    drawGhost (lane + laneDelta, clip->getStartBeat().inBeats() + delta, clip->getEndBeat().inBeats() + delta);
+            }
         }
+        else
+        {
+            drawGhost (clipDrag->laneIndex, clipDrag->newStart, clipDrag->newEnd);
+        }
+    }
+
+    // The box selecting clips.
+    if (marquee && marquee->moved)
+    {
+        auto box = juce::Rectangle<int> (marquee->start, marquee->end).toFloat();
+        g.setColour (juce::Colours::white.withAlpha (0.08f));
+        g.fillRect (box);
+        g.setColour (juce::Colours::white.withAlpha (0.6f));
+        g.drawRect (box, 1.0f);
     }
 
     if (tracks.isEmpty())
@@ -818,17 +861,135 @@ ArrangementView::ClipHit ArrangementView::findClipAt (juce::Point<int> position)
 
     // Later clips are drawn on top, so look at them first.
     auto& clips = tracks.getUnchecked (index)->getClips();
+    auto point = position.toFloat();
 
     for (int i = clips.size(); --i >= 0;)
     {
         auto* clip = clips.getUnchecked (i);
         auto area = getClipArea (index, clip->getStartBeat().inBeats(), clip->getEndBeat().inBeats());
 
-        if (area.contains (position.toFloat()))
-            return { clip, index, (float) position.x >= area.getRight() - (float) edgeGrabWidth };
+        if (! area.contains (point))
+            continue;
+
+        // An audio clip's fade handles, at its top corners.
+        if (auto* audioClip = dynamic_cast<tracktion::AudioClipBase*> (clip))
+        {
+            auto [fadeIn, fadeOut] = getFadeHandles (*clip, area, audioClip->getFadeIn().inSeconds(), audioClip->getFadeOut().inSeconds());
+
+            if (fadeIn.expanded (3.0f).contains (point))    return { clip, index, ClipPart::fadeIn };
+            if (fadeOut.expanded (3.0f).contains (point))   return { clip, index, ClipPart::fadeOut };
+        }
+
+        // The edges trim it; a narrow clip has only its end.
+        if (point.x >= area.getRight() - (float) edgeGrabWidth)
+            return { clip, index, ClipPart::end };
+
+        if (point.x < area.getX() + (float) edgeGrabWidth && area.getWidth() > 4.0f * (float) edgeGrabWidth)
+            return { clip, index, ClipPart::start };
+
+        return { clip, index, ClipPart::body };
     }
 
     return {};
+}
+
+std::pair<juce::Rectangle<float>, juce::Rectangle<float>> ArrangementView::getFadeHandles (tracktion::Clip& clip, juce::Rectangle<float> area,
+                                                                                          double fadeInSeconds, double fadeOutSeconds) const
+{
+    if (dynamic_cast<tracktion::AudioClipBase*> (&clip) == nullptr || area.getWidth() < 40.0f)
+        return {};
+
+    // Where each fade ends, kept inside the clip so a handle with no fade can still be grabbed.
+    auto start = clip.getPosition().getStart(), end = clip.getPosition().getEnd();
+    auto inX = juce::jlimit (area.getX() + handleSize * 0.5f, area.getRight() - handleSize * 1.5f,
+                             timeToX (start + tracktion::TimeDuration::fromSeconds (fadeInSeconds)));
+    auto outX = juce::jlimit (area.getX() + handleSize * 1.5f, area.getRight() - handleSize * 0.5f,
+                              timeToX (end - tracktion::TimeDuration::fromSeconds (fadeOutSeconds)));
+    auto top = area.getY() + 2.0f;
+
+    return { { inX - handleSize * 0.5f, top, handleSize, handleSize },
+             { outX - handleSize * 0.5f, top, handleSize, handleSize } };
+}
+
+void ArrangementView::drawFades (juce::Graphics& g, tracktion::AudioClipBase& clip, juce::Rectangle<float> area, bool showHandles)
+{
+    // While a fade is dragged, the values it would get.
+    auto fadeIn = clip.getFadeIn().inSeconds(), fadeOut = clip.getFadeOut().inSeconds();
+
+    if (clipDrag && clipDrag->clipID == clip.itemID && (clipDrag->part == ClipPart::fadeIn || clipDrag->part == ClipPart::fadeOut))
+    {
+        fadeIn = clipDrag->fadeIn;
+        fadeOut = clipDrag->fadeOut;
+    }
+
+    auto start = clip.getPosition().getStart(), end = clip.getPosition().getEnd();
+    auto shade = [&] (float edgeX, float fadeX)
+    {
+        // The part the fade turns down is shaded, above a line from silence to full level.
+        juce::Path path;
+        path.startNewSubPath (edgeX, area.getY());
+        path.lineTo (fadeX, area.getY());
+        path.lineTo (edgeX, area.getBottom());
+        path.closeSubPath();
+        g.setColour (juce::Colours::black.withAlpha (0.4f));
+        g.fillPath (path);
+        g.setColour (juce::Colours::white.withAlpha (0.8f));
+        g.drawLine (edgeX, area.getBottom(), fadeX, area.getY(), 1.5f);
+    };
+
+    if (fadeIn > 0.0)
+        shade (area.getX(), timeToX (start + tracktion::TimeDuration::fromSeconds (fadeIn)));
+
+    if (fadeOut > 0.0)
+        shade (area.getRight(), timeToX (end - tracktion::TimeDuration::fromSeconds (fadeOut)));
+
+    if (! showHandles)
+        return;
+
+    auto [inHandle, outHandle] = getFadeHandles (clip, area, fadeIn, fadeOut);
+
+    for (auto handle : { inHandle, outHandle })
+    {
+        if (handle.isEmpty())
+            continue;
+
+        g.setColour (juce::Colours::white);
+        g.fillRoundedRectangle (handle, 2.0f);
+        g.setColour (juce::Colours::black.withAlpha (0.6f));
+        g.drawRoundedRectangle (handle, 2.0f, 1.0f);
+    }
+}
+
+bool ArrangementView::isSelected (tracktion::EditItemID id) const
+{
+    return selectedClips.contains (id);
+}
+
+juce::Array<tracktion::EditItemID> ArrangementView::getSelectedClips() const
+{
+    juce::Array<tracktion::EditItemID> existing;
+
+    for (auto id : selectedClips)
+        if (tracktion::findClipForID (edit, id) != nullptr)
+            existing.add (id);
+
+    return existing;
+}
+
+bool ArrangementView::canMoveSelection (int laneDelta) const
+{
+    auto tracks = getSongTracks (edit);
+
+    for (auto id : getSelectedClips())
+    {
+        auto* clip = tracktion::findClipForID (edit, id);
+        auto lane = tracks.indexOf (dynamic_cast<tracktion::AudioTrack*> (clip->getClipTrack())) + laneDelta;
+
+        if (! juce::isPositiveAndBelow (lane, tracks.size()) || ! clips::canHold (*tracks.getUnchecked (lane), *clip))
+            return false;
+    }
+
+    return true;
 }
 
 void ArrangementView::mouseDown (const juce::MouseEvent& e)
@@ -851,39 +1012,97 @@ void ArrangementView::mouseDown (const juce::MouseEvent& e)
     if (automationMouseDown (e, index))
         return;
 
-    // A clip: select it, ready to drag (or right-click for what can be done with it).
+    auto addsToSelection = e.mods.isCommandDown() && ! e.mods.isPopupMenu();
+
     if (auto hit = findClipAt (e.getPosition()); hit.clip != nullptr)
     {
-        selectedClipID = hit.clip->itemID;
+        auto id = hit.clip->itemID;
 
+        // Right-click: a menu for the selection (this clip, unless it's part of it).
         if (e.mods.isPopupMenu())
         {
-            showClipMenu (hit.clip->itemID, dynamic_cast<tracktion::MidiClip*> (hit.clip) != nullptr,
-                          xToBeat ((float) e.x), e.getScreenPosition());
+            if (! isSelected (id))
+                selectedClips = { id };
+
+            repaint();
+            showClipMenu (id, dynamic_cast<tracktion::MidiClip*> (hit.clip) != nullptr, xToBeat ((float) e.x), e.getScreenPosition());
+            return;
+        }
+
+        // Cmd-click adds it to the selection, or takes it out.
+        if (addsToSelection)
+        {
+            if (isSelected (id))
+                selectedClips.removeFirstMatchingValue (id);
+            else
+                selectedClips.add (id);
+
             repaint();
             return;
         }
 
         ClipDrag drag;
-        drag.clipID = hit.clip->itemID;
-        drag.resizing = hit.onRightEdge;
+
+        if (! isSelected (id))
+            selectedClips = { id };
+        else
+            drag.selectOnlyIfClicked = selectedClips.size() > 1;
+
+        drag.clipID = id;
+        drag.part = hit.part;
         drag.startBeat = drag.newStart = hit.clip->getStartBeat().inBeats();
         drag.endBeat = drag.newEnd = hit.clip->getEndBeat().inBeats();
-        drag.grabBeat = xToBeat ((float) e.x);
+        drag.grabBeat = drag.clickBeat = xToBeat ((float) e.x);
         drag.laneIndex = drag.newLaneIndex = hit.laneIndex;
-        clipDrag = drag;
 
+        if (auto* audioClip = dynamic_cast<tracktion::AudioClipBase*> (hit.clip))
+        {
+            drag.fadeIn = audioClip->getFadeIn().inSeconds();
+            drag.fadeOut = audioClip->getFadeOut().inSeconds();
+        }
+
+        if (hit.part == ClipPart::start)
+        {
+            drag.earliestStart = clips::getEarliestStart (edit, id);
+        }
+        else if (hit.part == ClipPart::body)
+        {
+            // The selection moves together, and stops when its first clip reaches the start.
+            drag.earliestStart = drag.startBeat;
+
+            for (auto selected : getSelectedClips())
+                drag.earliestStart = juce::jmin (drag.earliestStart, tracktion::findClipForID (edit, selected)->getStartBeat().inBeats());
+        }
+
+        clipDrag = drag;
         repaint();
         return;
     }
 
-    // Empty space: move the playhead there (and right-click for Paste).
-    selectedClipID = {};
-    movePlayheadTo (xToBeat ((float) e.x));
-    repaint();
+    // Empty space: drag a box to select clips, or click to move the playhead there.
+    if (e.mods.isPopupMenu())
+    {
+        selectedClips.clear();
+        movePlayheadTo (xToBeat ((float) e.x));
+        repaint();
 
-    if (e.mods.isPopupMenu() && juce::isPositiveAndBelow (index, tracks.size()))
-        showLaneMenu (e.getScreenPosition());
+        if (juce::isPositiveAndBelow (index, tracks.size()))
+            showLaneMenu (e.getScreenPosition());
+
+        return;
+    }
+
+    Marquee box;
+    box.start = box.end = e.getPosition();
+    box.clickBeat = xToBeat ((float) e.x);
+
+    if (addsToSelection)
+        box.selectedBefore = selectedClips;
+    else
+        selectedClips.clear();
+
+    marquee = box;
+    repaint();
 }
 
 void ArrangementView::movePlayheadTo (double beat)
@@ -915,6 +1134,28 @@ void ArrangementView::mouseDrag (const juce::MouseEvent& e)
         return;
     }
 
+    if (marquee)
+    {
+        marquee->moved = marquee->moved || e.getDistanceFromDragStart() >= 4;
+        marquee->end = e.getPosition();
+
+        if (marquee->moved)
+        {
+            // Every clip the box touches, with what was selected before a Cmd-drag.
+            auto box = juce::Rectangle<int> (marquee->start, marquee->end).toFloat();
+            auto tracks = getSongTracks (edit);
+            selectedClips = marquee->selectedBefore;
+
+            for (int i = 0; i < tracks.size(); ++i)
+                for (auto* clip : tracks.getUnchecked (i)->getClips())
+                    if (getClipArea (i, clip->getStartBeat().inBeats(), clip->getEndBeat().inBeats()).intersects (box))
+                        selectedClips.addIfNotAlreadyThere (clip->itemID);
+        }
+
+        repaint();
+        return;
+    }
+
     if (! clipDrag)
         return;
 
@@ -928,27 +1169,64 @@ void ArrangementView::mouseDrag (const juce::MouseEvent& e)
     // Whole bars, or beats with Shift.
     double grid = e.mods.isShiftDown() ? 1.0 : (double) edit.tempoSequence.getTimeSig (0)->numerator.get();
 
-    if (drag.resizing)
+    switch (drag.part)
     {
-        // The end goes to the nearest grid line, keeping at least one grid step.
-        auto end = std::round (xToBeat ((float) e.x) / grid) * grid;
-        drag.newEnd = juce::jmax (end, drag.startBeat + grid, drag.startBeat + 1.0);
-        drag.newStart = drag.startBeat;
-    }
-    else
-    {
-        // Moved by whole grid steps, so a clip starting off the grid stays where it was within it.
-        auto delta = std::round ((xToBeat ((float) e.x) - drag.grabBeat) / grid) * grid;
-        drag.newStart = juce::jmax (0.0, drag.startBeat + delta);
-        drag.newEnd = drag.newStart + (drag.endBeat - drag.startBeat);
-        // Onto another lane only if that track can hold the clip (MIDI or audio).
-        auto tracks = getSongTracks (edit);
-        auto lane = juce::jlimit (0, tracks.size() - 1, laneIndexAt (juce::jmax (rulerHeight, e.y)));
-        auto* clip = tracktion::findClipForID (edit, drag.clipID);
+        case ClipPart::end:
+        {
+            // The end goes to the nearest grid line, keeping at least one grid step.
+            auto end = std::round (xToBeat ((float) e.x) / grid) * grid;
+            drag.newEnd = juce::jmax (end, drag.startBeat + grid, drag.startBeat + 1.0);
+            break;
+        }
 
-        if (clip != nullptr && clips::canHold (*tracks.getUnchecked (lane), *clip))
-            drag.newLaneIndex = lane;
-        drag.copying = e.mods.isAltDown();
+        case ClipPart::start:
+        {
+            // The start goes to the nearest grid line, no earlier than the content allows.
+            auto start = std::round (xToBeat ((float) e.x) / grid) * grid;
+            auto latest = juce::jmax (drag.startBeat, drag.endBeat - juce::jmax (grid, 1.0));
+            drag.newStart = juce::jlimit (juce::jmin (drag.earliestStart, drag.startBeat), latest, start);
+            break;
+        }
+
+        case ClipPart::fadeIn:
+        case ClipPart::fadeOut:
+        {
+            // Free, in seconds; the two fades can't overlap.
+            auto* clip = tracktion::findClipForID (edit, drag.clipID);
+
+            if (clip == nullptr)
+                break;
+
+            auto position = clip->getPosition();
+            auto time = xToTime ((float) e.x, false);
+            auto length = position.getLength().inSeconds();
+
+            if (drag.part == ClipPart::fadeIn)
+                drag.fadeIn = juce::jlimit (0.0, length - drag.fadeOut, (time - position.getStart()).inSeconds());
+            else
+                drag.fadeOut = juce::jlimit (0.0, length - drag.fadeIn, (position.getEnd() - time).inSeconds());
+
+            break;
+        }
+
+        case ClipPart::body:
+        {
+            // Moved by whole grid steps, so a clip starting off the grid stays where it was within it.
+            auto delta = std::round ((xToBeat ((float) e.x) - drag.grabBeat) / grid) * grid;
+            delta = juce::jmax (delta, -drag.earliestStart);
+            drag.newStart = drag.startBeat + delta;
+            drag.newEnd = drag.newStart + (drag.endBeat - drag.startBeat);
+
+            // Onto other lanes only if every selected clip lands on a track that can hold it.
+            auto tracks = getSongTracks (edit);
+            auto lane = juce::jlimit (0, tracks.size() - 1, laneIndexAt (juce::jmax (rulerHeight, e.y)));
+
+            if (canMoveSelection (lane - drag.laneIndex))
+                drag.newLaneIndex = lane;
+
+            drag.copying = e.mods.isAltDown();
+            break;
+        }
     }
 
     repaint();
@@ -963,33 +1241,91 @@ void ArrangementView::mouseUp (const juce::MouseEvent&)
         return;
     }
 
+    if (marquee)
+    {
+        // A click, not a drag: move the playhead there.
+        if (! marquee->moved)
+            movePlayheadTo (marquee->clickBeat);
+
+        marquee.reset();
+        repaint();
+        return;
+    }
+
     if (! clipDrag)
         return;
 
     auto drag = *clipDrag;
     clipDrag.reset();
 
-    if (drag.moved)
+    if (! drag.moved)
     {
-        if (drag.resizing)
+        // A click on a clip selects just it, and (when stopped) puts the playhead there.
+        if (drag.part == ClipPart::body)
         {
+            if (drag.selectOnlyIfClicked)
+                selectedClips = { drag.clipID };
+
+            if (! edit.getTransport().isPlaying())
+                movePlayheadTo (drag.clickBeat);
+        }
+
+        repaint();
+        return;
+    }
+
+    switch (drag.part)
+    {
+        case ClipPart::end:
             if (! juce::approximatelyEqual (drag.newEnd, drag.endBeat))
                 clips::setEnd (edit, drag.clipID, drag.newEnd);
-        }
-        else if (! juce::approximatelyEqual (drag.newStart, drag.startBeat) || drag.newLaneIndex != drag.laneIndex || drag.copying)
+            break;
+
+        case ClipPart::start:
+            if (! juce::approximatelyEqual (drag.newStart, drag.startBeat))
+                clips::setStart (edit, drag.clipID, drag.newStart);
+            break;
+
+        case ClipPart::fadeIn:
+        case ClipPart::fadeOut:
+            clips::setFades (edit, drag.clipID, tracktion::TimeDuration::fromSeconds (drag.fadeIn),
+                             tracktion::TimeDuration::fromSeconds (drag.fadeOut));
+            break;
+
+        case ClipPart::body:
         {
+            auto delta = drag.newStart - drag.startBeat;
+            auto laneDelta = drag.newLaneIndex - drag.laneIndex;
+
+            if (juce::approximatelyEqual (delta, 0.0) && laneDelta == 0 && ! drag.copying)
+                break;
+
             auto tracks = getSongTracks (edit);
+            std::vector<clips::Placement> placements;
 
-            if (juce::isPositiveAndBelow (drag.newLaneIndex, tracks.size()))
+            for (auto id : getSelectedClips())
             {
-                auto* destination = tracks.getUnchecked (drag.newLaneIndex);
+                auto* clip = tracktion::findClipForID (edit, id);
+                auto lane = tracks.indexOf (dynamic_cast<tracktion::AudioTrack*> (clip->getClipTrack())) + laneDelta;
 
-                if (auto* clip = clips::move (edit, drag.clipID, drag.newStart, *destination, drag.copying))
-                {
-                    selectedClipID = clip->itemID;
-                    live.selectTrack (destination->itemID);
-                }
+                if (juce::isPositiveAndBelow (lane, tracks.size()))
+                    placements.push_back ({ id, tracks.getUnchecked (lane) });
             }
+
+            auto moved = clips::moveAll (edit, placements, delta, drag.copying);
+
+            if (! moved.isEmpty())
+            {
+                selectedClips.clear();
+
+                for (auto* clip : moved)
+                    selectedClips.add (clip->itemID);
+
+                if (juce::isPositiveAndBelow (drag.newLaneIndex, tracks.size()))
+                    live.selectTrack (tracks.getUnchecked (drag.newLaneIndex)->itemID);
+            }
+
+            break;
         }
     }
 
@@ -1026,9 +1362,26 @@ void ArrangementView::mouseMove (const juce::MouseEvent& e)
 
     auto hit = findClipAt (e.getPosition());
 
+    // An audio clip shows its fade handles while the mouse is over it.
+    if (auto hovered = hit.clip != nullptr ? hit.clip->itemID : tracktion::EditItemID(); hovered != hoveredClipID)
+    {
+        hoveredClipID = hovered;
+        repaint();
+    }
+
     setMouseCursor (hit.clip == nullptr ? juce::MouseCursor::NormalCursor
-                                        : hit.onRightEdge ? juce::MouseCursor::LeftRightResizeCursor
-                                                          : juce::MouseCursor::DraggingHandCursor);
+                    : hit.part == ClipPart::body ? juce::MouseCursor::DraggingHandCursor
+                    : hit.part == ClipPart::start || hit.part == ClipPart::end ? juce::MouseCursor::LeftRightResizeCursor
+                                                                               : juce::MouseCursor::PointingHandCursor);
+}
+
+void ArrangementView::mouseExit (const juce::MouseEvent&)
+{
+    if (hoveredClipID.isValid())
+    {
+        hoveredClipID = {};
+        repaint();
+    }
 }
 
 namespace
@@ -1049,25 +1402,33 @@ void ArrangementView::showClipMenu (tracktion::EditItemID clipID, bool isMidi, d
            splitAtPlayhead, splitHere, cut, copy, duplicate, firstTake = 100 };
     juce::PopupMenu menu;
 
-    // Where the clip can be split: at the playhead, and at the beat nearest the click.
+    // Where the clips can be split: the selection at the playhead, this clip at the beat
+    // nearest the click.
     auto splitBeat = std::round (clickBeat);
-    auto isInside = [this, clipID] (double beat)
+    auto isInside = [this] (tracktion::EditItemID id, double beat)
     {
-        auto* clip = tracktion::findClipForID (edit, clipID);
+        auto* clip = tracktion::findClipForID (edit, id);
         return clip != nullptr && beat > clip->getStartBeat().inBeats() + 0.001 && beat < clip->getEndBeat().inBeats() - 0.001;
     };
 
-    addItemWithKeys (menu, splitAtPlayhead, "Split at Playhead", "command + T", isInside (getPlayheadBeat()));
+    auto selection = getSelectedClips();
+    auto playheadBeat = getPlayheadBeat();
+    auto canSplitSelection = std::any_of (selection.begin(), selection.end(), [&] (auto id) { return isInside (id, playheadBeat); });
+
+    // "Cut 3 Clips" when several are selected.
+    auto clipCount = selection.size() > 1 ? " " + juce::String (selection.size()) + " Clips" : juce::String();
+
+    addItemWithKeys (menu, splitAtPlayhead, "Split at Playhead", "command + T", canSplitSelection);
     // Named by bar, and beat within it unless it's the downbeat.
     auto beatsPerBar = juce::jmax (1, edit.tempoSequence.getTimeSig (0)->numerator.get());
     auto beatNumber = juce::jmax (0, juce::roundToInt (splitBeat));
     auto where = "Bar " + juce::String (beatNumber / beatsPerBar + 1)
                  + (beatNumber % beatsPerBar != 0 ? ", Beat " + juce::String (beatNumber % beatsPerBar + 1) : juce::String());
-    menu.addItem (splitHere, "Split Here (" + where + ")", isInside (splitBeat));
+    menu.addItem (splitHere, "Split Here (" + where + ")", isInside (clipID, splitBeat));
     menu.addSeparator();
-    addItemWithKeys (menu, cut, "Cut", "command + X");
-    addItemWithKeys (menu, copy, "Copy", "command + C");
-    addItemWithKeys (menu, duplicate, "Duplicate", "command + D");
+    addItemWithKeys (menu, cut, "Cut" + clipCount, "command + X");
+    addItemWithKeys (menu, copy, "Copy" + clipCount, "command + C");
+    addItemWithKeys (menu, duplicate, "Duplicate" + clipCount, "command + D");
     menu.addSeparator();
 
     // Takes from a loop recording: choose the one that's heard.
@@ -1102,7 +1463,7 @@ void ArrangementView::showClipMenu (tracktion::EditItemID clipID, bool isMidi, d
     menu.addSeparator();
     menu.addItem (loopClip, "Loop This Clip");
     menu.addSeparator();
-    menu.addItem (remove, "Delete");
+    addItemWithKeys (menu, remove, "Delete" + clipCount, "backspace");
 
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetScreenArea ({ screenPosition.x, screenPosition.y, 1, 1 }),
                         [safe = juce::Component::SafePointer<ArrangementView> (this), clipID, splitBeat] (int result)
@@ -1110,19 +1471,16 @@ void ArrangementView::showClipMenu (tracktion::EditItemID clipID, bool isMidi, d
         if (safe == nullptr)
             return;
 
-        if (result == splitAtPlayhead || result == splitHere)
+        if (result == splitAtPlayhead)
+            safe->splitAtPlayhead();
+        else if (result == splitHere)
         {
-            clips::split (safe->edit, clipID, result == splitHere ? splitBeat : safe->getPlayheadBeat());
+            clips::split (safe->edit, clipID, splitBeat);
             safe->repaint();
         }
-        else if (result == cut || result == copy || result == duplicate)
-        {
-            safe->selectedClipID = clipID;
-
-            if (result == cut)          safe->cutSelectedClip();
-            else if (result == copy)    safe->copySelectedClip();
-            else                        safe->duplicateSelectedClip();
-        }
+        else if (result == cut)         safe->cutSelectedClips();
+        else if (result == copy)        safe->copySelectedClips();
+        else if (result == duplicate)   safe->duplicateSelectedClips();
         else if (result == editNotes && safe->onClipDoubleClicked != nullptr)
             safe->onClipDoubleClicked (clipID);
         else if ((result == convertMelody || result == convertChords || result == convertDrums) && safe->onConvertToMidi != nullptr)
@@ -1132,7 +1490,7 @@ void ArrangementView::showClipMenu (tracktion::EditItemID clipID, bool isMidi, d
         else if ((result == separateToMidi || result == separateToAudio) && safe->onSeparateInstruments != nullptr)
             safe->onSeparateInstruments (clipID, result == separateToMidi ? separation::Output::midi : separation::Output::audio);
         else if (result == remove)
-            safe->deleteSelectedClip();
+            safe->deleteSelectedClips();
         else if (result >= firstTake || result == keepTake)
         {
             if (auto* clip = tracktion::findClipForID (safe->edit, clipID))
@@ -1175,104 +1533,132 @@ void ArrangementView::showLaneMenu (juce::Point<int> screenPosition)
     });
 }
 
-bool ArrangementView::hasSelectedClip() const
+bool ArrangementView::hasSelectedClips() const
 {
-    return selectedClipID.isValid() && tracktion::findClipForID (edit, selectedClipID) != nullptr;
+    return ! getSelectedClips().isEmpty();
+}
+
+bool ArrangementView::selectAllClips()
+{
+    selectedClips.clear();
+
+    for (auto* track : getSongTracks (edit))
+        for (auto* clip : track->getClips())
+            selectedClips.add (clip->itemID);
+
+    repaint();
+    return true;
 }
 
 bool ArrangementView::splitAtPlayhead()
 {
     auto beat = getPlayheadBeat();
 
-    // The selected clip, if the playhead's in it; otherwise everything the playhead crosses.
-    if (hasSelectedClip())
-    {
-        auto* clip = tracktion::findClipForID (edit, selectedClipID);
+    // The selected clips the playhead's in; with none, everything the playhead crosses.
+    juce::Array<tracktion::EditItemID> under;
 
-        if (beat > clip->getStartBeat().inBeats() && beat < clip->getEndBeat().inBeats())
-        {
-            auto split = clips::split (edit, selectedClipID, beat) != nullptr;
-            repaint();
-            return split;
-        }
-    }
+    for (auto id : getSelectedClips())
+        if (auto* clip = tracktion::findClipForID (edit, id); beat > clip->getStartBeat().inBeats() && beat < clip->getEndBeat().inBeats())
+            under.add (id);
 
-    auto count = clips::splitAll (edit, getSongTracks (edit), beat);
+    auto count = under.isEmpty() ? clips::splitAll (edit, getSongTracks (edit), beat)
+                                 : clips::splitClips (edit, under, beat);
     repaint();
     return count > 0;
 }
 
-bool ArrangementView::copySelectedClip()
+bool ArrangementView::copySelectedClips()
 {
-    if (! hasSelectedClip())
+    if (! hasSelectedClips())
         return false;
 
-    copiedClip = clips::copy (edit, selectedClipID);
+    copiedClip = clips::copy (edit, getSelectedClips());
     return copiedClip.has_value();
 }
 
-bool ArrangementView::cutSelectedClip()
+bool ArrangementView::cutSelectedClips()
 {
-    return copySelectedClip() && deleteSelectedClip();
+    return copySelectedClips() && deleteSelectedClips();
 }
 
 tracktion::AudioTrack* ArrangementView::getPasteTrack() const
 {
-    if (! copiedClip)
+    // Clips from one track go on the track last clicked, if it can hold them; otherwise
+    // (nullptr) each goes back on its own track.
+    if (! copiedClip || ! copiedClip->isFromOneTrack())
         return nullptr;
 
-    auto tracks = getSongTracks (edit);
-
-    for (auto id : { clickedTrackID, copiedClip->track })
-        for (auto* track : tracks)
-            if (track->itemID == id && clips::canHold (*track, *copiedClip))
-                return track;
+    for (auto* track : getSongTracks (edit))
+        if (track->itemID == clickedTrackID && clips::canHold (*track, *copiedClip))
+            return track;
 
     return nullptr;
 }
 
 bool ArrangementView::canPaste() const
 {
-    return getPasteTrack() != nullptr;
+    if (! copiedClip)
+        return false;
+
+    if (getPasteTrack() != nullptr)
+        return true;
+
+    // Back on their own tracks, if any of those are still there.
+    auto tracks = getSongTracks (edit);
+
+    return std::any_of (copiedClip->items.begin(), copiedClip->items.end(), [&tracks] (auto& item)
+                        {
+                            return std::any_of (tracks.begin(), tracks.end(), [&item] (auto* t) { return t->itemID == item.track; });
+                        });
 }
 
 bool ArrangementView::paste()
 {
-    auto* track = getPasteTrack();
-
-    if (track == nullptr)
+    if (! canPaste())
         return false;
 
-    auto* clip = clips::paste (edit, *copiedClip, getPlayheadBeat(), *track);
+    auto pasted = clips::paste (edit, *copiedClip, getPlayheadBeat(), getPasteTrack());
 
-    if (clip != nullptr)
-        selectedClipID = clip->itemID;
+    if (! pasted.isEmpty())
+    {
+        selectedClips.clear();
+
+        for (auto* clip : pasted)
+            selectedClips.add (clip->itemID);
+    }
 
     repaint();
-    return clip != nullptr;
+    return ! pasted.isEmpty();
 }
 
-bool ArrangementView::duplicateSelectedClip()
+bool ArrangementView::duplicateSelectedClips()
 {
-    if (! hasSelectedClip())
+    if (! hasSelectedClips())
         return false;
 
-    auto* copy = clips::duplicate (edit, selectedClipID);
+    auto copies = clips::duplicateAll (edit, getSelectedClips());
 
-    if (copy != nullptr)
-        selectedClipID = copy->itemID;
+    if (! copies.isEmpty())
+    {
+        selectedClips.clear();
+
+        for (auto* clip : copies)
+            selectedClips.add (clip->itemID);
+    }
 
     repaint();
-    return copy != nullptr;
+    return ! copies.isEmpty();
 }
 
-bool ArrangementView::deleteSelectedClip()
+bool ArrangementView::deleteSelectedClips()
 {
-    if (selectedClipID.isInvalid() || tracktion::findClipForID (edit, selectedClipID) == nullptr)
+    auto selection = getSelectedClips();
+
+    if (selection.isEmpty())
         return false;
 
-    clips::remove (edit, selectedClipID);
-    selectedClipID = {};
+    clips::removeAll (edit, selection);
+    selectedClips.clear();
     repaint();
     return true;
 }

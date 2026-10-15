@@ -23,25 +23,33 @@ You don't draw empty clips. Clips are made by:
 
 | To | Do this |
 |---|---|
-| Select a clip | Click it (it gets a white outline) |
-| Move it | Drag it. It snaps to bars; hold **Shift** to snap to beats |
-| Move it to another track | Drag it up or down. MIDI clips go on instrument tracks, audio clips on audio tracks |
-| Copy it | Hold **Option** (Alt) while dragging; the clip shows *Copy* |
-| Split it in two | Put the playhead where to cut (click the ruler's bar numbers or an empty part of a lane), select the clip and press **Cmd+T**. Or right-click it > **Split at Playhead**, or **Split Here** to cut at the beat nearest the click (the menu names its bar and beat) |
-| Copy and paste it | Select it and press **Cmd+C** (or **Cmd+X** to cut it), click where it should go, then press **Cmd+V** |
-| Repeat it | **Cmd+D** (Duplicate) puts a copy right after it |
-| Make it longer or shorter | Drag its right edge (the cursor changes near it) |
-| Delete it | Select it and press **Delete** or **Backspace**, or right-click > **Delete** |
+| Select a clip | Click it (it gets a white outline). When the song is stopped, the click also moves the playhead there |
+| Select several | **Cmd**-click (Ctrl on Windows and Linux) to add a clip or take it out again, or drag a box across them from an empty part of the lanes. **Cmd+A** selects every clip |
+| Move them | Drag one of the selected clips; the others go with it. It snaps to bars; hold **Shift** to snap to beats |
+| Move them to other tracks | Drag up or down. MIDI clips go on instrument tracks, audio clips on audio tracks |
+| Copy them | Hold **Option** (Alt) while dragging; the clips show *Copy* |
+| Split a clip in two | Put the playhead where to cut (click the clip, the ruler's bar numbers or an empty part of a lane), and press **Cmd+T**. Or right-click it > **Split at Playhead**, or **Split Here** to cut at the beat nearest the click (the menu names its bar and beat) |
+| Copy and paste | Select clips and press **Cmd+C** (or **Cmd+X** to cut them), click where they should go, then press **Cmd+V** |
+| Repeat them | **Cmd+D** (Duplicate) puts a copy right after them |
+| Make a clip longer or shorter | Drag its right edge (the cursor changes near it) |
+| Trim a clip's start | Drag its left edge. What it plays stays where it is: drag right to hide the beginning, left to bring it back |
+| Fade audio in or out | Drag the small square at an audio clip's top-left corner to the right for a fade-in, or the one at its top-right corner to the left for a fade-out. They show on the selected clips and the one under the mouse |
+| Delete them | Press **Delete** or **Backspace**, or right-click > **Delete** |
 | Edit its notes | Double-click a MIDI clip, or right-click > **Edit Notes** |
 
 **Splitting:**
 - The two parts play exactly what the clip played; a note that crosses the cut sounds in both parts, up to and from the cut.
-- With no clip selected (or the playhead outside the selected one), **Cmd+T** splits every clip the playhead crosses, on all tracks. That's a quick way to cut a whole section out of the song, to move or repeat it.
+- **Cmd+T** splits the selected clips the playhead is inside. With none of them, it splits every clip the playhead crosses, on all tracks: a quick way to cut a whole section out of the song, to move or repeat it.
 
 **Pasting:**
-- The clip is pasted at the playhead, on the track you last clicked. If that track can't hold it (a MIDI clip on an audio track, or the other way round), it goes on the track it was copied from.
+- Clips are pasted at the playhead, keeping their spacing.
+- Clips copied from one track go on the track you last clicked. If that track can't hold them (MIDI clips on an audio track, or the other way round), or they came from several tracks, each goes back on the track it was copied from.
 - Paste as often as you like; each is a clip of its own. Right-click an empty part of a lane to move the playhead there and paste.
-- The copy is kept as it was when you copied it, even if you then change or delete the clip.
+- The copy is kept as it was when you copied it, even if you then change or delete the clips.
+
+**Trimming and looping clips:** a clip's start can't go earlier than where its recording or notes begin. Clips made from loops and accompaniment repeat, so their start can be dragged back as far as you like.
+
+**Fades** are free, not snapped, and can't overlap: a fade-in stops where the fade-out begins. The shaded corner shows how the sound is turned down.
 
 **Overlapping clips:** a clip moved or copied onto others replaces what it covers. Clips it partly covers are shortened or split around it.
 

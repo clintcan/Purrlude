@@ -65,7 +65,7 @@ private:
     friend class DocScreenshots;   // drives the window for the user guide's screenshots
 
     enum MenuIds { newId = 1, openId, saveId, saveAsId, exportPdfId, exportPartsId, exportMusicXmlId, exportAudioId, importMidiId, importAudioId, undoId, redoId,
-                   splitId, cutId, copyId, pasteId, duplicateId, deleteId };
+                   splitId, cutId, copyId, pasteId, duplicateId, deleteId, selectAllId };
 
     void setProject (std::unique_ptr<Project>);
     void startUp();
