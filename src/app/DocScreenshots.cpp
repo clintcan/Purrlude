@@ -273,6 +273,9 @@ void DocScreenshots::addSteps()
     then (1500, [this] { capture ("piano-roll"); });
     then (0, [showEditors] { showEditors (true, 0); });
     then (5000, [this] { capture ("score"); });
+    then (0, [this] { main.setEditorsFullHeight (true); });
+    then (2000, [this] { capture ("score-full-height"); });
+    then (0, [this] { main.setEditorsFullHeight (false); });
 
     // Side panels.
     then (0, [this]

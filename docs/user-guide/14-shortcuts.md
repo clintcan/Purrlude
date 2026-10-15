@@ -42,6 +42,7 @@ On Windows and Linux, use **Ctrl** for **Cmd** and **Alt** for **Option**.
 | Cmd+= (or Cmd++) | Zoom in |
 | Cmd+− | Zoom out |
 | Cmd+0 | Show the whole song (Fit) |
+| Cmd+Shift+F | Score and Piano Roll at full height (hides the arrangement) |
 
 ## Mouse
 

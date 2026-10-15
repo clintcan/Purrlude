@@ -16,7 +16,7 @@ The window has four areas:
   
   Only one side panel shows at a time; click its button again to close it.
 - **The arrangement**, where your song is laid out: one lane per track, each with a header of controls on the left and its clips on the right. The ruler above it shows bar numbers. See [Tracks](04-tracks.md) and [Arranging Clips](05-arrangement.md).
-- **The editors** below it: the **Score** tab shows the whole song as [sheet music](08-score.md), and the **Piano Roll** tab edits one clip's [notes](07-piano-roll.md).
+- **The editors** below it: the **Score** tab shows the whole song as [sheet music](08-score.md), and the **Piano Roll** tab edits one clip's [notes](07-piano-roll.md). **Full Height**, at the right of their tabs, gives them the whole window.
 - **A side panel** on the right, when one is open.
 
 At first launch the window shows an empty song with one instrument track, and the MIDI Devices panel open. After that, Purrlude reopens the project you last had open.

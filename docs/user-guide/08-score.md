@@ -6,6 +6,12 @@
 
 The **Score** tab shows the whole song as sheet music, one part per track that has notes. It updates as you edit, record or add loops. While recording, it waits until you stop. When a song has no notes yet, it says *Record something to see it as sheet music.*
 
+## Full height
+
+To read or play from the score, click **Full Height** at the right end of the Score and Piano Roll tabs, or press **Cmd+Shift+F**. The arrangement is hidden and the score fills the window below the toolbar. Click it again, or press Cmd+Shift+F, to bring the arrangement back. It works the same for the Piano Roll.
+
+<img src="images/score-full-height.png" alt="The score filling the window below the toolbar, with Full Height lit on the tab bar" width="100%">
+
 ## How notes become notation
 
 Played music is rarely exactly on the beat, so the score tidies it for reading. **What you hear never changes; only how it's written.**

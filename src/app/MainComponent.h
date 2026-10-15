@@ -33,6 +33,7 @@ namespace purrlude
     export audio, Cmd/Ctrl+I import a MIDI file, Cmd/Ctrl+Shift+I an audio file (or drop
     either on the window),
     Cmd/Ctrl + = / - / 0 zoom the arrangement in / out / to fit,
+    Cmd/Ctrl+Shift+F the score and piano roll at full height,
     Delete/Backspace delete the selected clip.
 */
 class MainComponent final : public juce::Component,
@@ -126,6 +127,8 @@ private:
     juce::TextButton devicesButton { "MIDI Devices" };
     juce::TextButton loopsButton { "Loops" };
     juce::TextButton editorsButton { "Editors" };
+    juce::TextButton fullHeightButton { "Full Height" };   ///< The editors take the whole window, the arrangement hidden
+    void setEditorsFullHeight (bool);
     MidiDevicesPanel devicesPanel;
     ToneListener toneListener { deviceSettings };
 

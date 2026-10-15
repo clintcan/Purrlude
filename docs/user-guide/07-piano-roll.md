@@ -37,6 +37,6 @@ Every edit is one undo step. Keyboard shortcuts work in the Piano Roll once you'
 
 ## Zoom
 
-The slider at the right of the toolbar zooms the Piano Roll in and out. Scroll to move through time and pitch.
+The slider at the right of the toolbar zooms the Piano Roll in and out. Scroll to move through time and pitch. For more room, **Full Height** at the right of the tabs (Cmd+Shift+F) hides the arrangement.
 
 Velocity can't be edited yet, other than by deleting and re-adding notes.

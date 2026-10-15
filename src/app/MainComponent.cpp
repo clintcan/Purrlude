@@ -51,14 +51,25 @@ MainComponent::MainComponent (tracktion::Engine& e, BluetoothMidiManager& blueto
     editorsButton.onClick = [this]
     {
         editorTabs.setVisible (editorsButton.getToggleState());
+
+        // Hiding the editors brings the arrangement back.
+        if (! editorsButton.getToggleState())
+            fullHeightButton.setToggleState (false, juce::dontSendNotification);
+
         resized();
     };
+
+    // The score and piano roll can have the whole window, for reading or editing at length.
+    fullHeightButton.setClickingTogglesState (true);
+    fullHeightButton.setTooltip ("Give the score and piano roll the whole window, hiding the arrangement (Cmd+Shift+F)");
+    fullHeightButton.onClick = [this] { setEditorsFullHeight (fullHeightButton.getToggleState()); };
 
     editorTabs.setTabBarDepth (28);
     editorTabs.setOutline (0);
     addAndMakeVisible (editorsButton);
     addAndMakeVisible (arrangementViewport);
     addAndMakeVisible (editorTabs);
+    addAndMakeVisible (fullHeightButton);   // after the tabs, so it sits on their bar
     addAndMakeVisible (audioSettingsButton);
     addAndMakeVisible (devicesButton);
     addAndMakeVisible (loopsButton);
@@ -901,20 +912,45 @@ void MainComponent::resized()
     if (loopsPanel != nullptr && loopsPanel->isVisible())
         loopsPanel->setBounds (r.removeFromRight (LoopsPanel::preferredWidth));
 
-    // The editors take the lower part of the window; the arrangement keeps at least a lane or two.
-    if (editorTabs.isVisible())
+    // The editors take the lower part of the window, or all of it at full height; otherwise the
+    // arrangement keeps at least a lane or two.
+    auto fullHeight = editorTabs.isVisible() && fullHeightButton.getToggleState();
+    fullHeightButton.setVisible (editorTabs.isVisible());
+
+    if (fullHeight)
+        editorTabs.setBounds (r);
+    else if (editorTabs.isVisible())
         editorTabs.setBounds (r.removeFromBottom (juce::jmax (0, juce::jmin (r.getHeight() - 180, (int) (r.getHeight() * 0.6f)))));
+
+    fullHeightButton.setBounds (editorTabs.getBounds().removeFromTop (28).removeFromRight (110).reduced (3));
 
     // The arrangement scrolls up and down when its tracks don't fit; the zoom bar below it
     // scrolls it sideways.
+    arrangementViewport.setVisible (! fullHeight);
+
     if (arrangement != nullptr)
+    {
+        arrangement->getZoomBar().setVisible (! fullHeight);
         arrangement->getZoomBar().setBounds (r.removeFromBottom (ArrangementView::zoomBarHeight));
+    }
 
     arrangementViewport.setBounds (r);
 
     if (arrangement != nullptr)
         arrangement->setSize (arrangementViewport.getMaximumVisibleWidth(),
                               juce::jmax (arrangement->getContentHeight(), arrangementViewport.getMaximumVisibleHeight()));
+}
+
+void MainComponent::setEditorsFullHeight (bool full)
+{
+    if (full)
+    {
+        editorTabs.setVisible (true);
+        editorsButton.setToggleState (true, juce::dontSendNotification);
+    }
+
+    fullHeightButton.setToggleState (full, juce::dontSendNotification);
+    resized();
 }
 
 void MainComponent::showSidePanel (juce::Component* panel)
@@ -947,6 +983,8 @@ bool MainComponent::keyPressed (const juce::KeyPress& key)
             case '+':   arrangement->zoomIn();                                                                  return true;
             case '-':   arrangement->zoomOut();                                                                 return true;
             case '0':   arrangement->zoomToFit();                                                               return true;
+            case 'F':   if (! mods.isShiftDown()) return false;
+                        setEditorsFullHeight (! (editorTabs.isVisible() && fullHeightButton.getToggleState()));     return true;
             case 'Z':   if (mods.isShiftDown()) project->getEdit().redo(); else project->getEdit().undo();      return true;
             default:    return false;
         }
