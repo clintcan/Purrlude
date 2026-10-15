@@ -231,6 +231,7 @@ juce_add_gui_app(Purrlude
     PRODUCT_NAME "Purrlude"
     COMPANY_NAME "Purrlude"
     BUNDLE_ID "com.purrlude.app"
+    ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/branding/purrlude-icon.png"   # made by tools/branding/make_icon.py
     MICROPHONE_PERMISSION_ENABLED TRUE
     MICROPHONE_PERMISSION_TEXT "Purrlude needs microphone access to record audio."
     BLUETOOTH_PERMISSION_ENABLED TRUE

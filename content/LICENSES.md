@@ -5,6 +5,7 @@ Only content whose license permits redistribution inside the app may be added.
 
 | Asset | Used for | Source | Author | License |
 |---|---|---|---|---|
+| Purrlude logo (`docs/user-guide/images/Purrlude-Cat-Logo.png`) and app icon (`branding/purrlude-icon.png`, cropped from the logo by `tools/branding/make_icon.py`) | The app icon, README and user guide | Made for Purrlude | Purrlude's author | Purrlude's own artwork, under Purrlude's license |
 | GeneralUser GS v2.0.3 (`GeneralUser-GS.sf2`) | Built-in General MIDI instruments | [github.com/mrbumpy409/GeneralUser-GS](https://github.com/mrbumpy409/GeneralUser-GS) at `684543d`; [schristiancollins.com](https://www.schristiancollins.com) | S. Christian Collins | GeneralUser GS License v2.0 (copied next to the app as `LICENSE-GeneralUser-GS.txt`) |
 | GO:KEYS 3 / GO:KEYS 5 tone names and numbers (`devices/roland-go-keys-3-5.json`) | Choosing the keyboard's tones by name | Roland's published "GO:KEYS 3 / GO:KEYS 5 Tone List" (2024) | Roland Corporation | Factual reference data (tone names and MIDI addresses), used for interoperability; the PDF itself is not included |
 | Drum loops (`loops/groove.json`) | Built-in drum loops (Loops panel) | [Groove MIDI Dataset](https://magenta.tensorflow.org/datasets/groove) v1.0.0 (MIDI only), extracted by `tools/content/build_groove_loops.py` | Jon Gillick, Adam Roberts, Jesse Engel, Douglas Eck, David Bamman (Google Magenta) | CC BY 4.0; attribution shown in the Loops panel |

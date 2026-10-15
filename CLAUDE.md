@@ -287,8 +287,9 @@ src/analysis/           Analysis layer: melody, chord (basic-pitch) and drum tra
 src/ui/                 UI components (TransportBar, ArrangementView, ScoreView, PianoRoll, MidiDevicesPanel, LoopsPanel, EffectsPanel)
 tools/content/          Scripts that generate bundled content (run by hand; output is committed)
 tools/models/           Scripts that make the ML models that are too big to commit (run by hand)
+branding/               The app icon (made from the logo by tools/branding/make_icon.py; ICON_BIG in CMakeLists.txt)
 tests/                  Catch2 test runner (PurrludeTests)
-docs/user-guide/        End-user guide: README.md index, one page per topic, images/ taken by the app
+docs/user-guide/        End-user guide: README.md index, one page per topic, images/ taken by the app (and the logo, Purrlude-Cat-Logo.png)
 .github/workflows/      CI for Windows, macOS, Linux
 ```
 

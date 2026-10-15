@@ -57,8 +57,9 @@ hr { display: none; }
 section.chapter { break-before: page; }
 section.chapter > h1 { padding-bottom: 6pt; border-bottom: 1.5pt solid #12324a; }
 
-.cover { page: front; height: 240mm; display: flex; flex-direction: column; justify-content: center; }
-.cover h1 { font-size: 36pt; border: 0; string-set: none; bookmark-level: none; margin-bottom: 6pt; }
+.cover { page: front; height: 240mm; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; }
+.cover img.logo { width: 75%; border: 0; border-radius: 6pt; margin-bottom: 10pt; }
+.cover h1 { font-size: 28pt; border: 0; string-set: none; bookmark-level: none; margin-bottom: 6pt; }
 .cover .subtitle { font-size: 14pt; color: #4b5563; margin-bottom: 24pt; }
 .cover img { margin: 10pt 0 18pt; }
 .cover .date { color: #6b7280; }
@@ -171,9 +172,8 @@ def build(output):
 <html><head><meta charset="utf-8"><title>Purrlude User Guide</title><style>{CSS}</style></head>
 <body>
 <div class="cover">
-  <h1>Purrlude</h1>
-  <div class="subtitle">User Guide</div>
-  <img src="images/overview.png" alt="The Purrlude window">
+  <img class="logo" src="images/Purrlude-Cat-Logo.png" alt="Purrlude">
+  <h1>User Guide</h1>
   <div class="date">{html.escape(today)}</div>
 </div>
 <div class="toc" id="contents"><h1>Contents</h1><ol><li><a href="#about">About This Guide</a></li>{"".join(toc_items)}</ol></div>

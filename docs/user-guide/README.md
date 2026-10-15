@@ -1,3 +1,5 @@
+<p align="center"><img src="images/Purrlude-Cat-Logo.png" alt="The Purrlude logo: a cat in headphones riding a sound wave above the word Purrlude" width="240"></p>
+
 # Purrlude User Guide
 
 Purrlude is a music workstation for writing, recording, arranging and mixing songs, and for seeing them as sheet music. This guide covers what it can do today, one topic per page.
