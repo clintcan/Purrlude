@@ -2,6 +2,7 @@
 
 #include "model/EngineSetup.h"
 #include "model/LiveInstrument.h"
+#include "model/Automation.h"
 #include "model/PluginLibrary.h"
 #include "model/TrackEffects.h"
 #include "model/TrackInstrument.h"
@@ -83,6 +84,43 @@ namespace
         return std::nullopt;
     }
    #endif
+
+    /** Renders the edit and returns the peak level in each of `parts` equal slices. */
+    std::vector<float> renderPeaksOverTime (tracktion::Edit& edit, double seconds, int parts)
+    {
+        auto file = juce::File::createTempFile (".wav");
+        tracktion::Renderer::Parameters params (edit);
+        params.destFile = file;
+        params.audioFormat = edit.engine.getAudioFileFormatManager().getWavFormat();
+        params.sampleRateForAudio = 44100.0;
+        params.blockSizeForAudio = 512;
+        params.time = { tracktion::TimePosition(), tracktion::TimePosition::fromSeconds (seconds) };
+
+        std::atomic<bool> finished { false };
+        auto handle = tracktion::EditRenderer::render (std::move (params), [&finished] (auto) { finished = true; });
+
+        for (auto end = juce::Time::getMillisecondCounter() + 20000; ! finished && juce::Time::getMillisecondCounter() < end;)
+            pump (20);
+
+        REQUIRE (finished);
+
+        juce::AudioFormatManager formats;
+        formats.registerBasicFormats();
+        std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (file));
+        REQUIRE (reader != nullptr);
+        juce::AudioBuffer<float> audio ((int) reader->numChannels, (int) reader->lengthInSamples);
+        reader->read (&audio, 0, (int) reader->lengthInSamples, 0, true, true);
+        reader = nullptr;
+        file.deleteFile();
+
+        std::vector<float> peaks;
+        auto slice = audio.getNumSamples() / parts;
+
+        for (int i = 0; i < parts; ++i)
+            peaks.push_back (audio.getMagnitude (i * slice, slice));
+
+        return peaks;
+    }
 
     float renderPeak (tracktion::Edit& edit)
     {
@@ -358,3 +396,87 @@ TEST_CASE ("A plugin file loads, opens and plays", "[.plugin-file]")
     std::cout << "Peak " << peak << std::endl;
     CHECK (peak > 0.001f);
 }
+
+#if JUCE_MAC
+TEST_CASE ("A plugin's controls can be automated", "[plugins][automation]")
+{
+    namespace automation = purrlude::automation;
+    Song song;
+    auto dls = findAppleUnit (song, "aumu,dls ");
+
+    if (! dls)
+        SKIP ("Apple's DLSMusicDevice isn't available");
+
+    REQUIRE (song.instrument().setPluginInstrument (*dls).isEmpty());
+
+    // Its controls are listed (without Tracktion's wet and dry levels), but not offered as
+    // targets until they're automated.
+    auto plugins = automation::getPluginControls (song.track());
+    REQUIRE (plugins.size() == 1);
+    CHECK (plugins[0].name == "DLSMusicDevice");
+
+    std::optional<automation::Target> volume;
+
+    for (auto& control : plugins[0].controls)
+        if (control.shortName == "Volume")
+            volume = control;
+
+    REQUIRE (volume);
+    CHECK (volume->name == "DLSMusicDevice: Volume");
+    CHECK (volume->group == "DLSMusicDevice");
+
+    auto isTarget = [&] { auto t = automation::getTargets (song.track()); return std::find (t.begin(), t.end(), *volume) != t.end(); };
+    CHECK (! isTarget());
+
+    // Any control can be shown, automated or not.
+    automation::setShown (song.track(), *volume);
+    REQUIRE (automation::getShown (song.track()) == volume);
+
+    // Automated: the volume falls to silent between 1 and 1.5 seconds, and that's heard.
+    auto* parameter = automation::findParameter (song.track(), *volume);
+    REQUIRE (parameter != nullptr);
+    auto range = parameter->getValueRange();
+    // From its default (0 dB) to silent. DLS's own reverb is off, so no tail rings on.
+    if (auto reverb = song.instrument().getPluginInstrument()->getAutomatableParameterByID ("2"))
+        reverb->setParameter (reverb->getValueRange().getStart(), juce::sendNotification);
+
+    automation::addPoint (*song.edit, *parameter, tracktion::TimePosition::fromSeconds (1.0), parameter->getCurrentValue());
+    automation::addPoint (*song.edit, *parameter, tracktion::TimePosition::fromSeconds (1.5), range.getStart());
+    CHECK (isTarget());
+
+    song.edit->getUndoManager().beginNewTransaction();
+    auto clip = song.track().insertMIDIClip ({ tracktion::TimePosition(), tracktion::TimePosition::fromSeconds (2.0) }, nullptr);
+    REQUIRE (clip != nullptr);
+
+    for (double beat : { 0.0, 1.0, 2.0, 3.0 })
+        clip->getSequence().addNote (60, tracktion::BeatPosition::fromBeats (beat), tracktion::BeatDuration::fromBeats (0.9), 110, 0, nullptr);
+
+    auto peaks = renderPeaksOverTime (*song.edit, 2.0, 4);
+    INFO ("Peaks " << peaks[0] << " " << peaks[1] << " " << peaks[2] << " " << peaks[3]);
+    CHECK (peaks[0] > 0.01f);
+    CHECK (peaks[3] < peaks[0] * 0.1f);
+}
+
+TEST_CASE ("Plugin controls moved by hand are remembered, most recent first", "[plugins][automation]")
+{
+    Song song;
+    auto dls = findAppleUnit (song, "aumu,dls ");
+
+    if (! dls)
+        SKIP ("Apple's DLSMusicDevice isn't available");
+
+    REQUIRE (song.instrument().setPluginInstrument (*dls).isEmpty());
+    auto* plugin = song.instrument().getPluginInstrument();
+    purrlude::automation::TouchedControls touched (*song.edit);
+
+    auto parameter = [&] (const char* id) { return plugin->getAutomatableParameterByID (id); };
+    touched.touched (*parameter ("0"));
+    touched.touched (*parameter ("1"));
+    touched.touched (*parameter ("0"));
+    CHECK (touched.getRecent (plugin->itemID) == juce::StringArray { "0", "1" });
+
+    // Not Tracktion's own wet and dry levels.
+    touched.touched (*plugin->dryGain);
+    CHECK (touched.getRecent (plugin->itemID).size() == 2);
+}
+#endif

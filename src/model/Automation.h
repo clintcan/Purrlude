@@ -5,8 +5,9 @@
 namespace purrlude
 {
 
-/** Automation: a parameter (a track's volume, pan, reverb send or an effect's control) that
-    changes over time, following a curve of points drawn in the arrangement.
+/** Automation: a parameter (a track's volume, pan, reverb send, an effect's control, or any
+    control of a third-party plugin) that changes over time, following a curve of points drawn
+    in the arrangement.
 
     The curves are Tracktion's: saved with the song, followed during playback and export, and
     kept on their beats when the tempo changes (TempoSetting::setBpm remaps them). Points are
@@ -22,19 +23,65 @@ namespace automation
     {
         tracktion::EditItemID plugin;
         juce::String parameterID;
-        juce::String name;            ///< As the menus show it: "Volume", "Delay Mix"
+        juce::String name;            ///< As the lane shows it: "Volume", "Delay Mix", "Surge XT: Filter 1 Cutoff"
+        juce::String group;           ///< A third-party plugin's name (its submenu); empty for Purrlude's own
+        juce::String shortName;       ///< Within the group: "Filter 1 Cutoff"
 
         bool operator== (const Target& other) const   { return plugin == other.plugin && parameterID == other.parameterID; }
     };
 
-    /** In menu order: volume, pan, the reverb send (if the track has one), then each effect's
-        controls. Tracks played on an external device have none: their sound isn't Purrlude's.
+    /** In menu order: volume, pan, the reverb send (if the track has one), each built-in
+        effect's controls, then the controls of third-party plugins (the instrument and
+        effects) that already have automation. Tracks played on an external device have none:
+        their sound isn't Purrlude's.
     */
     std::vector<Target> getTargets (tracktion::AudioTrack&);
 
+    /** A third-party plugin on the track (its instrument or an effect) and every control it
+        has. Plugins can have hundreds, so menus offer the ones in use and a chooser for the rest.
+    */
+    struct PluginControls
+    {
+        tracktion::EditItemID plugin;
+        juce::String name;
+        std::vector<Target> controls;
+    };
+
+    /** The track's loaded third-party plugins, in the order the sound goes through them. */
+    std::vector<PluginControls> getPluginControls (tracktion::AudioTrack&);
+
+    /** Remembers which third-party plugin controls were moved by hand (in the plugin's window,
+        while a mouse button is down), most recent first, so the automation menus can offer
+        them. Not saved: it's this session's.
+    */
+    class TouchedControls final : private tracktion::ParameterChangeHandler::Listener
+    {
+    public:
+        explicit TouchedControls (tracktion::Edit&);
+        ~TouchedControls() override;
+
+        /** The plugin's controls moved by hand, most recent first (parameter ids). */
+        juce::StringArray getRecent (tracktion::EditItemID plugin) const;
+
+        /** Records a control as moved (what a move in the plugin's window does). */
+        void touched (tracktion::AutomatableParameter&);
+
+        static constexpr int maxRemembered = 6;
+
+    private:
+        void pluginParameterChanged (tracktion::AutomatableParameter&, bool isFollowingAutomation) override;
+
+        tracktion::Edit& edit;
+        std::map<tracktion::EditItemID, juce::StringArray> recent;   ///< Message thread only
+
+        JUCE_DECLARE_NON_COPYABLE (TouchedControls)
+    };
+
     tracktion::AutomatableParameter* findParameter (tracktion::AudioTrack&, const Target&);
 
-    /** The parameter whose curve the track's lane shows, if any (and if it still exists). */
+    /** The parameter whose curve the track's lane shows, if any (and if it still exists). Any
+        of a plugin's controls can be shown, not just those getTargets lists.
+    */
     std::optional<Target> getShown (tracktion::AudioTrack&);
     void setShown (tracktion::AudioTrack&, std::optional<Target>);
 

@@ -46,6 +46,21 @@ private:
     void renameCurrentTone();
     int getSelectedInstrumentId() const;
     void showMenu();
+
+    /** The automation choices in a menu: Purrlude's own controls, then a submenu per
+        third-party plugin with its automated and recently moved controls and Choose a Control...
+    */
+    struct AutomationChoices
+    {
+        std::vector<automation::Target> targets;            ///< Item firstId + index
+        std::vector<automation::PluginControls> plugins;    ///< Choose a Control...: item firstId + chooserOffset + index
+        static constexpr int chooserOffset = 10000;
+    };
+
+    AutomationChoices addAutomationItems (juce::PopupMenu&, int firstId) const;
+
+    /** Acts on an item from addAutomationItems; false if it wasn't one. */
+    bool automationChosen (int result, const AutomationChoices&, int firstId, juce::Rectangle<int> screenArea);
     void renameTrack();
     void showEffects();
 

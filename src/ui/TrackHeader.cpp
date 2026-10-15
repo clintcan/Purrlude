@@ -12,6 +12,7 @@
 #include "model/SharedReverb.h"
 #include "model/PluginLibrary.h"
 #include "ui/PluginWindows.h"
+#include "ui/ControlChooser.h"
 
 namespace purrlude
 {
@@ -463,23 +464,14 @@ void TrackHeader::showMenu()
     // Automation: which parameter's curve the lane shows.
     constexpr int firstAutomationId = 200, hideAutomationId = 199;
     auto* track = getInstrument().getTrack();
-    auto targets = track != nullptr ? automation::getTargets (*track) : std::vector<automation::Target>();
     auto shown = track != nullptr ? automation::getShown (*track) : std::nullopt;
+    juce::PopupMenu automationMenu;
+    automationMenu.addItem (hideAutomationId, "Hide", shown.has_value(), ! shown.has_value());
+    automationMenu.addSeparator();
+    auto choices = addAutomationItems (automationMenu, firstAutomationId);
 
-    if (! targets.empty())
+    if (! choices.targets.empty() || ! choices.plugins.empty())
     {
-        juce::PopupMenu automationMenu;
-        automationMenu.addItem (hideAutomationId, "Hide", shown.has_value(), ! shown.has_value());
-        automationMenu.addSeparator();
-
-        for (size_t i = 0; i < targets.size(); ++i)
-        {
-            auto* parameter = automation::findParameter (*track, targets[i]);
-            auto automated = parameter != nullptr && automation::isAutomated (*parameter);
-            automationMenu.addItem (firstAutomationId + (int) i, targets[i].name + (automated ? juce::String::fromUTF8 (" \xe2\x80\xa2") : juce::String()),
-                                    true, shown && *shown == targets[i]);
-        }
-
         menu.addSeparator();
         menu.addSubMenu ("Automation", automationMenu);
     }
@@ -501,18 +493,21 @@ void TrackHeader::showMenu()
     }
 
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this),
-                        [safe = juce::Component::SafePointer<TrackHeader> (this), targets] (int result)
+                        [safe = juce::Component::SafePointer<TrackHeader> (this), choices] (int result)
     {
         if (safe == nullptr)
             return;
 
-        if (result == hideAutomationId || juce::isPositiveAndBelow (result - firstAutomationId, (int) targets.size()))
+        if (result == hideAutomationId)
         {
             if (auto* t = safe->getInstrument().getTrack())
-                automation::setShown (*t, result == hideAutomationId ? std::nullopt
-                                                                     : std::optional (targets[(size_t) (result - firstAutomationId)]));
+                automation::setShown (*t, std::nullopt);
+
             return;
         }
+
+        if (safe->automationChosen (result, choices, firstAutomationId, safe->getScreenBounds()))
+            return;
 
         if (result == 1)
         {
@@ -538,30 +533,118 @@ void TrackHeader::showAutomationMenu (juce::Rectangle<int> screenArea)
     if (track == nullptr)
         return;
 
-    auto targets = automation::getTargets (*track);
-    auto shown = automation::getShown (*track);
     juce::PopupMenu menu;
     menu.addItem (1, "Hide Automation");
     menu.addSeparator();
-
-    for (size_t i = 0; i < targets.size(); ++i)
-    {
-        auto* parameter = automation::findParameter (*track, targets[i]);
-        auto automated = parameter != nullptr && automation::isAutomated (*parameter);
-        menu.addItem (100 + (int) i, targets[i].name + (automated ? juce::String::fromUTF8 (" \xe2\x80\xa2") : juce::String()),
-                      true, shown && *shown == targets[i]);
-    }
+    auto choices = addAutomationItems (menu, 100);
 
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetScreenArea (screenArea),
-                        [safe = juce::Component::SafePointer<TrackHeader> (this), targets] (int result)
+                        [safe = juce::Component::SafePointer<TrackHeader> (this), choices, screenArea] (int result)
     {
         auto* t = safe != nullptr ? safe->getInstrument().getTrack() : nullptr;
 
         if (t == nullptr || result == 0)
             return;
 
-        automation::setShown (*t, result == 1 ? std::nullopt : std::optional (targets[(size_t) (result - 100)]));
+        if (result == 1)
+            automation::setShown (*t, std::nullopt);
+        else
+            safe->automationChosen (result, choices, 100, screenArea);
     });
+}
+
+TrackHeader::AutomationChoices TrackHeader::addAutomationItems (juce::PopupMenu& menu, int firstId) const
+{
+    AutomationChoices choices;
+    auto* track = getInstrument().getTrack();
+
+    if (track == nullptr)
+        return choices;
+
+    auto shown = automation::getShown (*track);
+
+    auto addTarget = [&] (juce::PopupMenu& to, const automation::Target& target, const juce::String& text)
+    {
+        auto* parameter = automation::findParameter (*track, target);
+        auto automated = parameter != nullptr && automation::isAutomated (*parameter);
+        to.addItem (firstId + (int) choices.targets.size(), text + (automated ? juce::String::fromUTF8 (" \xe2\x80\xa2") : juce::String()),
+                    true, shown && *shown == target);
+        choices.targets.push_back (target);
+    };
+
+    // Purrlude's own controls (plugins' automated controls are in their submenus).
+    auto targets = automation::getTargets (*track);
+
+    for (auto& target : targets)
+        if (target.group.isEmpty())
+            addTarget (menu, target, target.name);
+
+    // A submenu per plugin: its automated controls, the shown one, and the ones moved by hand lately.
+    for (auto& plugin : automation::getPluginControls (*track))
+    {
+        juce::PopupMenu sub;
+        std::vector<automation::Target> offered;
+
+        auto offer = [&] (const automation::Target& target)
+        {
+            if (std::find (offered.begin(), offered.end(), target) == offered.end())
+                offered.push_back (target);
+        };
+
+        for (auto& target : targets)
+            if (target.plugin == plugin.plugin)
+                offer (target);
+
+        if (shown && shown->plugin == plugin.plugin)
+            offer (*shown);
+
+        for (auto& id : live.getTouchedControls().getRecent (plugin.plugin))
+            for (auto& control : plugin.controls)
+                if (control.parameterID == id)
+                    offer (control);
+
+        for (auto& target : offered)
+            addTarget (sub, target, target.shortName);
+
+        if (offered.empty())
+            sub.addItem (-1, "Move a control in the plugin's window to list it here", false);
+
+        sub.addSeparator();
+        sub.addItem (firstId + AutomationChoices::chooserOffset + (int) choices.plugins.size(), "Choose a Control...");
+        choices.plugins.push_back (plugin);
+        menu.addSubMenu (plugin.name, sub);
+    }
+
+    return choices;
+}
+
+bool TrackHeader::automationChosen (int result, const AutomationChoices& choices, int firstId, juce::Rectangle<int> screenArea)
+{
+    auto* track = getInstrument().getTrack();
+
+    if (track == nullptr)
+        return false;
+
+    if (juce::isPositiveAndBelow (result - firstId, (int) choices.targets.size()))
+    {
+        automation::setShown (*track, choices.targets[(size_t) (result - firstId)]);
+        return true;
+    }
+
+    auto chooser = result - firstId - AutomationChoices::chooserOffset;
+
+    if (! juce::isPositiveAndBelow (chooser, (int) choices.plugins.size()))
+        return false;
+
+    showControlChooser (screenArea, choices.plugins[(size_t) chooser],
+                        [safe = juce::Component::SafePointer<TrackHeader> (this)] (const automation::Target& target)
+    {
+        if (safe != nullptr)
+            if (auto* t = safe->getInstrument().getTrack())
+                automation::setShown (*t, target);
+    });
+
+    return true;
 }
 
 void TrackHeader::renameTrack()

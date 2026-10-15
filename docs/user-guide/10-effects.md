@@ -69,4 +69,4 @@ Plugins are scanned in a separate process, so a plugin that crashes while it's b
 
 **A song opened on a computer without one of its plugins** keeps it: the track's instrument menu says *(not found)*, and an effect's row says it isn't on this computer. Install the plugin and open the song again, or choose another instrument or remove the effect.
 
-Plugin controls can't be [automated](04-tracks.md#automation) yet.
+Any plugin control can be [automated](04-tracks.md#automation): right-click the track's header and open **Automation**, where each plugin has a submenu.

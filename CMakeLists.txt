@@ -169,6 +169,8 @@ target_sources(purrlude_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/PianoRoll.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/TransportBar.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/TransportBar.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/ControlChooser.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/ControlChooser.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/PluginWindows.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/PluginWindows.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/EffectsPanel.h

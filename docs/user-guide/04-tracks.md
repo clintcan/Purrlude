@@ -80,7 +80,15 @@ Automation makes a setting change over time: a fade-in, a louder chorus, a pan f
    - **Volume** or **Pan**
    - **Reverb send**, if the track sends to the shared reverb
    - any control of the track's effects, such as **Delay Mix** or **EQ Low**
+   - a control of a [plugin](10-effects.md#plugins) on the track, from the plugin's submenu (see below)
 3. The setting's line appears over the track's lane, with the clips dimmed beneath it. A dot (•) in the menu marks settings that already have automation.
+
+**Plugin controls:** each plugin on the track (its instrument and its effects) has a submenu under **Automation**. Plugins can have hundreds of controls, so the submenu lists only:
+- controls that already have automation
+- the last few you moved in the plugin's window (move a knob there, then open the menu)
+- **Choose a Control...**, which lists them all with a search box. Type part of a name, then double-click a control or press Return.
+
+While a plugin control follows its line, moving it in the plugin's window has no lasting effect: playback sets it back.
 
 **Drawing it:**
 - **Add a point:** click in the lane. Drag as you click to place it.

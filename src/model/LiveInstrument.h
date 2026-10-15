@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Automation.h"
 #include "Takes.h"
 #include "TrackEffects.h"
 #include "TrackInstrument.h"
@@ -92,6 +93,9 @@ public:
     bool hasGeneralMidiSynth() const                            { return getInstrument().hasGeneralMidiSynth(); }
     void previewNote (int noteNumber, bool on)                  { getInstrument().previewNote (noteNumber, on); }
 
+    /** Third-party plugin controls moved by hand, for the automation menus. */
+    const automation::TouchedControls& getTouchedControls() const   { return touchedControls; }
+
     /** Device ID of Tracktion's merged MIDI input. */
     static constexpr const char* allMidiInsID = "all_midi_in";
 
@@ -105,6 +109,7 @@ private:
     tracktion::Edit& edit;
     track_effects::ParameterSync parameterSync { edit };   ///< Undo of an effect's knob is heard
     takes::RecordingFinisher recordingFinisher { edit };   ///< Loop recordings become takes
+    automation::TouchedControls touchedControls { edit };
     tracktion::EditItemID trackID;
     bool wasPlaying = false;
 

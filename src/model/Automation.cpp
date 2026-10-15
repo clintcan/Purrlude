@@ -19,12 +19,29 @@ namespace
 
         return nullptr;
     }
+
+    /** A third-party plugin's own controls: not the wet and dry levels Tracktion adds to it. */
+    bool isPluginControl (tracktion::ExternalPlugin& plugin, tracktion::AutomatableParameter& parameter)
+    {
+        return &parameter != plugin.dryGain.get() && &parameter != plugin.wetGain.get();
+    }
+
+    Target makePluginTarget (tracktion::ExternalPlugin& plugin, tracktion::AutomatableParameter& parameter)
+    {
+        auto name = parameter.getParameterName().trim();
+        return { plugin.itemID, parameter.paramID, plugin.getName() + ": " + name, plugin.getName(), name };
+    }
+
+    bool isExternalSoundSource (tracktion::AudioTrack& track)
+    {
+        return TrackInstrument (track.edit, track).getSoundSourceID().isNotEmpty();
+    }
 }
 
 std::vector<Target> getTargets (tracktion::AudioTrack& track)
 {
     // A track heard on an external device: its sound isn't Purrlude's to change.
-    if (TrackInstrument (track.edit, track).getSoundSourceID().isNotEmpty())
+    if (isExternalSoundSource (track))
         return {};
 
     std::vector<Target> targets;
@@ -47,7 +64,82 @@ std::vector<Target> getTargets (tracktion::AudioTrack& track)
                                  (kind ? track_effects::getName (*kind) : effect->getName()) + " " + control.label });
     }
 
+    for (auto& plugin : getPluginControls (track))
+        for (auto& control : plugin.controls)
+            if (auto* parameter = findParameter (track, control); parameter != nullptr && isAutomated (*parameter))
+                targets.push_back (control);
+
     return targets;
+}
+
+std::vector<PluginControls> getPluginControls (tracktion::AudioTrack& track)
+{
+    if (isExternalSoundSource (track))
+        return {};
+
+    std::vector<PluginControls> plugins;
+
+    for (auto* plugin : track.pluginList)
+    {
+        auto* external = dynamic_cast<tracktion::ExternalPlugin*> (plugin);
+
+        if (external == nullptr || external->getAudioPluginInstance() == nullptr)
+            continue;   // not loaded (missing on this computer): no controls to show
+
+        PluginControls controls { external->itemID, external->getName(), {} };
+
+        for (auto* parameter : external->getAutomatableParameters())
+            if (isPluginControl (*external, *parameter))
+                controls.controls.push_back (makePluginTarget (*external, *parameter));
+
+        plugins.push_back (std::move (controls));
+    }
+
+    return plugins;
+}
+
+//==============================================================================
+TouchedControls::TouchedControls (tracktion::Edit& e)
+    : edit (e)
+{
+    edit.getParameterChangeHandler().addListener (*this);
+}
+
+TouchedControls::~TouchedControls()
+{
+    edit.getParameterChangeHandler().removeListener (*this);
+}
+
+juce::StringArray TouchedControls::getRecent (tracktion::EditItemID plugin) const
+{
+    auto found = recent.find (plugin);
+    return found != recent.end() ? found->second : juce::StringArray();
+}
+
+void TouchedControls::touched (tracktion::AutomatableParameter& parameter)
+{
+    auto* plugin = dynamic_cast<tracktion::ExternalPlugin*> (parameter.getPlugin());
+
+    if (plugin == nullptr || ! isPluginControl (*plugin, parameter))
+        return;
+
+    auto& list = recent[plugin->itemID];
+    list.removeString (parameter.paramID);
+    list.insert (0, parameter.paramID);
+    list.removeRange (maxRemembered, list.size());
+}
+
+void TouchedControls::pluginParameterChanged (tracktion::AutomatableParameter& parameter, bool isFollowingAutomation)
+{
+    // Automation playback calls this from the audio thread: leave at once.
+    if (isFollowingAutomation)
+        return;
+
+    // A change while a mouse button is down is the user's. Plugins also send changes of their
+    // own, e.g. when their window opens.
+    if (juce::MessageManager::existsAndIsCurrentThread()
+         && juce::ModifierKeys::getCurrentModifiersRealtime().isAnyMouseButtonDown())
+        touched (parameter);
 }
 
 tracktion::AutomatableParameter* findParameter (tracktion::AudioTrack& track, const Target& target)
@@ -69,6 +161,17 @@ std::optional<Target> getShown (tracktion::AudioTrack& track)
     for (auto& target : getTargets (track))
         if (target.plugin.toString() + "/" + target.parameterID == shown)
             return target;
+
+    // Any control of a third-party plugin, looked up directly (it may have hundreds).
+    if (! isExternalSoundSource (track))
+    {
+        auto pluginID = tracktion::EditItemID::fromVar (shown.upToFirstOccurrenceOf ("/", false, false));
+
+        if (auto* external = dynamic_cast<tracktion::ExternalPlugin*> (findPlugin (track, pluginID)))
+            if (auto parameter = external->getAutomatableParameterByID (shown.fromFirstOccurrenceOf ("/", false, false)))
+                if (isPluginControl (*external, *parameter))
+                    return makePluginTarget (*external, *parameter);
+    }
 
     return std::nullopt;   // its effect was removed, or the track now plays on a device
 }
