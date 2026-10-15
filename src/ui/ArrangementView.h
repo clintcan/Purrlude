@@ -62,6 +62,9 @@ public:
     void mouseMove (const juce::MouseEvent&) override;
     void mouseDoubleClick (const juce::MouseEvent&) override;
 
+    /** Where a clip is drawn (empty if it isn't on a song track). */
+    juce::Rectangle<int> getClipBounds (tracktion::EditItemID) const;
+
     /** Deletes the selected clip, if there is one (Delete/Backspace). */
     bool deleteSelectedClip();
 
@@ -84,7 +87,7 @@ private:
     double getPlayheadBeat() const;
 
     void movePlayheadTo (double beat);
-    void showClipMenu (tracktion::EditItemID, bool isMidi);
+    void showClipMenu (tracktion::EditItemID, bool isMidi, juce::Point<int> screenPosition);
     void positionOverlays();
 
     class PlayheadOverlay;

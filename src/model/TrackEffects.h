@@ -43,6 +43,7 @@ namespace track_effects
         juce::String label;
         tracktion::AutomatableParameter::Ptr parameter;
         bool reversed = false;   ///< Higher values mean less (a compressor's ratio is stored as 1/ratio)
+        bool decibels = false;   ///< Show as dB: Tracktion's own text for it is a bare number
     };
 
     std::vector<Control> getControls (tracktion::Plugin&);

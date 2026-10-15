@@ -234,6 +234,8 @@ juce_add_gui_app(Purrlude
 
 target_sources(Purrlude PRIVATE
     src/app/Main.cpp
+    src/app/DocScreenshots.h
+    src/app/DocScreenshots.cpp
     src/app/MainComponent.h
     src/app/MainComponent.cpp
 )

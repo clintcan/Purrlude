@@ -19,6 +19,7 @@ void ExportAudioDialog::show (juce::PropertiesFile& settings, std::function<void
     juce::DialogWindow::LaunchOptions launch;
     launch.content.setOwned (new ExportAudioDialog (settings, std::move (onExport)));
     launch.dialogTitle = "Export Audio";
+    launch.dialogBackgroundColour = juce::LookAndFeel::getDefaultLookAndFeel().findColour (juce::ResizableWindow::backgroundColourId);
     launch.escapeKeyTriggersCloseButton = true;
     launch.useNativeTitleBar = true;
     launch.resizable = false;

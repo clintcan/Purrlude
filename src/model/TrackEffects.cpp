@@ -150,7 +150,7 @@ std::vector<Control> getControls (tracktion::Plugin& plugin)
 
     for (auto [label, id] : ids)
         if (auto parameter = plugin.getAutomatableParameterByID (id))
-            controls.push_back ({ label, parameter, juce::String (id) == "ratio" });
+            controls.push_back ({ label, parameter, juce::String (id) == "ratio", juce::String (id).contains ("gain") && getKind (plugin) == Kind::eq });
 
     return controls;
 }

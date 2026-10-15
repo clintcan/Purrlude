@@ -58,6 +58,8 @@ public:
     void menuItemSelected (int, int) override;
 
 private:
+    friend class DocScreenshots;   // drives the window for the user guide's screenshots
+
     enum MenuIds { newId = 1, openId, saveId, saveAsId, exportPdfId, exportPartsId, exportMusicXmlId, exportAudioId, importMidiId, importAudioId, undoId, redoId };
 
     void setProject (std::unique_ptr<Project>);

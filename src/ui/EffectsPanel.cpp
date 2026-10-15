@@ -203,7 +203,14 @@ private:
         knob->slider.setLookAndFeel (knobLook.get());
         knob->slider.setTextBoxStyle (juce::Slider::TextBoxBelow, true, 86, 18);
         knob->slider.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
-        knob->slider.textFromValueFunction = [parameter] (double v) { return parameter->valueToString ((float) v); };
+        knob->slider.textFromValueFunction = [parameter, decibels = control.decibels] (double v)
+        {
+            if (decibels)
+                return std::abs (v) < 0.05 ? juce::String ("0.0 dB") : (v > 0 ? "+" : "") + juce::String (v, 1) + " dB";
+
+            return parameter->valueToString ((float) v);
+        };
+        knob->slider.updateText();   // setRange wrote the default text, which a value that doesn't change would keep
         knob->slider.setDoubleClickReturnValue (true, parameter->getDefaultValue().value_or (range.getStart()));
         knob->slider.setWantsKeyboardFocus (false);
 

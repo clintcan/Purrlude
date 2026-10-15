@@ -1,3 +1,4 @@
+#include "DocScreenshots.h"
 #include "MainComponent.h"
 #include "model/EngineSetup.h"
 
@@ -55,13 +56,20 @@ class PurrludeApplication final : public juce::JUCEApplication
 public:
     const juce::String getApplicationName() override       { return JUCE_APPLICATION_NAME_STRING; }
     const juce::String getApplicationVersion() override    { return JUCE_APPLICATION_VERSION_STRING; }
-    bool moreThanOneInstanceAllowed() override             { return false; }
+    bool moreThanOneInstanceAllowed() override             { return getScreenshotFolder() != juce::File(); }
 
     void initialise (const juce::String&) override
     {
         juce::PropertiesFile::Options options;
         options.applicationName = getApplicationName();
         options.folderName = getApplicationName();
+
+        // Taking the user guide's screenshots: own settings, so the user's are left alone.
+        auto screenshots = getScreenshotFolder();
+
+        if (screenshots != juce::File())
+            options.folderName = getApplicationName() + " Doc Screenshots";
+
         options.filenameSuffix = ".settings";
         options.osxLibrarySubFolder = "Application Support";
         settings.setStorageParameters (options);
@@ -72,11 +80,15 @@ public:
         deviceSettings = std::make_unique<MidiDeviceSettings> (*settings.getUserSettings());
         mainWindow = std::make_unique<MainWindow> (getApplicationName(), *engine, *bluetooth, *deviceSettings,
                                                    *settings.getUserSettings());
+
+        if (screenshots != juce::File())
+            docScreenshots = std::make_unique<DocScreenshots> (mainWindow->getMainComponent(), screenshots);
     }
 
     void shutdown() override
     {
         // The window (and the Edit it owns) must go before the engine.
+        docScreenshots = nullptr;
         mainWindow = nullptr;
         ScoreView::waitForClosedRenderThreads();   // an engraving left running by the closed score view
         deviceSettings = nullptr;
@@ -107,11 +119,25 @@ public:
     }
 
 private:
+    /** `--doc-screenshots <folder>`: take the user guide's screenshots there (DocScreenshots). */
+    static juce::File getScreenshotFolder()
+    {
+        auto args = juce::StringArray::fromTokens (getCommandLineParameters(), true);
+        auto index = args.indexOf ("--doc-screenshots");
+
+        if (index < 0 || index + 1 >= args.size())
+            return {};
+
+        auto path = args[index + 1].unquoted();
+        return juce::File::isAbsolutePath (path) ? juce::File (path) : juce::File::getCurrentWorkingDirectory().getChildFile (path);
+    }
+
     juce::ApplicationProperties settings;
     std::unique_ptr<tracktion::Engine> engine;
     std::unique_ptr<BluetoothMidiManager> bluetooth;
     std::unique_ptr<MidiDeviceSettings> deviceSettings;
     std::unique_ptr<MainWindow> mainWindow;
+    std::unique_ptr<DocScreenshots> docScreenshots;
     bool quitPending = false;
 };
 

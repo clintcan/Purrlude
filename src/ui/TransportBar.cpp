@@ -43,7 +43,7 @@ TransportBar::TransportBar (tracktion::Edit& e)
 
     tempoLabel.setEditable (true);
     tempoLabel.setJustificationType (juce::Justification::centredRight);
-    tempoLabel.setTooltip ("Tempo: double-click to type a new value");
+    tempoLabel.setTooltip ("Tempo: click to type a new value");
     tempoLabel.setColour (juce::Label::outlineColourId, juce::Colours::grey);
     tempoLabel.onTextChange = [this] { setTempo (tempoLabel.getText().getDoubleValue()); };
 

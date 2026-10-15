@@ -272,6 +272,7 @@ src/ui/                 UI components (TransportBar, ArrangementView, ScoreView,
 tools/content/          Scripts that generate bundled content (run by hand; output is committed)
 tools/models/           Scripts that make the ML models that are too big to commit (run by hand)
 tests/                  Catch2 test runner (PurrludeTests)
+docs/user-guide/        End-user guide: README.md index, one page per topic, images/ taken by the app
 .github/workflows/      CI for Windows, macOS, Linux
 ```
 
@@ -408,6 +409,21 @@ Only shapes with a `stroke-width` (lines, stems, ties) get the ink stroke. Strok
 **Checking real recordings:** `PURRLUDE_PROJECT=/path/song.purrlude PurrludeTests "[takes]" -s` writes `song.musicxml` and prints each measure.
 
 `purrlude_core` is a CMake **INTERFACE** library: JUCE modules are compiled into each final target, so core sources are compiled into both the app and the test runner. Add new non-UI-shell sources to `purrlude_core`, not to the `Purrlude` target.
+
+## User guide
+
+`docs/user-guide/` is the end-user guide: `README.md` is the index, with one numbered page per topic. Keep it in step with the UI: when a feature, label or shortcut changes, update its page.
+
+**Screenshots** are taken by the app itself: `Purrlude --doc-screenshots <folder>` (`src/app/DocScreenshots.cpp`) builds a demo song from the built-in loops and accompaniment, opens each panel, menu and dialog, and saves PNGs. Pop-ups are separate windows, so they're drawn onto the main window's image where they are on screen.
+- **How to run:** run the binary directly, e.g. `build/Purrlude_artefacts/Debug/Purrlude.app/Contents/MacOS/Purrlude --doc-screenshots docs/user-guide/images`. It quits when done (about a minute).
+- **It doesn't touch the user's setup:** it uses its own settings folder ("Purrlude Doc Screenshots"), so the user's settings, last project and autosaves aren't touched, and it can run while Purrlude is open.
+- **It needs the foreground:** it brings itself to the front before each step, because JUCE closes pop-up menus when the app isn't in front. Don't click elsewhere while it runs.
+- **Adding a screenshot:** add a step in `DocScreenshots::addSteps`, then reference `images/<name>.png` from the page.
+
+**PDF:** `python3 tools/docs/build_user_guide_pdf.py` rebuilds `docs/user-guide/Purrlude User Guide.pdf` from the pages, in the order `README.md` lists them. It adds a cover, a table of contents with page numbers and PDF bookmarks, and turns links between pages into links within the PDF. It needs Python's `markdown` package and WeasyPrint (`brew install weasyprint`).
+- **List syntax:** it converts GitHub-style lists (no blank line before a list, two-space nesting) for Python's Markdown. Keep the pages in plain GitHub Markdown.
+- **Image sizes:** give images an HTML `width`, which becomes their size in the PDF.
+- **When to rebuild:** after editing the guide.
 
 ## Build & Test
 

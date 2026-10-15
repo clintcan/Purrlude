@@ -788,6 +788,21 @@ juce::Rectangle<float> ArrangementView::getClipArea (int laneIndex, double start
     return { x1, (float) (rulerHeight + laneIndex * laneHeight) + 4.0f, x2 - x1, (float) laneHeight - 9.0f };
 }
 
+juce::Rectangle<int> ArrangementView::getClipBounds (tracktion::EditItemID clipID) const
+{
+    auto* clip = tracktion::findClipForID (edit, clipID);
+
+    if (clip == nullptr)
+        return {};
+
+    auto index = getSongTracks (edit).indexOf (dynamic_cast<tracktion::AudioTrack*> (clip->getTrack()));
+
+    if (index < 0)
+        return {};
+
+    return getClipArea (index, clip->getStartBeat().inBeats(), clip->getEndBeat().inBeats()).getSmallestIntegerContainer();
+}
+
 ArrangementView::ClipHit ArrangementView::findClipAt (juce::Point<int> position) const
 {
     auto tracks = getSongTracks (edit);
@@ -830,7 +845,7 @@ void ArrangementView::mouseDown (const juce::MouseEvent& e)
 
         if (e.mods.isPopupMenu())
         {
-            showClipMenu (hit.clip->itemID, dynamic_cast<tracktion::MidiClip*> (hit.clip) != nullptr);
+            showClipMenu (hit.clip->itemID, dynamic_cast<tracktion::MidiClip*> (hit.clip) != nullptr, e.getScreenPosition());
             repaint();
             return;
         }
@@ -944,7 +959,7 @@ void ArrangementView::mouseMove (const juce::MouseEvent& e)
                                                           : juce::MouseCursor::DraggingHandCursor);
 }
 
-void ArrangementView::showClipMenu (tracktion::EditItemID clipID, bool isMidi)
+void ArrangementView::showClipMenu (tracktion::EditItemID clipID, bool isMidi, juce::Point<int> screenPosition)
 {
     enum { editNotes = 1, convertMelody, convertChords, convertDrums, separateToMidi, separateToAudio, loopClip, remove, keepTake, firstTake = 100 };
     juce::PopupMenu menu;
@@ -983,7 +998,8 @@ void ArrangementView::showClipMenu (tracktion::EditItemID clipID, bool isMidi)
     menu.addSeparator();
     menu.addItem (remove, "Delete");
 
-    menu.showMenuAsync (juce::PopupMenu::Options(), [safe = juce::Component::SafePointer<ArrangementView> (this), clipID] (int result)
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetScreenArea ({ screenPosition.x, screenPosition.y, 1, 1 }),
+                        [safe = juce::Component::SafePointer<ArrangementView> (this), clipID] (int result)
     {
         if (safe == nullptr)
             return;
