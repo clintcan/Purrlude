@@ -93,7 +93,7 @@ These are what set Purrlude apart. Treat them as first-class, not add-ons.
 | Plugin formats | VST3 / AU / LV2 via JUCE; CLAP via clap-juce-extensions _(planned)_ | — |
 | Tests / CI | Catch2 v3, GitHub Actions (Windows/macOS/Linux) | BSL-1.0 |
 
-**Licensing:** JUCE (AGPL) + Tracktion Engine (GPL) mean Purrlude must be released under AGPLv3, or commercial licenses for both must be purchased for closed-source distribution. **This decision is still open.** Every new dependency must be license-compatible; prefer permissive (MIT/BSD/Apache) or LGPL. Avoid aubio (GPL) and Rubber Band (GPL) unless the project commits to GPL.
+**Licensing:** Purrlude is released under **AGPLv3** (`LICENSE`), as JUCE (AGPL) and Tracktion Engine (GPL) require; a closed-source version would need commercial licenses for both. Every new dependency must be license-compatible; prefer permissive (MIT/BSD/Apache) or LGPL. Avoid aubio (GPL) and Rubber Band (GPL) unless the project commits to GPL.
 
 ### Bluetooth MIDI backends
 
