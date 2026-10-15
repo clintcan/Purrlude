@@ -55,6 +55,7 @@ private:
     std::vector<Step> steps;
     size_t next = 0;
     int failures = 0;
+    float savedMasterDb = 0.0f;   ///< The master volume while it's silenced for a playing screenshot
 
     JUCE_DECLARE_NON_COPYABLE (DocScreenshots)
 };

@@ -16,6 +16,7 @@ namespace
     const auto noteColour     = juce::Colour (0xff56b4e9);   // sky blue
     const auto selectedColour = juce::Colour (0xffe69f00);   // orange
     const auto playheadColour = juce::Colour (0xfff0e442);   // yellow
+    const auto soundingColour = juce::Colours::white;          // notes the playhead is playing
 
     bool isBlackKey (int pitch)
     {
@@ -133,21 +134,33 @@ public:
         g.fillRect (juce::Rectangle<float> (0.0f, 0.0f, visibleStart, (float) getHeight()));
         g.fillRect (juce::Rectangle<float> (visibleEnd, 0.0f, (float) getWidth() - visibleEnd, (float) getHeight()));
 
-        // Notes, brighter for louder; selected ones in orange.
+        // Notes, brighter for louder; selected ones in orange, the ones playing lit up.
+        auto playing = owner.getPlayingBeat();
+
         for (auto* n : clip->getSequence().getNotes())
         {
             auto selected = selection.contains (n->state);
-            auto colour = (selected ? selectedColour : noteColour).withAlpha (0.55f + 0.45f * (float) n->getVelocity() / 127.0f);
             auto r = getNoteBounds (*n).reduced (0.0f, 1.0f);
 
+            if (isSounding (*n, playing))
+            {
+                g.setColour (soundingColour);
+                g.fillRoundedRectangle (r, 2.0f);
+                g.setColour (selected ? selectedColour : playheadColour);
+                g.drawRoundedRectangle (r, 2.0f, 2.0f);
+                continue;
+            }
+
+            auto colour = (selected ? selectedColour : noteColour).withAlpha (0.55f + 0.45f * (float) n->getVelocity() / 127.0f);
             g.setColour (colour);
             g.fillRoundedRectangle (r, 2.0f);
             g.setColour (selected ? juce::Colours::white : colour.darker (0.6f));
             g.drawRoundedRectangle (r, 2.0f, selected ? 1.5f : 1.0f);
         }
 
-        // Playhead.
-        auto playhead = theEdit.tempoSequence.toBeats (theEdit.getTransport().getPosition()).inBeats() - contentStart;
+        // Playhead: while playing, where it is in the clip (round the loop for a looping clip).
+        auto playhead = playing ? *playing
+                                : theEdit.tempoSequence.toBeats (theEdit.getTransport().getPosition()).inBeats() - contentStart;
         g.setColour (playheadColour);
         g.drawVerticalLine ((int) beatToX (playhead), 0.0f, (float) getHeight());
 
@@ -383,6 +396,15 @@ public:
     {
         auto offset = owner.viewport->getViewPositionY();
 
+        // The keys of the notes playing light up with them.
+        std::array<bool, 128> sounding {};
+
+        if (auto playing = owner.getPlayingBeat())
+            if (auto* clip = owner.getClip())
+                for (auto* n : clip->getSequence().getNotes())
+                    if (isSounding (*n, playing))
+                        sounding[(size_t) juce::jlimit (0, 127, n->getNoteNumber())] = true;
+
         for (int pitch = 0; pitch < 128; ++pitch)
         {
             auto y = Grid::pitchToY (pitch) - offset;
@@ -391,7 +413,8 @@ public:
                 continue;
 
             auto black = isBlackKey (pitch);
-            g.setColour (pitch == pressed ? juce::Colour (0xff56b4e9) : black ? juce::Colour (0xff222222) : juce::Colour (0xffeeeeee));
+            g.setColour (pitch == pressed ? juce::Colour (0xff56b4e9) : sounding[(size_t) pitch] ? playheadColour
+                         : black ? juce::Colour (0xff222222) : juce::Colour (0xffeeeeee));
             g.fillRect (0, y, black ? getWidth() * 2 / 3 : getWidth(), rowHeight);
             g.setColour (juce::Colours::grey);
             g.drawHorizontalLine (y + rowHeight - 1, 0.0f, (float) getWidth());
@@ -625,6 +648,64 @@ void PianoRoll::timerCallback()
     // Edits, undo and playback all show up here.
     grid->updateSize();
     grid->repaint();
+
+    // While playing, turn the page when the playhead leaves the view, as the arrangement does.
+    // In a looping clip it goes round the loop.
+    if (auto beat = getPlayingBeat())
+    {
+        auto x = (int) grid->beatToX (*beat);
+        auto view = viewport->getViewArea();
+
+        if (juce::isPositiveAndBelow (x, grid->getWidth()) && (x < view.getX() || x > view.getRight() - 20))
+            viewport->setViewPosition (juce::jmax (0, x - 40), view.getY());
+    }
+
+    // The keys light up with the notes while playing, and go dark once it stops.
+    auto playing = getPlayingBeat().has_value();
+
+    if (playing || wasPlaying)
+        keyboard->repaint();
+
+    wasPlaying = playing;
+}
+
+juce::Range<double> PianoRoll::getVisibleBeats() const
+{
+    auto view = viewport->getViewArea();
+    return { grid->xToBeat ((float) view.getX()), grid->xToBeat ((float) view.getRight()) };
+}
+
+std::optional<double> PianoRoll::getPlayingBeat() const
+{
+    auto* clip = getClip();
+
+    if (clip == nullptr || ! edit.getTransport().isPlaying())
+        return std::nullopt;
+
+    auto editBeat = edit.tempoSequence.toBeats (edit.getTransport().getPosition()).inBeats();
+    auto start = clip->getStartBeat().inBeats();
+
+    if (editBeat < start || editBeat >= clip->getEndBeat().inBeats())
+        return std::nullopt;
+
+    auto offset = clip->getOffsetInBeats().inBeats();
+
+    if (clip->isLooping())
+    {
+        auto loopStart = clip->getLoopStartBeats().inBeats(), loopLength = clip->getLoopLengthBeats().inBeats();
+
+        if (loopLength <= 0.0)
+            return std::nullopt;
+
+        return loopStart + std::fmod (editBeat - start + offset, loopLength);
+    }
+
+    return editBeat - start + offset;
+}
+
+bool PianoRoll::isSounding (const tracktion::MidiNote& note, std::optional<double> beat)
+{
+    return beat && note.getStartBeat().inBeats() <= *beat && *beat < note.getEndBeat().inBeats();
 }
 
 bool PianoRoll::keyPressed (const juce::KeyPress& key)

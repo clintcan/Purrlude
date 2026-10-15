@@ -27,6 +27,9 @@ public:
     /** Shows this clip (an invalid ID shows the instrument track's first clip). */
     void showClip (tracktion::EditItemID);
 
+    /** The clip content beats in view, left to right. */
+    juce::Range<double> getVisibleBeats() const;
+
     void resized() override;
     void paint (juce::Graphics&) override;
     bool keyPressed (const juce::KeyPress&) override;
@@ -42,7 +45,16 @@ private:
     void updateLayout();
     double getGrid() const;
 
+    /** While the song plays: where the playhead is in the clip's content (its notes' beats),
+        through the loop for a looping clip. Nothing when stopped or outside the clip.
+    */
+    std::optional<double> getPlayingBeat() const;
+
+    /** True if a note is sounding at that content beat. */
+    static bool isSounding (const tracktion::MidiNote&, std::optional<double> beat);
+
     tracktion::Edit& edit;
+    bool wasPlaying = false;   ///< For darkening the keyboard once playback stops
     LiveInstrument& instrument;
     tracktion::EditItemID clipID;
 

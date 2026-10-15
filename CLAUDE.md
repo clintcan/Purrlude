@@ -245,6 +245,7 @@ The app talks to `purrlude::BluetoothMidiManager` (`src/devices/BluetoothMidiMan
 - **Editor:** `PianoRoll` (`src/ui/`) edits one MIDI clip of the instrument track. It's the Piano Roll tab of the lower panel; double-click a clip in the arrangement to open it there.
 - **Edits:** they go through `notes::` operations in `src/model/NoteEditing.h` (add, move, resize, remove, quantize; all undoable). These are what's tested.
 - **No stale pointers:** the editor holds the clip by `EditItemID` and notes by their `ValueTree` state, resolving them on each use.
+- **Following playback:** while playing, notes under the playhead are drawn white with a yellow outline and their keys light up (`PianoRoll::getPlayingBeat` maps the playhead into the clip's content, through the loop for a looping clip). The view pages forward (and back) when the playhead leaves it, like the arrangement. The screenshot tour plays the demo with the master volume at -100 dB to capture it.
 - **Previews:** `LiveInstrument::previewNote` injects into "All MIDI Ins" for the built-in synth, stamped with `getMillisecondCounterHiRes() * 0.001`; Tracktion drops 0-stamped input. For an external sound source it sends straight to the device, since live echo may be off.
 
 Live playing: `purrlude::LiveInstrument` (`src/model/LiveInstrument.h`) puts the built-in 4OSC synth on the first track and routes Tracktion's "All MIDI Ins" virtual device to it, so any connected keyboard, Bluetooth included, plays it with no per-device routing.

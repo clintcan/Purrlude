@@ -271,6 +271,33 @@ void DocScreenshots::addSteps()
     });
 
     then (1500, [this] { capture ("piano-roll"); });
+
+    // Playing, silently: the notes under the playhead light up.
+    then (0, [this]
+    {
+        auto& edit = main.project->getEdit();
+
+        if (auto master = edit.getMasterVolumePlugin())
+        {
+            savedMasterDb = master->getVolumeDb();
+            master->setVolumeDb (-100.0f);
+        }
+
+        edit.getTransport().setPosition (edit.tempoSequence.toTime (tracktion::BeatPosition::fromBeats (9.1)));
+        edit.getTransport().play (false);
+    });
+
+    then (300, [this] { capture ("piano-roll-playing"); });
+
+    then (0, [this]
+    {
+        auto& edit = main.project->getEdit();
+        edit.getTransport().stop (false, false);
+        edit.getTransport().setPosition (edit.tempoSequence.toTime (tracktion::BeatPosition::fromBeats (10.0)));
+
+        if (auto master = edit.getMasterVolumePlugin())
+            master->setVolumeDb (savedMasterDb);
+    });
     then (0, [showEditors] { showEditors (true, 0); });
     then (5000, [this] { capture ("score"); });
     then (0, [this] { main.setEditorsFullHeight (true); });

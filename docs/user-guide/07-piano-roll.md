@@ -30,6 +30,12 @@ Selected notes are orange and the rest are blue. Brighter notes are louder (high
 
 Every edit is one undo step. Keyboard shortcuts work in the Piano Roll once you've clicked in its grid; until then, Delete deletes the selected clip in the arrangement.
 
+## Following playback
+
+While the song plays, the notes the playhead is playing light up white with a yellow outline, and their keys on the keyboard light up yellow. In a looping clip, such as a drum loop, they light up on every repeat. When the playhead reaches the right edge, the view turns the page, like the arrangement.
+
+<img src="images/piano-roll-playing.png" alt="The Piano Roll during playback: the note under the playhead is white with a yellow outline, and its key, C5, is yellow" width="100%">
+
 ## Grid and quantize
 
 - The **grid** menu (**1/4**, **1/8**, **1/16**, **1/32**) sets where notes snap when you add, move or resize them.
