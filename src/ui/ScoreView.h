@@ -1,6 +1,7 @@
 #pragma once
 
 #include "model/LiveInstrument.h"
+#include "notation/ScoreDrawing.h"
 #include "notation/ScoreRenderer.h"
 #include "notation/TrackNotation.h"
 
@@ -14,7 +15,7 @@ namespace purrlude
     Twice a second it reads the song's notes (cheap, on the message thread, where the
     Edit may be read) and, if they or the width changed, asks a background thread to
     build the notation and, if the MusicXML changed, engrave it with Verovio and turn the
-    SVG into a Drawable. Each step takes seconds for a long song, so none happens on the
+    SVG into a ScoreDrawing (plain shapes, so it can be made off the message thread). Each step takes seconds for a long song, so none happens on the
     message thread. The result is shown on a white "paper" area that scrolls vertically.
 
     Transposing instruments are shown as written, or as they sound with Concert pitch on.
@@ -42,7 +43,7 @@ private:
     class Page;
 
     void timerCallback() override;
-    void handleRendered (int requestId, std::shared_ptr<juce::XmlElement> svg, std::shared_ptr<juce::Drawable>,
+    void handleRendered (int requestId, std::shared_ptr<juce::XmlElement> svg, std::shared_ptr<notation::ScoreDrawing>,
                          const juce::String& error, std::vector<notation::ScoreRenderer::TimedNote>);
 
     /** While playing, colours the notes being played and keeps them in view. */

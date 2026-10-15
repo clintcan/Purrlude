@@ -381,8 +381,11 @@ A note quantized past the end of the performance moves back onto the last grid s
 
 **Not handled yet:** multiple voices per staff, tempo or time-signature changes, and other tuplets (quintuplets, triplets spanning two beats).
 
-**On-screen score:** `ScoreView` (`src/ui/`) reads the song's notes twice a second on the message thread (`notation::getEditScoreInput`), skipping while recording. When they or the width change, its render thread builds the score and MusicXML (`buildEditScore (EditScoreInput)`), and, if the MusicXML changed, engraves it with `notation::ScoreRenderer` (Verovio) and builds the Drawable. Verovio has global state, so it is only ever used from that one thread.
-- **Keep the message thread light:** for a long song (12 parts, 6 minutes, 35k notes, Release build) building the score takes about 1 s, engraving 30 s, and making the 110k-shape Drawable 4.5 s. Only reading the notes (a few ms) and indexing the drawing's note ids happen on the message thread. Drawables may be built off it because they aren't on screen.
+**On-screen score:** `ScoreView` (`src/ui/`) reads the song's notes twice a second on the message thread (`notation::getEditScoreInput`), skipping while recording. When they or the width change, its render thread builds the score and MusicXML (`buildEditScore (EditScoreInput)`), and, if the MusicXML changed, engraves it with `notation::ScoreRenderer` (Verovio) and builds a `notation::ScoreDrawing`. Verovio has global state, so it is only ever used from that one thread.
+- **ScoreDrawing, not Drawable:** a `juce::Drawable` is a tree of Components, one per shape, and Components may only be used on the message thread (building one elsewhere fires a JUCE assertion per shape: tens of thousands for a song). `ScoreDrawing` (`src/notation/`) reads the prepared SVG into plain paths, fills and strokes in the drawing's units, so it's built on the render thread. It draws only the shapes in the area being painted, and finds and highlights shapes by element id.
+  - **Same look as the Drawable:** a test draws a score both ways and compares the pixels. Two details matter. `Graphics::strokePath` with a transform takes the thickness in pixels, so stroke widths are scaled by the view's scale. Fonts get the whole family list like JUCE's parser ("Times, serif" matches nothing, so text is the default sans-serif, as in the PDF).
+  - **The PDF export** still uses Drawables, on the message thread.
+- **Keep the message thread light:** for a long song (12 parts, 6 minutes, 35k notes, Release build) building the score takes about 1 s, engraving 30 s, and making the 110k-shape drawing a few seconds. Only reading the notes (a few ms) happens on the message thread.
 - **Closing mid-engrave:** Verovio can't be interrupted, so a closed `ScoreView` doesn't join its render thread. It hands it to a registry that lets it finish and deletes it later. `ScoreView::waitForClosedRenderThreads()` joins what's left; the app calls it in `shutdown()` after the window is gone and before the engine.
 
 JUCE's SVG parser can't draw Verovio's output directly. `prepareVerovioSvg` fixes it:
@@ -394,7 +397,7 @@ The drawing is scaled to the SVG's declared pixel size (`getSvgDisplaySize`), be
 
 **Following playback:** while the song plays, `ScoreView` colours the notes being played and scrolls to keep them in view.
 - **Timing:** `ScoreRenderer::renderMusicXml` also returns Verovio's timemap, which gives each engraved note's id with its start and end in quarter notes. `parseTimemap` reads it.
-- **Colouring:** the page finds the notes in the drawable by component id (JUCE keeps SVG ids) and recolours their shapes, keeping the original fills to restore. There's no re-engraving.
+- **Colouring:** `ScoreDrawing::setHighlighted` marks a note's shapes (everything inside the element with its id), and they're drawn in the highlight colour. There's no re-engraving.
 - **Ties:** a note tied across a barline sounds as its first part, so the continuation isn't coloured.
 
 The on-screen score leaves out the metronome mark, whose note symbol needs a SMuFL text font.

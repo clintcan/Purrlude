@@ -156,3 +156,110 @@ TEST_CASE ("The timemap says when each engraved note sounds", "[notation][render
         REQUIRE (findByID (*drawable, n.id) != nullptr);
     }
 }
+
+#include "notation/ScoreDrawing.h"
+
+TEST_CASE ("A score drawing looks like the JUCE drawable, and highlights notes", "[notation][render]")
+{
+    juce::ScopedJuceInitialiser_GUI juceInit;
+    ScoreRenderer renderer (ScoreRenderer::findResourceDirectory());
+
+    // A titled grand-staff phrase with part names, chords, an accidental, a tie and a triplet.
+    std::vector<NoteEvent> notes { { 0, 1, 60, 100 }, { 1, 1, 64, 100 }, { 2, 1, 66, 100 }, { 3, 2, 67, 100 },
+                                   { 0, 4, 48, 100 }, { 0, 4, 55, 100 }, { 4, 2, 72, 100 }, { 4, 4, 43, 100 },
+                                   { 6, 1.0 / 3, 74, 100 }, { 6 + 1.0 / 3, 1.0 / 3, 76, 100 }, { 6 + 2.0 / 3, 1.0 / 3, 77, 100 } };
+
+    juce::String error, timemap;
+    auto svg = renderer.renderMusicXml (toMusicXml (buildScore (notes, {}, {}, "Render Test"), { .tempoMark = false }),
+                                        900, error, 45, &timemap);
+    INFO (error);
+    REQUIRE (svg.isNotEmpty());
+
+    auto prepared = prepareVerovioSvg (svg, juce::Colours::black);
+    REQUIRE (prepared != nullptr);
+
+    auto drawing = ScoreDrawing::create (*prepared);
+    REQUIRE (drawing != nullptr);
+    CHECK (drawing->getNumShapes() > 50);
+
+    // Drawn both ways, they should cover almost exactly the same pixels.
+    auto size = getSvgDisplaySize (*prepared).getSmallestIntegerContainer();
+    auto render = [&] (auto&& drawWith)
+    {
+        juce::Image image (juce::Image::RGB, size.getWidth() + 20, size.getHeight() + 20, true);
+        juce::Graphics g (image);
+        g.fillAll (juce::Colours::white);
+        drawWith (g);
+        return image;
+    };
+
+    auto drawable = juce::Drawable::createFromSVG (*prepared);
+    REQUIRE (drawable != nullptr);
+    auto expected = render ([&] (juce::Graphics& g) { drawScore (g, *drawable, *prepared, { 10.0f, 10.0f }); });
+    auto transform = getScoreTransform (*prepared, { 10.0f, 10.0f });
+    auto actual = render ([&] (juce::Graphics& g) { drawing->draw (g, transform, juce::Colours::blue); });
+
+    int inked = 0, different = 0;
+
+    for (int y = 0; y < expected.getHeight(); ++y)
+        for (int x = 0; x < expected.getWidth(); ++x)
+        {
+            auto e = expected.getPixelAt (x, y).getBrightness(), a = actual.getPixelAt (x, y).getBrightness();
+
+            if (e < 0.5f || a < 0.5f)
+                ++inked;
+
+            if (std::abs (e - a) > 0.5f)
+                ++different;
+        }
+
+    // The music matches exactly; text can sit a fraction of a pixel differently, which shows at its edges.
+    INFO (different << " of " << inked << " inked pixels differ");
+    CHECK (inked > 2000);
+    CHECK (different < inked / 25);
+
+    if (auto dump = juce::SystemStats::getEnvironmentVariable ("PURRLUDE_PNG_DUMP", {}); juce::File::isAbsolutePath (dump))
+    {
+        for (auto [name, image] : { std::pair { "-drawable.png", expected }, std::pair { "-drawing.png", actual } })
+        {
+            auto file = juce::File (dump).getSiblingFile (juce::File (dump).getFileNameWithoutExtension() + name);
+            file.deleteFile();
+            juce::FileOutputStream out (file);
+            juce::PNGImageFormat().writeImageToStream (image, out);
+        }
+    }
+
+    // Every engraved note can be found and highlighted.
+    auto timed = ScoreRenderer::parseTimemap (timemap);
+    REQUIRE (! timed.empty());
+
+    for (auto& n : timed)
+        CHECK (drawing->contains (n.id));
+
+    auto bounds = drawing->getBounds (timed.front().id);
+    REQUIRE (bounds.has_value());
+    auto area = bounds->transformedBy (transform).getSmallestIntegerContainer();
+
+    drawing->setHighlighted (timed.front().id, true);
+    auto highlighted = render ([&] (juce::Graphics& g) { drawing->draw (g, transform, juce::Colours::blue); });
+    int blue = 0;
+
+    for (int y = area.getY(); y <= area.getBottom(); ++y)
+        for (int x = area.getX(); x <= area.getRight(); ++x)
+            if (auto c = highlighted.getPixelAt (x, y); c.getBlue() > 200 && c.getRed() < 100)
+                ++blue;
+
+    CHECK (blue > 20);
+
+    // And back to ink.
+    drawing->setHighlighted (timed.front().id, false);
+    auto restored = render ([&] (juce::Graphics& g) { drawing->draw (g, transform, juce::Colours::blue); });
+    int stillBlue = 0;
+
+    for (int y = area.getY(); y <= area.getBottom(); ++y)
+        for (int x = area.getX(); x <= area.getRight(); ++x)
+            if (auto c = restored.getPixelAt (x, y); c.getBlue() > 200 && c.getRed() < 100)
+                ++stillBlue;
+
+    CHECK (stillBlue == 0);
+}

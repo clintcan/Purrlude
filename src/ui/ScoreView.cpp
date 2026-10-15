@@ -4,6 +4,7 @@
 #include <mutex>
 #include <set>
 
+#include "notation/ScoreDrawing.h"
 #include "notation/ScoreSvg.h"
 #include "notation/MusicXmlWriter.h"
 #include "notation/ScoreRenderer.h"
@@ -146,25 +147,25 @@ private:
             auto svg = renderer.renderMusicXml (musicXml, job->width, error, 45, &timemap);
             auto timed = notation::ScoreRenderer::parseTimemap (timemap);
             std::shared_ptr<juce::XmlElement> prepared;
-            std::shared_ptr<juce::Drawable> drawable;
+            std::shared_ptr<notation::ScoreDrawing> drawing;
 
             if (svg.isNotEmpty())
             {
                 prepared = notation::prepareVerovioSvg (svg, juce::Colours::black);
 
-                // Made here too: a long score is a drawing of 100,000+ shapes, which takes seconds
-                // to build. That's allowed off the message thread while it isn't on screen.
+                // Made here too: a long score is 100,000+ shapes, which takes seconds. A ScoreDrawing
+                // holds no Components, so it may be made off the message thread.
                 if (prepared != nullptr)
-                    drawable = juce::Drawable::createFromSVG (*prepared);
+                    drawing = notation::ScoreDrawing::create (*prepared);
 
-                if (drawable == nullptr)
+                if (drawing == nullptr)
                     error = "The engraved score couldn't be read.";
             }
 
-            juce::MessageManager::callAsync ([o = owner, id = job->id, prepared, drawable, error, notes = std::move (timed)]
+            juce::MessageManager::callAsync ([o = owner, id = job->id, prepared, drawing, error, notes = std::move (timed)]
             {
                 if (auto* view = o.get())
-                    view->handleRendered (id, prepared, drawable, error, notes);
+                    view->handleRendered (id, prepared, drawing, error, notes);
             });
         }
     }
@@ -181,27 +182,14 @@ private:
 class ScoreView::Page final : public juce::Component
 {
 public:
-    void setScore (std::shared_ptr<juce::XmlElement> svg, std::shared_ptr<juce::Drawable> drawing,
+    void setScore (std::shared_ptr<juce::XmlElement> svg, std::shared_ptr<notation::ScoreDrawing> newDrawing,
                    std::vector<notation::ScoreRenderer::TimedNote> timedNotes)
     {
         svgXml = std::move (svg);
-        drawable = std::move (drawing);
+        drawing = std::move (newDrawing);
         displaySize = notation::getSvgDisplaySize (*svgXml);
         timed = std::move (timedNotes);
         highlighted.clear();
-        notes.clear();
-        originalFills.clear();   // keyed by the old drawing's shapes, whose addresses may be reused
-
-        if (drawable != nullptr)
-        {
-            // One pass over the drawing: a long score has many thousands of notes and shapes.
-            std::map<juce::String, juce::Component*> byID;
-            collectIDs (*drawable, byID);
-
-            for (auto& n : timed)
-                if (auto it = byID.find (n.id); it != byID.end())
-                    notes[n.id] = it->second;
-        }
 
         setSize (getWidth(), (int) std::ceil (displaySize.getHeight()) + paperMargin * 2);
         repaint();
@@ -219,19 +207,19 @@ public:
                 if (n.start <= *quarters + 1.0e-6 && *quarters < n.end - 1.0e-6)
                     now.insert (n.id);
 
-        if (now == highlighted)
+        if (now == highlighted || drawing == nullptr)
             return std::nullopt;
 
         for (auto& id : highlighted)
             if (! now.count (id))
-                colour (id, false);
+                drawing->setHighlighted (id, false);
 
         std::optional<float> top;
 
         for (auto& id : now)
         {
             if (! highlighted.count (id))
-                colour (id, true);
+                drawing->setHighlighted (id, true);
 
             if (auto y = getTop (id); y && (! top || *y < *top))
                 top = y;
@@ -247,77 +235,34 @@ public:
         g.fillAll (juce::Colours::white);
 
         // Verovio's page (its internal units) mapped onto the pixel size it asked for.
-        if (drawable != nullptr && svgXml != nullptr)
-            notation::drawScore (g, *drawable, *svgXml, { (float) paperMargin, (float) paperMargin });
+        if (drawing != nullptr && svgXml != nullptr)
+            drawing->draw (g, getTransform(), highlightColour);
     }
 
 private:
-    static void collectIDs (juce::Component& c, std::map<juce::String, juce::Component*>& byID)
+    juce::AffineTransform getTransform() const
     {
-        if (auto id = c.getComponentID(); id.isNotEmpty())
-            byID.emplace (id, &c);   // the first (outermost) one, as a depth-first search would find
-
-        for (auto* child : c.getChildren())
-            collectIDs (*child, byID);
-    }
-
-    /** Recolours every shape of a note (head, stem, flag, dots), remembering the ink. */
-    void colour (const juce::String& id, bool highlight)
-    {
-        auto it = notes.find (id);
-
-        if (it == notes.end())
-            return;
-
-        std::function<void (juce::Component&)> paintShapes = [&] (juce::Component& c)
-        {
-            if (auto* shape = dynamic_cast<juce::DrawableShape*> (&c))
-            {
-                auto& saved = originalFills[shape];
-
-                if (highlight)
-                {
-                    if (! saved)
-                        saved = std::make_pair (shape->getFill(), shape->getStrokeFill());
-
-                    if (! shape->getFill().isInvisible())        shape->setFill (highlightColour);
-                    if (! shape->getStrokeFill().isInvisible())  shape->setStrokeFill (highlightColour);
-                }
-                else if (saved)
-                {
-                    shape->setFill (saved->first);
-                    shape->setStrokeFill (saved->second);
-                }
-            }
-
-            for (auto* child : c.getChildren())
-                paintShapes (*child);
-        };
-
-        paintShapes (*it->second);
+        return notation::getScoreTransform (*svgXml, { (float) paperMargin, (float) paperMargin });
     }
 
     /** Where a note is on the page (pixels from the top), for scrolling to it. */
     std::optional<float> getTop (const juce::String& id) const
     {
-        auto it = notes.find (id);
-
-        if (it == notes.end() || drawable == nullptr || svgXml == nullptr)
+        if (drawing == nullptr || svgXml == nullptr)
             return std::nullopt;
 
-        auto area = drawable->getLocalArea (it->second, it->second->getLocalBounds()).toFloat();
-        auto transform = notation::getScoreTransform (*svgXml, { (float) paperMargin, (float) paperMargin });
-        return area.transformedBy (transform).getY();
+        if (auto area = drawing->getBounds (id))
+            return area->transformedBy (getTransform()).getY();
+
+        return std::nullopt;
     }
 
-    std::shared_ptr<juce::Drawable> drawable;
+    std::shared_ptr<notation::ScoreDrawing> drawing;
     std::shared_ptr<juce::XmlElement> svgXml;
     juce::Rectangle<float> displaySize;
 
     std::vector<notation::ScoreRenderer::TimedNote> timed;
-    std::map<juce::String, juce::Component*> notes;   ///< Into drawable, by id
     std::set<juce::String> highlighted;
-    std::map<juce::DrawableShape*, std::optional<std::pair<juce::FillType, juce::FillType>>> originalFills;
 };
 
 //==============================================================================
@@ -420,7 +365,7 @@ void ScoreView::followPlayhead()
     }
 }
 
-void ScoreView::handleRendered (int requestId, std::shared_ptr<juce::XmlElement> svg, std::shared_ptr<juce::Drawable> drawable,
+void ScoreView::handleRendered (int requestId, std::shared_ptr<juce::XmlElement> svg, std::shared_ptr<notation::ScoreDrawing> drawing,
                                 const juce::String& error, std::vector<notation::ScoreRenderer::TimedNote> timed)
 {
     // A newer request is on its way; this result is already out of date.
@@ -434,8 +379,8 @@ void ScoreView::handleRendered (int requestId, std::shared_ptr<juce::XmlElement>
     }
 
     // No drawing and no error: the notation hadn't changed, so the page stays as it is.
-    if (svg != nullptr && drawable != nullptr)
-        page->setScore (svg, drawable, std::move (timed));
+    if (svg != nullptr && drawing != nullptr)
+        page->setScore (svg, drawing, std::move (timed));
 
     statusLabel.setText (lastInput.isEmpty() ? "Record something to see it as sheet music."
                                              : juce::String(),

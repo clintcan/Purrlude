@@ -141,6 +141,8 @@ target_sources(purrlude_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/notation/ScoreRenderer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/notation/ScoreSvg.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/notation/ScoreSvg.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/notation/ScoreDrawing.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/notation/ScoreDrawing.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/notation/PdfDocument.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/notation/PdfDocument.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/notation/ScorePdf.h
