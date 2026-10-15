@@ -285,6 +285,12 @@ ScoreView::ScoreView (tracktion::Edit& e, LiveInstrument& i)
     concertPitchButton.onClick = [this] { timerCallback(); };
     addAndMakeVisible (concertPitchButton);
 
+    chordSymbolsButton.setToggleState (true, juce::dontSendNotification);
+    chordSymbolsButton.setTooltip ("Show the chords the music outlines (C, Am7, G/B...) above the top part");
+    chordSymbolsButton.setWantsKeyboardFocus (false);
+    chordSymbolsButton.onClick = [this] { timerCallback(); };
+    addAndMakeVisible (chordSymbolsButton);
+
     renderThread = std::make_unique<RenderThread> (juce::WeakReference<ScoreView> (this));
     startTimerHz (2);
     playheadFollower.startTimerHz (30);
@@ -313,6 +319,7 @@ void ScoreView::resized()
     auto r = getLocalBounds();
     auto top = r.removeFromTop (24).reduced (8, 0);
     concertPitchButton.setBounds (top.removeFromLeft (130));
+    chordSymbolsButton.setBounds (top.removeFromLeft (140));
     statusLabel.setBounds (top);
     viewport.setBounds (r.reduced (8, 0).withTrimmedBottom (8));
     page->setSize (viewport.getMaximumVisibleWidth(), page->getHeight());
@@ -327,6 +334,7 @@ void ScoreView::timerCallback()
     // Only reading the notes happens here; the render thread builds the score from them.
     notation::BuildOptions options;
     options.concertPitch = concertPitchButton.getToggleState();
+    options.chordSymbols = chordSymbolsButton.getToggleState();
     auto input = notation::getEditScoreInput (edit, options);
     auto width = viewport.getMaximumVisibleWidth() - paperMargin * 2;
 

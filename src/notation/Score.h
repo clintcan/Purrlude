@@ -107,6 +107,24 @@ struct Measure
     std::vector<std::vector<Event>> staves;   ///< One event list per staff
 };
 
+/** A chord symbol above a part, e.g. "Bbmaj7/D". */
+struct ChordSymbol
+{
+    int measure = 0;            ///< 0-based
+    int offset = 0;             ///< Ticks from the start of the measure
+    char rootStep = 'C';
+    int rootAlter = 0;          ///< -1 flat, +1 sharp
+    std::string kind = "major"; ///< MusicXML <kind>: major, minor, dominant, major-seventh, ...
+    std::string suffix;         ///< How the kind is written after the root: "", "m", "7", "maj7", ...
+    char bassStep = 0;          ///< A slash chord's bass (0 for none)
+    int bassAlter = 0;
+
+    /** As it reads, with "b" and "#" for accidentals: "Bbmaj7/D". */
+    std::string getName() const;
+
+    bool operator== (const ChordSymbol&) const = default;
+};
+
 struct Part
 {
     std::string name;
@@ -115,6 +133,7 @@ struct Part
     Transposition transposition;              ///< Written pitches are this far from sounding ones
     std::vector<Clef> clefs;                  ///< One per staff (1 or 2 staves)
     std::vector<Measure> measures;
+    std::vector<ChordSymbol> chords;          ///< Written above the part, in its written pitch
 };
 
 struct Score

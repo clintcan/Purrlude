@@ -15,6 +15,7 @@ struct BuildOptions
     std::optional<KeySignature> key;            ///< Estimated from the notes if not given
     bool triplets = true;                       ///< Write beats played in triplets as triplets
     bool concertPitch = false;                  ///< Write transposing instruments as they sound
+    bool chordSymbols = true;                   ///< Chord symbols (detected from the notes) above the top pitched part
 
     bool operator== (const BuildOptions&) const = default;
 };

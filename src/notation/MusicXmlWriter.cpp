@@ -202,6 +202,37 @@ juce::String toMusicXml (const Score& score, const MusicXmlOptions& options)
                 addTempo (*measure, score.tempoBpm, options.tempoMark);
             }
 
+            // Chord symbols over this measure, each at its offset from the measure's start.
+            for (const auto& chord : part.chords)
+            {
+                if (chord.measure != (int) m)
+                    continue;
+
+                auto* harmony = measure->createNewChildElement ("harmony");
+                harmony->setAttribute ("print-frame", "no");
+                auto* root = harmony->createNewChildElement ("root");
+                addText (*root, "root-step", juce::String::charToString (chord.rootStep));
+
+                if (chord.rootAlter != 0)
+                    addText (*root, "root-alter", juce::String (chord.rootAlter));
+
+                auto* kind = harmony->createNewChildElement ("kind");
+                kind->setAttribute ("text", juce::String (chord.suffix));
+                kind->addTextElement (juce::String (chord.kind));
+
+                if (chord.bassStep != 0)
+                {
+                    auto* bass = harmony->createNewChildElement ("bass");
+                    addText (*bass, "bass-step", juce::String::charToString (chord.bassStep));
+
+                    if (chord.bassAlter != 0)
+                        addText (*bass, "bass-alter", juce::String (chord.bassAlter));
+                }
+
+                if (chord.offset > 0)
+                    addText (*harmony, "offset", juce::String (chord.offset));
+            }
+
             const auto& staves = part.measures[m].staves;
 
             for (size_t staff = 0; staff < staves.size(); ++staff)

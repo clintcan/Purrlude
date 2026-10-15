@@ -1,5 +1,7 @@
 #include "NotationBuilder.h"
 
+#include "ChordDetection.h"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -523,6 +525,22 @@ Score buildMultiPartScore (const std::vector<PartNotes>& parts, TimeSignature ti
     for (size_t i = 0; i < score.parts.size(); ++i)
         if (score.parts[i].measures.size() < numMeasures)
             score.parts[i] = build (parts[i], (int) numMeasures);
+
+    // Chord symbols, from every pitched part as it sounds, above the top pitched part, written
+    // for that part's instrument (a Bb trumpet reads C over a Bb chord).
+    if (options.chordSymbols)
+    {
+        auto chords = detectChords (allNotes, time, score.key, (int) numMeasures);
+
+        for (auto& part : score.parts)
+        {
+            if (! part.percussion)
+            {
+                part.chords = transposeChords (chords, part.transposition, part.key);
+                break;
+            }
+        }
+    }
 
     return score;
 }

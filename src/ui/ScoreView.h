@@ -58,6 +58,7 @@ private:
     juce::Viewport viewport;
     juce::Label statusLabel;
     juce::ToggleButton concertPitchButton { "Concert pitch" };
+    juce::ToggleButton chordSymbolsButton { "Chord symbols" };
 
     notation::EditScoreInput lastInput;
     int lastWidth = 0, lastRequestId = 0;

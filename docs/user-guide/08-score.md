@@ -29,6 +29,17 @@ Played music is rarely exactly on the beat, so the score tidies it for reading. 
 - Drum tracks (Standard Drum Kit) are written on a percussion staff.
 - Kick, snare, toms, hi-hats and cymbals each have their usual place and notehead.
 
+## Chord symbols
+
+The score shows chord symbols (C, Am7, G/B, Bbmaj7...) above the top part, worked out from the notes of every pitched track.
+- **How:** each half bar (a whole bar in 3/4) is heard as a whole, and the chord its notes outline is named, from major, minor, 7, maj7, m7, 6, m6, dim, m7b5, dim7, aug, sus2 and sus4. When the lowest note is another chord tone, it's written as a slash chord: C/E.
+- **Where:** a symbol is written only where the chord changes. A single line on its own gets none.
+- **Spelling:** roots are named for the song's key, so the flat seventh in C is Bb, not A#.
+- **Transposing instruments:** if the top part is one (like a tenor sax), the symbols are written for it, as its player reads them, unless **Concert pitch** is on.
+- **Turning them off:** untick **Chord symbols** above the score. Exports always include them.
+
+They're a reading of the notes, not part of the song: they never change what you hear. Busy or unusual harmony can be named in a way a musician wouldn't, especially passing chords.
+
 ## Following playback
 
 While the song plays, the notes being played turn blue and the score scrolls to keep them in view.
@@ -65,5 +76,4 @@ These aren't handled yet:
 - two voices on one staff
 - tempo or time signature changes within a song
 - tuplets other than triplets within a beat
-- chord symbols
 - the metronome mark in the on-screen score

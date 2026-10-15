@@ -1,5 +1,6 @@
 #include "ScoreSvg.h"
 
+#include <functional>
 #include <map>
 
 namespace purrlude::notation
@@ -91,6 +92,57 @@ std::unique_ptr<juce::XmlElement> prepareVerovioSvg (const juce::String& svg, ju
     };
 
     addStrokes (*xml);
+
+    // Chord symbols' accidentals come as SMuFL characters in Verovio's Leipzig music font, which
+    // JUCE can't draw from: they'd show as missing glyphs. Write them as lead sheets often do,
+    // "Bb" and "F#", in the text's own font.
+    std::function<void (juce::XmlElement&, float)> plainAccidentals = [&] (juce::XmlElement& e, float textSize)
+    {
+        if (e.hasAttribute ("font-size") && ! e.getStringAttribute ("font-family").contains ("Leipzig"))
+            textSize = e.getStringAttribute ("font-size").getFloatValue();
+
+        if (e.hasTagName ("tspan") && e.getStringAttribute ("font-family").contains ("Leipzig"))
+        {
+            auto text = e.getAllSubText();
+            juce::String plain;
+            bool allAccidentals = text.isNotEmpty();
+
+            for (auto c : text)
+            {
+                switch ((int) c)
+                {
+                    case 0xea63:    plain << "bb"; break;   // csymDoubleFlat
+                    case 0xea64:    plain << "b";  break;   // csymFlat
+                    case 0xea65:    break;                  // csymNatural
+                    case 0xea66:    plain << "#";  break;   // csymSharp
+                    case 0xea67:    plain << "x";  break;   // csymDoubleSharp
+                    default:        allAccidentals = false; break;
+                }
+            }
+
+            if (allAccidentals && textSize > 0.0f)
+            {
+                e.deleteAllChildElements();
+                e.addTextElement (plain);
+                e.removeAttribute ("font-family");
+                e.setAttribute ("font-size", juce::String (textSize) + "px");
+            }
+
+            return;
+        }
+
+        // The text's size is on the accidental's neighbours ("B" beside the flat), not its parents.
+        for (auto* child : e.getChildIterator())
+            if (child->hasTagName ("tspan") && child->hasAttribute ("font-size")
+                 && ! child->getStringAttribute ("font-family").contains ("Leipzig"))
+                if (auto size = child->getStringAttribute ("font-size").getFloatValue(); size > 0.0f)
+                    textSize = size;
+
+        for (auto* child : e.getChildIterator())
+            plainAccidentals (*child, textSize);
+    };
+
+    plainAccidentals (*xml, 0.0f);
     return xml;
 }
 

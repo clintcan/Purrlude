@@ -380,6 +380,12 @@ A note quantized past the end of the performance moves back onto the last grid s
 - **Concert pitch:** `BuildOptions::concertPitch` writes everything as it sounds, and the Score tab has a toggle for it. Exports are transposed.
 - **What's known:** only the built-in GM instrument (`notation::getTransposition`). Tracks played on an external device are written as they sound.
 
+**Chord symbols** (`src/notation/ChordDetection.h`): `detectChords` names the chord in each half bar (whole bar in 2/4, 3/4, odd meters) from every pitched part's notes, weighted by how long they sound (low notes more), against 13 templates; the lowest note sounding for a quarter of the window gives a slash bass. Written only on change; fewer than three pitch classes gives none.
+- **Spelling:** `spellChordRoot` spells by scale degree (bVII in C is Bb), unlike `spell`.
+- **Placement:** `buildMultiPartScore` puts them on the first pitched part (`Part::chords`), transposed for it (`transposeChords`) unless concert pitch. `BuildOptions::chordSymbols` (default on; the Score tab's toggle).
+- **MusicXML:** `<harmony>` with `<kind text="m7">`, `<bass>`, and `<offset>` from the measure start (Verovio honours it).
+- **Accidentals:** Verovio writes chord-symbol accidentals as SMuFL characters (U+EA63–EA67) in its Leipzig font, which JUCE can't draw. `prepareVerovioSvg` turns them into "b"/"#" in the text's font (its size is on the sibling tspan).
+
 **Not handled yet:** multiple voices per staff, tempo or time-signature changes, and other tuplets (quintuplets, triplets spanning two beats).
 
 **On-screen score:** `ScoreView` (`src/ui/`) reads the song's notes twice a second on the message thread (`notation::getEditScoreInput`), skipping while recording. When they or the width change, its render thread builds the score and MusicXML (`buildEditScore (EditScoreInput)`), and, if the MusicXML changed, engraves it with `notation::ScoreRenderer` (Verovio) and builds a `notation::ScoreDrawing`. Verovio has global state, so it is only ever used from that one thread.
