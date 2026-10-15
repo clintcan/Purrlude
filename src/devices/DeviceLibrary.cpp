@@ -46,6 +46,7 @@ std::optional<DeviceDefinition> DeviceLibrary::parse (const juce::String& json)
     DeviceDefinition d;
     d.name = root["name"].toString();
     d.receiveChannel = juce::jlimit (1, 16, (int) root.getProperty ("receiveChannel", 1));
+    d.multitimbral = (bool) root.getProperty ("multitimbral", false);
 
     if (auto* matches = root["match"].getArray())
         for (const auto& m : *matches)

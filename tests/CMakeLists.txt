@@ -22,6 +22,7 @@ target_sources(PurrludeTests PRIVATE
     AudioRecordingTests.cpp
     MelodyTranscriptionTests.cpp
     AudioToMidiTests.cpp
+    DeviceChannelsTests.cpp
     DrumTranscriptionTests.cpp
     PolyphonicTranscriptionTests.cpp
     SourceSeparationTests.cpp

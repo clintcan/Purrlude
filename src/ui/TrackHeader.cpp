@@ -1,6 +1,7 @@
 #include "TrackHeader.h"
 
 #include "model/AudioInputs.h"
+#include "model/DeviceChannels.h"
 
 #include "devices/DeviceLibrary.h"
 #include "model/TrackEffects.h"
@@ -55,6 +56,7 @@ namespace
     constexpr int currentToneId = 1;      // device mode: leave the device's tone alone
     constexpr int firstToneId = 2;        // device mode: tones
     constexpr int renameToneId = 10000;   // device mode: rename the selected tone
+    constexpr int gmDrumKitId = 10001;    // device mode, General MIDI: the drum kit (channel 10)
 }
 
 TrackHeader::TrackHeader (tracktion::Edit& e, LiveInstrument& l, MidiDeviceSettings& s, tracktion::EditItemID id)
@@ -293,7 +295,9 @@ void TrackHeader::refresh()
     // The sound source, undo, or a tone picked on the keyboard can change the instrument behind the menu's back.
     if (! audio && ! instrumentBox.isPopupActive())
     {
-        if (instrumentMenuSource != getInstrument().getSoundSourceID())
+        auto channel = instrument.hasOwnChannel() ? instrument.getOutputChannel() : 0;
+
+        if (instrumentMenuSource != getInstrument().getSoundSourceID() || channel != shownChannel)
             updateChoices();
         else if (instrumentBox.getSelectedId() != getSelectedInstrumentId())
             instrumentBox.setSelectedId (getSelectedInstrumentId(), juce::dontSendNotification);
@@ -438,6 +442,22 @@ void TrackHeader::showMenu()
     menu.addItem (1, "Rename...");
     menu.addItem (2, "Delete Track", live.canDeleteTrack (trackID));   // never the last instrument track
 
+    // A track on a multi-part device: the channel it has there.
+    constexpr int firstChannelId = 100;
+
+    if (auto instrument = getInstrument(); instrument.hasOwnChannel())
+    {
+        juce::PopupMenu channels;
+
+        for (int channel = 1; channel <= 16; ++channel)
+            channels.addItem (firstChannelId + channel, "Channel " + juce::String (channel)
+                                                            + (channel == device_channels::drumChannel ? " (drums)" : ""),
+                              true, channel == instrument.getOutputChannel());
+
+        menu.addSeparator();
+        menu.addSubMenu ("MIDI Channel", channels);
+    }
+
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this),
                         [safe = juce::Component::SafePointer<TrackHeader> (this)] (int result)
     {
@@ -452,6 +472,11 @@ void TrackHeader::showMenu()
         {
             safe->edit.getUndoManager().beginNewTransaction ("Delete track");
             safe->live.deleteTrack (safe->trackID);   // destroys this header later, via the arrangement
+        }
+        else if (result > firstChannelId)
+        {
+            safe->getInstrument().setOwnChannel (result - firstChannelId);
+            safe->refresh();
         }
     });
 }
@@ -474,6 +499,9 @@ int TrackHeader::getSelectedInstrumentId() const
 
     if (instrument.getSoundSourceID().isEmpty())
         return instrument.getProgram() + 1;   // GM program + 1
+
+    if (instrument.playsDrumKit())
+        return gmDrumKitId;
 
     if (auto tone = instrument.getDeviceTone())
         for (size_t i = 0; i < toneChoices.size(); ++i)
@@ -517,7 +545,23 @@ void TrackHeader::updateInstrumentChoices()
             toneChoices.push_back (tone);
         };
 
-        instrumentBox.addItem ("Keyboard's current tone", currentToneId);
+        auto generalMidi = device_channels::usesGeneralMidi (deviceSettings, deviceName);
+        instrumentBox.addItem (generalMidi ? "Device's current sound" : "Keyboard's current tone", currentToneId);
+
+        // A multi-part device without a tone list of its own: the General MIDI sounds.
+        if (generalMidi)
+        {
+            for (size_t family = 0; family < gm::familyNames.size(); ++family)
+            {
+                instrumentBox.addSectionHeading (gm::familyNames[family]);
+
+                for (int i = 0; i < 8; ++i)
+                    addTone (*instrumentBox.getRootMenu(), device_channels::getGeneralMidiTone ((int) family * 8 + i));
+            }
+
+            instrumentBox.addSectionHeading ("Drums");
+            instrumentBox.addItem (gm::getName (gm::drumKit), gmDrumKitId);
+        }
 
         // A known device: its whole tone list, by section and category.
         if (definition != nullptr)
@@ -568,7 +612,7 @@ void TrackHeader::updateInstrumentChoices()
             instrumentBox.addSeparator();
             instrumentBox.addItem ("Rename this tone...", renameToneId);
         }
-        else if (definition == nullptr)
+        else if (definition == nullptr && ! generalMidi)
         {
             instrumentBox.addSectionHeading ("Pick a tone on the keyboard to add it here");
         }
@@ -602,9 +646,28 @@ void TrackHeader::instrumentChosen()
     {
         instrument.setDeviceTone (std::nullopt);
     }
+    else if (id == gmDrumKitId)
+    {
+        // General MIDI plays drums on channel 10, whatever the program.
+        instrument.setDeviceTone (std::nullopt);
+        instrument.setProgram (gm::drumKit);
+        instrument.setOwnChannel (device_channels::drumChannel);
+    }
     else if (juce::isPositiveAndBelow (id - firstToneId, (int) toneChoices.size()))
     {
-        instrument.setDeviceTone (toneChoices[(size_t) (id - firstToneId)]);
+        auto tone = toneChoices[(size_t) (id - firstToneId)];
+        auto generalMidi = device_channels::usesGeneralMidi (deviceSettings, instrument.getSoundSourceName());
+
+        if (generalMidi && tone.bankMsb == 0 && tone.bankLsb == 0)
+        {
+            // Off the drum channel first, so the Program Change doesn't go to the drums.
+            if (instrument.playsDrumKit())
+                instrument.setOwnChannel (device_channels::chooseChannel (edit, instrument.getSoundSourceID(), trackID, false));
+
+            instrument.setProgram (tone.program);   // the built-in instrument plays it too, if the track goes back
+        }
+
+        instrument.setDeviceTone (tone);
     }
 }
 
@@ -667,9 +730,12 @@ void TrackHeader::updateSoundChoices()
     }
 
     soundBox.clear (juce::dontSendNotification);
+    shownChannel = instrument.hasOwnChannel() ? instrument.getOutputChannel() : 0;
 
+    // A track with a channel of its own on a multi-part device shows it.
     for (int i = 0; i < soundNames.size(); ++i)
-        soundBox.addItem (soundNames[i], i + 1);
+        soundBox.addItem (soundNames[i] + (shownChannel > 0 && soundIDs[i] == current ? juce::String (juce::CharPointer_UTF8 (" \xc2\xb7 Ch ")) + juce::String (shownChannel) : juce::String()),
+                          i + 1);
 
     soundBox.setSelectedItemIndex (juce::jmax (0, soundIDs.indexOf (current)), juce::dontSendNotification);
 }
@@ -682,15 +748,9 @@ void TrackHeader::soundChosen()
     if (! juce::isPositiveAndBelow (index, soundIDs.size()) || soundIDs[index] == instrument.getSoundSourceID())
         return;
 
-    if (soundIDs[index].isEmpty())
-    {
-        instrument.useBuiltInSynth();
-    }
-    else
-    {
-        auto name = soundNames[index].upToLastOccurrenceOf (" (not connected)", false, false);
-        instrument.setSoundSource (soundIDs[index], name, deviceSettings.getOutputChannel (name));
-    }
+    if (auto* track = instrument.getTrack())
+        device_channels::playThrough (edit, deviceSettings, *track, soundIDs[index],
+                                      soundNames[index].upToLastOccurrenceOf (" (not connected)", false, false));
 }
 
 } // namespace purrlude

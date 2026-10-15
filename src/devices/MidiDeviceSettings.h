@@ -3,6 +3,7 @@
 #include <juce_events/juce_events.h>
 
 #include <map>
+#include <optional>
 #include <vector>
 
 namespace purrlude
@@ -25,6 +26,10 @@ struct DeviceTone
     - The channel Purrlude sends on when a track plays through a device. Keyboards
       differ: a Roland GO:KEYS sends on channel 1 but plays its own sounds only for
       notes on channel 4.
+    - Whether the device is multi-part (multi-timbral): it plays a different sound on each
+      channel, like a sound module or a software synth such as FluidSynth, so each track
+      playing through it gets a channel of its own (see model/DeviceChannels.h). A
+      keyboard like the GO:KEYS plays one part, on one channel.
     - Tones learned from the device: devices like the GO:KEYS 5 report Bank Select +
       Program Change when you pick a tone on them, using their own bank (71/96),
       not General MIDI. Each one seen is remembered and can be renamed.
@@ -39,6 +44,12 @@ public:
     /** 1-16. Without a setting: the device library's channel for known devices, else 1. */
     int getOutputChannel (const juce::String& deviceName) const;
     void setOutputChannel (const juce::String& deviceName, int channel);
+
+    /** True if the device plays a different sound on each channel. Without a setting: the
+        device library's answer for known devices, else false.
+    */
+    bool isMultitimbral (const juce::String& deviceName) const;
+    void setMultitimbral (const juce::String& deviceName, bool);
 
     /** Remembers a tone seen on the device (named "Tone N" if new) and returns it with its name.
         Tones in the device's built-in tone list aren't stored; they come back with their real names.
@@ -55,6 +66,7 @@ private:
     {
         int outputChannel = 1;
         bool channelSet = false;   ///< false: use the device library's default
+        std::optional<bool> multitimbral;   ///< nullopt: use the device library's default
         std::vector<DeviceTone> tones;
     };
 

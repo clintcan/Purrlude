@@ -105,6 +105,13 @@ The app talks to `purrlude::BluetoothMidiManager` (`src/devices/BluetoothMidiMan
 - **Output channels:** `MidiDeviceSettings` (`src/devices/`) remembers each output device's channel by name, because keyboards differ. A Roland GO:KEYS sends on channel 1 but plays its own sounds only on channel 4. Set it under MIDI outputs in the devices panel.
 - **Sound source:** the Instrument track's Sound menu chooses the built-in synth or an external output (`LiveInstrument::setSoundSource`, stored on the track's state).
 - **How external output works:** the synth is disabled (disabled plugins pass MIDI through), a MIDI Patch Bay at the front of the chain remaps every channel to the device's channel, and the track outputs to the MIDI device. Recorded clips keep their original channel.
+- **Multi-part devices** (`src/model/DeviceChannels.h`, namespace `device_channels`): a sound module or software synth (e.g. FluidSynth) plays a different sound on each channel. `MidiDeviceSettings::isMultitimbral` is set per device (the "Multi" switch under MIDI outputs, or `"multitimbral": true` in a device definition).
+  - **Channels:** each track playing through such a device gets a channel of its own (`TrackInstrument::setOwnChannel`, marked on the track so it's kept): 10 for a drum kit, else the lowest free one, skipping 10; when all are taken, the least used. Change it from the track header's menu (MIDI Channel).
+  - **Sounds:** a multi-part device without a tone list is General MIDI: the instrument menu lists the GM sounds (Bank Select 0/0 + Program Change) and the drum kit (channel 10), and a track keeps its GM program when it moves there. `playsDrumKit` is also true for a track on channel 10 of such a device.
+  - **Order matters:** set a track's channel before sending its tone or mix (`device_channels::playThrough`), or they'd change whatever track owns the device's default channel.
+  - **Applying settings:** `applySettings` runs when device settings change. Turning Multi on gives each track its own channel; turning it off puts them all on the device's channel.
+  - **Tests:** `[midi-out]` (macOS) checks what reaches a virtual MIDI port. The hidden `[.live-out]` plays a virtual keyboard through to a virtual multi-part device.
+  - **If a keyboard plays nothing:** check it's sending at all before debugging. An Akai MPK mini 3 once stopped sending over USB with everything in Purrlude in order; unplugging and replugging it fixed it.
 - **No echo to the same keyboard:** when the output device is also connected as an input, "All MIDI Ins" monitoring is switched off. The keyboard already sounds what you play, so echoing would double every note.
 
 **Instruments and device tones:**

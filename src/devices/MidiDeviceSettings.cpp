@@ -26,6 +26,9 @@ MidiDeviceSettings::MidiDeviceSettings (juce::PropertySet& s)
             device.channelSet = e->hasAttribute ("outputChannel");
             device.outputChannel = juce::jlimit (1, 16, e->getIntAttribute ("outputChannel", 1));
 
+            if (e->hasAttribute ("multitimbral"))
+                device.multitimbral = e->getBoolAttribute ("multitimbral");
+
             for (auto* t : e->getChildWithTagNameIterator ("TONE"))
                 device.tones.push_back ({ t->getIntAttribute ("msb"), t->getIntAttribute ("lsb"),
                                           t->getIntAttribute ("program"), t->getStringAttribute ("name") });
@@ -57,6 +60,27 @@ void MidiDeviceSettings::setOutputChannel (const juce::String& deviceName, int c
     auto& device = devices[deviceName];
     device.outputChannel = channel;
     device.channelSet = true;
+    save();
+    sendChangeMessage();
+}
+
+bool MidiDeviceSettings::isMultitimbral (const juce::String& deviceName) const
+{
+    auto it = devices.find (deviceName);
+
+    if (it != devices.end() && it->second.multitimbral)
+        return *it->second.multitimbral;
+
+    auto* definition = DeviceLibrary::findFor (deviceName);
+    return definition != nullptr && definition->multitimbral;
+}
+
+void MidiDeviceSettings::setMultitimbral (const juce::String& deviceName, bool multitimbral)
+{
+    if (isMultitimbral (deviceName) == multitimbral)
+        return;
+
+    devices[deviceName].multitimbral = multitimbral;
     save();
     sendChangeMessage();
 }
@@ -114,6 +138,9 @@ void MidiDeviceSettings::save()
 
         if (device.channelSet)
             e->setAttribute ("outputChannel", device.outputChannel);
+
+        if (device.multitimbral)
+            e->setAttribute ("multitimbral", *device.multitimbral);
 
         for (const auto& tone : device.tones)
         {

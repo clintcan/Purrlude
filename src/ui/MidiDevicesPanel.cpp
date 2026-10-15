@@ -81,7 +81,7 @@ private:
 };
 
 //==============================================================================
-/** A MIDI output and the channel Purrlude sends to it on. */
+/** A MIDI output: whether it's multi-part, and the channel Purrlude sends to it on. */
 class MidiDevicesPanel::OutputRow final : public juce::Component
 {
 public:
@@ -95,13 +95,25 @@ public:
             channelBox.addItem ("Ch " + juce::String (channel), channel);
 
         channelBox.setSelectedId (settings.getOutputChannel (deviceName), juce::dontSendNotification);
-        channelBox.setTooltip ("The channel this device plays its own sounds on");
         channelBox.onChange = [&settings, deviceName, this]
         {
             settings.setOutputChannel (deviceName, channelBox.getSelectedId());
         };
 
+        multiButton.setClickingTogglesState (true);
+        multiButton.setToggleState (settings.isMultitimbral (deviceName), juce::dontSendNotification);
+        multiButton.setTooltip ("Multi-part: the device plays a different sound on each channel, like a sound module "
+                                "or a software synth such as FluidSynth. Each track playing through it gets a channel "
+                                "of its own, and General MIDI sounds to choose from.");
+        multiButton.onClick = [&settings, deviceName, this]
+        {
+            settings.setMultitimbral (deviceName, multiButton.getToggleState());
+            updateChannelBox();
+        };
+
+        updateChannelBox();
         addAndMakeVisible (name);
+        addAndMakeVisible (multiButton);
         addAndMakeVisible (channelBox);
     }
 
@@ -109,11 +121,22 @@ public:
     {
         auto r = getLocalBounds().reduced (0, 3);
         channelBox.setBounds (r.removeFromRight (80));
+        multiButton.setBounds (r.removeFromRight (64).withTrimmedRight (6));
         name.setBounds (r.withTrimmedRight (6));
     }
 
 private:
+    void updateChannelBox()
+    {
+        // A multi-part device's tracks each have their own channel.
+        auto multi = multiButton.getToggleState();
+        channelBox.setEnabled (! multi);
+        channelBox.setTooltip (multi ? "Each track playing through this device has its own channel: see the track's menu"
+                                     : "The channel this device plays its own sounds on");
+    }
+
     juce::Label name;
+    juce::TextButton multiButton { "Multi" };
     juce::ComboBox channelBox;
 };
 
@@ -126,7 +149,8 @@ MidiDevicesPanel::MidiDevicesPanel (BluetoothMidiManager& b, tracktion::Engine& 
     outputsHint.setJustificationType (juce::Justification::topLeft);
     outputsHint.setText ("To hear a keyboard's own sounds, choose it as the track's Sound. Notes go out on the "
                          "channel set here (a Roland GO:KEYS plays channel 4). If notes sound twice, turn the "
-                         "keyboard's Local Control off.",
+                         "keyboard's Local Control off. Turn on Multi for a sound module or software synth that "
+                         "plays a different sound on each channel.",
                          juce::dontSendNotification);
     addAndMakeVisible (outputsHint);
 
@@ -262,7 +286,7 @@ void MidiDevicesPanel::resized()
         row->setBounds (r.removeFromTop (32));
 
     r.removeFromTop (4);
-    outputsHint.setBounds (r.removeFromTop (64));
+    outputsHint.setBounds (r.removeFromTop (96));
 }
 
 } // namespace purrlude

@@ -48,17 +48,25 @@ public:
     juce::String getSoundSourceID() const;
     juce::String getSoundSourceName() const;
 
-    /** The channel notes are sent on to an external output (1-16). */
+    /** The channel notes are sent on to an external output (1-16): the device's channel. */
     void setOutputChannel (int);
     int getOutputChannel() const;
+
+    /** A channel of the track's own on a multi-part device (see DeviceChannels.h). Sends the
+        track's tone and mix there.
+    */
+    void setOwnChannel (int);
+    bool hasOwnChannel() const;
 
     //==============================================================================
     /** The built-in instrument: a General MIDI program (0-127) or gm::drumKit. */
     void setProgram (int);
     int getProgram() const;
 
-    /** True when the built-in instrument plays the GM drum kit, so the notes are drums. */
-    bool playsDrumKit() const                       { return getSoundSourceID().isEmpty() && getProgram() == gm::drumKit && ! isAudio(); }
+    /** True when the track plays the GM drum kit, so the notes are drums: the built-in one,
+        or a multi-part device's (on channel 10).
+    */
+    bool playsDrumKit() const;
 
     bool isAudio() const                            { auto* t = getTrack(); return t != nullptr && isAudioTrack (*t); }
 

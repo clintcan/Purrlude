@@ -63,3 +63,37 @@ The tone is sent when you choose it, when the keyboard becomes the track's sound
 **If notes sound twice,** turn off **Local Control** on the keyboard. Otherwise it sounds both from its own keys and from what Purrlude sends back.
 
 Purrlude effects and meters don't apply to a keyboard's own sounds. The track's volume and pan are sent to the keyboard instead.
+
+## Sound modules and software synths (multi-part)
+
+A keyboard like the GO:KEYS plays one part: everything sent to it plays with one sound. A **multi-part** (multi-timbral) device plays a different sound on each of its 16 channels. Examples:
+- hardware sound modules and many workstations
+- the *Microsoft GS Wavetable Synth* built into Windows
+- software synths such as [FluidSynth](https://www.fluidsynth.org) on any system
+
+Purrlude can play a whole song through one of these, each track with its own sound:
+
+1. In the devices panel, under **MIDI outputs**, turn on **Multi** for the device. Its channel menu is greyed out, because each track now gets its own channel.
+2. Choose the device as the **sound** of each track you want it to play.
+   - Each track gets a channel of its own: drum-kit tracks get channel 10, the General MIDI drum channel, and the others take the lowest free channel.
+   - Each track keeps its General MIDI sound, so a whole song switches over and sounds the same.
+   - The sound menu shows the track's channel, e.g. *FluidSynth · Ch 3*.
+3. The **instrument menu** lists the 128 General MIDI sounds and **Standard Drum Kit**, sent to the device as Program Changes. Choosing the drum kit moves the track to channel 10.
+
+**Changing a track's channel:** right-click the track's header and choose **MIDI Channel**. For example, give two tracks the same channel to have them share a sound.
+
+**Turning Multi off** puts every track on that device back on the device's one channel.
+
+**Limits:**
+- Up to 16 tracks can have channels of their own. After that, tracks share the least-used channel.
+- All the parts share the device's polyphony (how many notes it can play at once).
+
+### Trying it with FluidSynth on a Mac
+
+FluidSynth is free (`brew install fluid-synth`). Start it with a General MIDI SoundFont, such as GeneralUser GS:
+
+```sh
+fluidsynth -a coreaudio -m coremidi -o midi.portname=FluidSynth -i GeneralUser-GS.sf2
+```
+
+It appears in Purrlude's **MIDI outputs** as *FluidSynth*. Turn on **Multi** for it, then choose it as the tracks' sound. Press Ctrl+C in the terminal to stop it.

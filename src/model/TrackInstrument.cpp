@@ -12,6 +12,7 @@ namespace
     const juce::Identifier soundSourceIdProperty   { "purrludeSoundSource" };
     const juce::Identifier soundSourceNameProperty { "purrludeSoundSourceName" };
     const juce::Identifier outputChannelProperty   { "purrludeOutputChannel" };
+    const juce::Identifier ownChannelProperty      { "purrludeOwnChannel" };     // true: not the device's channel
     const juce::Identifier programProperty         { "purrludeProgram" };
     const juce::Identifier toneProperty            { "purrludeDeviceTone" };   // "msb lsb program" or absent
     const juce::Identifier toneNameProperty        { "purrludeDeviceToneName" };
@@ -200,6 +201,7 @@ void TrackInstrument::setOutputChannel (int channel)
 
     channel = juce::jlimit (1, 16, channel);
     track->state.setProperty (outputChannelProperty, channel, nullptr);
+    track->state.removeProperty (ownChannelProperty, nullptr);
 
     if (auto* patchBay = findPatchBay (*track))
     {
@@ -217,6 +219,34 @@ int TrackInstrument::getOutputChannel() const
 {
     auto* track = getTrack();
     return track != nullptr ? juce::jlimit (1, 16, (int) track->state.getProperty (outputChannelProperty, 1)) : 1;
+}
+
+void TrackInstrument::setOwnChannel (int channel)
+{
+    auto* track = getTrack();
+
+    if (track == nullptr)
+        return;
+
+    setOutputChannel (channel);
+    track->state.setProperty (ownChannelProperty, true, nullptr);
+    sendToneToDevice();
+    sendMixToDevice();
+}
+
+bool TrackInstrument::hasOwnChannel() const
+{
+    auto* track = getTrack();
+    return track != nullptr && getSoundSourceID().isNotEmpty() && (bool) track->state.getProperty (ownChannelProperty, false);
+}
+
+bool TrackInstrument::playsDrumKit() const
+{
+    if (getProgram() != gm::drumKit || isAudio())
+        return false;
+
+    // On a multi-part device, the General MIDI drums are on channel 10.
+    return getSoundSourceID().isEmpty() || (hasOwnChannel() && getOutputChannel() == 10);
 }
 
 //==============================================================================

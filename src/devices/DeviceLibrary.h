@@ -32,6 +32,7 @@ struct DeviceDefinition
     juce::String name;
     juce::StringArray matches;      ///< Substrings of the MIDI port name
     int receiveChannel = 1;
+    bool multitimbral = false;      ///< Plays a different sound on each channel (MidiDeviceSettings::isMultitimbral)
     std::vector<Section> sections;
 
     bool appliesTo (const juce::String& portName) const;

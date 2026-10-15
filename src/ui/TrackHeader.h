@@ -12,7 +12,7 @@ namespace purrlude
 /** The header of one track in the arrangement: its name (double-click to rename),
     record arm, mute, solo, effects (FX), volume, pan and level meter; for an instrument track the
     Instrument and Sound menus, for an audio track its input and input monitoring. Clicking an instrument track's header selects it for live
-    input; right-click for Rename and Delete.
+    input; right-click for Rename and Delete (and, on a multi-part device, the track's MIDI channel).
 */
 class TrackHeader final : public juce::Component
 {
@@ -74,6 +74,7 @@ private:
     std::vector<DeviceTone> toneChoices;      ///< Instrument menu items when playing through a device
     int firstLearnedToneId = 0;               ///< Items from here on are learned (renamable) tones
     juce::String instrumentMenuSource;        ///< Sound source the instrument menu was built for
+    int shownChannel = 0;                     ///< The track's own channel the Sound menu shows (0: none)
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TrackHeader)
 };

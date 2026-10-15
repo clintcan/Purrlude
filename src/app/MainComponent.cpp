@@ -5,6 +5,7 @@
 #include "notation/MusicXmlWriter.h"
 #include "notation/ScorePdf.h"
 #include "notation/TrackNotation.h"
+#include "model/DeviceChannels.h"
 #include "model/SharedReverb.h"
 
 namespace purrlude
@@ -857,14 +858,8 @@ void MainComponent::changeListenerCallback (juce::ChangeBroadcaster* source)
         return;
     }
 
-    // A device's channel changed: apply it to every track that plays through that device.
-    for (auto* track : getSongTracks (project->getEdit()))
-    {
-        TrackInstrument instrument (project->getEdit(), *track);
-
-        if (instrument.getSoundSourceID().isNotEmpty())
-            instrument.setOutputChannel (deviceSettings.getOutputChannel (instrument.getSoundSourceName()));
-    }
+    // A device's channel or multi-part setting changed: apply it to every track that plays through it.
+    device_channels::applySettings (project->getEdit(), deviceSettings);
 }
 
 void MainComponent::timerCallback()
