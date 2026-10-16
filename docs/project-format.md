@@ -8,7 +8,7 @@ The `EDIT` element's `purrludeFormat` attribute is the format version. Each save
 
 | Version | Purrlude | Changes |
 |---|---|---|
-| 1 | up to 1.0 | The format described here |
+| 1 | 1.0 | The format described here |
 
 **From 1.0 on, the format is frozen:** a song saved by one version of Purrlude opens in every later one.
 - When the format changes, `project_format::currentVersion` (`src/model/ProjectFormat.h`) goes up, and `project_format::upgrade` gains a step that converts the older version as a song opens.

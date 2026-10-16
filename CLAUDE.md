@@ -2,13 +2,13 @@
 
 Purrlude is a cross-platform digital audio workstation (DAW) for composing, recording, arranging and mixing music. It aims to be **easy for beginners and deep enough for power users**: a clean default UI that hides complexity until it's needed, with full control (automation, routing, keyboard-driven workflows) available underneath.
 
-> **Status: beta on macOS, alpha on Windows and Linux** (the README says the same; keep them in step).
-> - **Works:** the signature features (score, audio to MIDI, separation, loops and accompaniment, devices) and recording, editing, mixing and export, in daily use on macOS (Apple Silicon).
-> - **Missing for 1.0:**
+> **Status: 1.0 on macOS and Windows; Linux CI-only** (the README says the same; keep them in step). Version 1.0.0 (`project()` in `CMakeLists.txt`).
+> - **Works:** the signature features (score, audio to MIDI, separation, loops and accompaniment, devices) and recording, editing, mixing and export, in real use on macOS (Apple Silicon) and Windows.
+> - **The project format is frozen** (format 1, `docs/project-format.md`): every later change needs an upgrade step.
+> - **Still to do:**
 >   - prebuilt releases (signed, notarised macOS app; Windows/Linux installers)
 >   - hosting the Demucs model
->   - real use on Windows/Linux
->   - a frozen project format
+>   - real use on Linux
 > - **Public:** github.com/clintcan/Purrlude, AGPLv3.
 
 ## Target Platforms

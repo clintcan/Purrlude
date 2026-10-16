@@ -6,7 +6,7 @@ Purrlude is a cross-platform music workstation for writing, recording, arranging
 
 <img src="docs/user-guide/images/overview.png" alt="Purrlude: the arrangement with melody, piano, bass and drum tracks, the live score with chord symbols below, and the Loops panel on the right" width="100%">
 
-> **Status: beta on macOS, alpha on Windows and Linux.** The main features work and are in daily use on macOS (Apple Silicon). There are no prebuilt downloads yet: build from source (below). Windows and Linux build and pass the tests in CI but haven't seen real use. Project files may still change format before 1.0.
+> **Status: 1.0 on macOS and Windows.** Everything below works and has been used for real on macOS (Apple Silicon) and Windows. Linux builds and passes the tests in CI but hasn't seen real use yet. There are no prebuilt downloads yet: build from source (below). The project format is frozen: songs saved by 1.0 open in every later version.
 
 ## What it does
 
@@ -20,12 +20,13 @@ Purrlude is a cross-platform music workstation for writing, recording, arranging
 
 The **[user guide](docs/user-guide/README.md)** covers all of it, with screenshots.
 
-## Road to 1.0
+## What's next
 
 - **Releases:** a signed, notarised macOS app to download, then Windows and Linux installers.
 - **Instrument separation for everyone:** host the Demucs model so builds can fetch it.
-- **Testing:** real use on Windows and Linux, and beta testers on other machines and devices.
-- **A stable project format** from 1.0 on, so songs saved then keep opening. Songs already record their format version, and a saved song using every feature is tested on every build ([format](docs/project-format.md)).
+- **Testing:** real use on Linux, and testers on other machines and devices.
+
+**The project format is stable:** songs record their format version, and a saved song using every feature is tested on every build, so songs saved by 1.0 keep opening ([format](docs/project-format.md)).
 
 ## Building
 
