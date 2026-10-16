@@ -74,6 +74,10 @@ private:
     std::unique_ptr<juce::LookAndFeel> panKnobLook;   // declared before the knob that uses it
     juce::Slider volumeSlider, panKnob;
     float valueBeforeDrag = 0.0f;   ///< Volume or pan when a drag started (for its undo step)
+    std::unique_ptr<automation::Gesture> mixGesture;   ///< Volume or pan held (recorded while it's held)
+    tracktion::AutomatableParameter* getMixParameter (bool pan) const;
+    void mixDragStarted (bool pan);
+    void mixDragEnded (bool pan, float value);
     juce::ComboBox instrumentBox, soundBox;
     juce::Label kindLabel { {}, "Audio track" };
     const bool audio;   ///< An audio track: an input instead of instrument and sound menus

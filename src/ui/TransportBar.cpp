@@ -1,6 +1,7 @@
 #include "TransportBar.h"
 
 #include "model/AudioExport.h"
+#include "model/Automation.h"
 #include "model/LoopRange.h"
 #include "model/Takes.h"
 #include "model/TimeSignature.h"
@@ -31,6 +32,13 @@ TransportBar::TransportBar (tracktion::Edit& e)
     loopButton.setColour (juce::TextButton::buttonOnColourId, loopColour);
     loopButton.onClick = [this] { toggleLoop(); };
 
+    automateButton.setClickingTogglesState (false);
+    automateButton.setTooltip ("Record automation (A): while it's on, moving a control as the song plays "
+                               "(a fader, a knob, a plugin's control, or a knob on your MIDI controller) records "
+                               "it into the control's automation. Let go, and it follows what was there again.");
+    automateButton.setColour (juce::TextButton::buttonOnColourId, recordColour);
+    automateButton.onClick = [this] { toggleAutomationRecording(); };
+
     metronomeButton.setToggleState (edit.clickTrackEnabled.get(), juce::dontSendNotification);
     metronomeButton.onClick = [this] { edit.clickTrackEnabled = metronomeButton.getToggleState(); };
 
@@ -54,7 +62,7 @@ TransportBar::TransportBar (tracktion::Edit& e)
     positionLabel.setFont (juce::FontOptions (18.0f));
     positionLabel.setJustificationType (juce::Justification::centred);
 
-    for (auto* c : std::initializer_list<juce::Component*> { &startButton, &playButton, &recordButton, &loopButton,
+    for (auto* c : std::initializer_list<juce::Component*> { &startButton, &playButton, &recordButton, &loopButton, &automateButton,
                                                             &metronomeButton, &countInButton,
                                                             &tempoLabel, &tempoUnitLabel, &timeSignatureButton, &positionLabel })
         addAndMakeVisible (c);
@@ -146,6 +154,12 @@ void TransportBar::toggleLoop()
     updateButtons();
 }
 
+void TransportBar::toggleAutomationRecording()
+{
+    automation::setWriting (edit, ! automation::isWriting (edit));
+    updateButtons();
+}
+
 void TransportBar::setTempo (double bpm)
 {
     if (bpm >= 20.0 && bpm <= 400.0)
@@ -227,6 +241,7 @@ void TransportBar::updateButtons()
     playButton.setButtonText (transport.isPlaying() ? "Stop" : "Play");
     loopButton.setToggleState (loop_range::isOn (edit), juce::dontSendNotification);
     loopButton.setEnabled (! recording);
+    automateButton.setToggleState (automation::isWriting (edit), juce::dontSendNotification);
     recordButton.setButtonText (recording ? "Stop Rec" : "Record");
     recordButton.setColour (juce::TextButton::buttonColourId,
                             recording ? recordColour : getLookAndFeel().findColour (juce::TextButton::buttonColourId));
@@ -269,15 +284,16 @@ void TransportBar::resized()
     auto gap = [&r] { r.removeFromLeft (6); };
 
     startButton.setBounds (r.removeFromLeft (40));      gap();
-    playButton.setBounds (r.removeFromLeft (70));       gap();
-    recordButton.setBounds (r.removeFromLeft (90));     gap();
-    loopButton.setBounds (r.removeFromLeft (56));       gap();
-    positionLabel.setBounds (r.removeFromLeft (150));   gap();
+    playButton.setBounds (r.removeFromLeft (64));       gap();
+    recordButton.setBounds (r.removeFromLeft (82));     gap();
+    loopButton.setBounds (r.removeFromLeft (52));       gap();
+    automateButton.setBounds (r.removeFromLeft (82));   gap();
+    positionLabel.setBounds (r.removeFromLeft (110));   gap();
     tempoLabel.setBounds (r.removeFromLeft (60));
-    tempoUnitLabel.setBounds (r.removeFromLeft (40));   gap();
+    tempoUnitLabel.setBounds (r.removeFromLeft (36));   gap();
     timeSignatureButton.setBounds (r.removeFromLeft (52)); gap();
-    metronomeButton.setBounds (r.removeFromLeft (110));
-    countInButton.setBounds (r.removeFromLeft (100));
+    metronomeButton.setBounds (r.removeFromLeft (102));
+    countInButton.setBounds (r.removeFromLeft (90));
 }
 
 } // namespace purrlude

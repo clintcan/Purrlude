@@ -236,4 +236,121 @@ PointDrag::PointDrag (tracktion::Edit& edit)
     edit.getUndoManager().beginNewTransaction ("Move automation point");
 }
 
+std::optional<Target> findTarget (tracktion::AudioTrack& track, const tracktion::AutomatableParameter& parameter)
+{
+    auto* plugin = parameter.getPlugin();
+
+    if (plugin == nullptr)
+        return std::nullopt;
+
+    for (auto& target : getTargets (track))
+        if (target.plugin == plugin->itemID && target.parameterID == parameter.paramID)
+            return target;
+
+    if (auto* external = dynamic_cast<tracktion::ExternalPlugin*> (plugin))
+        for (auto& controls : getPluginControls (track))
+            if (controls.plugin == external->itemID)
+                for (auto& control : controls.controls)
+                    if (control.parameterID == parameter.paramID)
+                        return control;
+
+    return std::nullopt;
+}
+
+void userMoved (tracktion::AutomatableParameter& parameter)
+{
+    parameter.getEdit().getParameterChangeHandler().parameterChanged (parameter, false);
+}
+
+//==============================================================================
+bool isWriting (tracktion::Edit& edit)
+{
+    return edit.getAutomationRecordManager().isWritingAutomation();
+}
+
+void setWriting (tracktion::Edit& edit, bool shouldWrite)
+{
+    auto& manager = edit.getAutomationRecordManager();
+
+    // Turning it off mid-pass keeps what was recorded so far.
+    if (! shouldWrite)
+        manager.punchOut (false);
+
+    manager.setWritingAutomation (shouldWrite);
+}
+
+bool isRecordingPass (tracktion::Edit& edit)
+{
+    auto& transport = edit.getTransport();
+    return isWriting (edit) && (transport.isPlaying() || transport.isRecording());
+}
+
+std::optional<Target> findRecording (tracktion::AudioTrack& track)
+{
+    auto& manager = track.edit.getAutomationRecordManager();
+
+    if (! manager.isRecordingAutomation())
+        return std::nullopt;
+
+    for (auto* plugin : track.pluginList)
+        for (auto* parameter : plugin->getAutomatableParameters())
+            if (manager.isParameterRecording (parameter))
+                return findTarget (track, *parameter);
+
+    return std::nullopt;
+}
+
+Gesture::Gesture (tracktion::AutomatableParameter& p)
+    : parameter (&p)
+{
+    parameter->parameterChangeGestureBegin();
+}
+
+Gesture::~Gesture()
+{
+    parameter->parameterChangeGestureEnd();
+}
+
+Recorder::Recorder (tracktion::Edit& e)
+    : edit (e)
+{
+    // Tracktion keeps the switch in the song (on by default with its newer recorder); in
+    // Purrlude it starts off every time.
+    edit.getAutomationRecordManager().setWritingAutomation (false);
+    edit.getAutomationRecordManager().addListener (this);
+    edit.getTransport().addChangeListener (this);
+}
+
+Recorder::~Recorder()
+{
+    edit.getTransport().removeChangeListener (this);
+    edit.getAutomationRecordManager().removeListener (this);
+    pass.reset();
+}
+
+void Recorder::update()
+{
+    auto recording = isRecordingPass (edit);
+
+    if (recording && pass == nullptr)
+    {
+        // Touch mode: a control is recorded while it's held, then follows its curve again.
+        // Not undoable: it's how recording works, not part of the music.
+        for (auto* track : tracktion::getAllTracks (edit))
+            if (track->automationMode.get() != tracktion::AutomationMode::touch)
+                track->state.setProperty (tracktion::IDs::automationMode,
+                                          tracktion::toString (tracktion::AutomationMode::touch), nullptr);
+
+        edit.getUndoManager().beginNewTransaction ("Record automation");
+        pass = std::make_unique<tracktion::Edit::UndoTransactionInhibitor> (edit);
+    }
+    else if (! recording && pass != nullptr && ! edit.getTransport().isPlaying() && ! edit.getTransport().isRecording())
+    {
+        // Stopped: Tracktion writes what's still held into the curves, in this step.
+        edit.getAutomationRecordManager().punchOut (false);
+        pass.reset();
+        edit.getUndoManager().beginNewTransaction();
+    }
+}
+
 } // namespace purrlude::automation

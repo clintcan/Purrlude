@@ -24,6 +24,15 @@ namespace TrackMix
         (pass the value from before a drag started).
     */
     void change (tracktion::Edit&, tracktion::EditItemID, Control, float newValue, float previousValue);
+
+    /** Changes a value as part of the current undo step, without starting one: for changes
+        that come in bursts (a MIDI knob turned), which Tracktion's undo timer groups, and for
+        moves while recording automation, which are part of the recording's step. Successive
+        changes of the same control merge into one action. Undo goes back to previousValue if
+        it's given (a drag's starting value), otherwise to the current value.
+    */
+    void changeInCurrentStep (tracktion::Edit&, tracktion::EditItemID, Control, float newValue,
+                              std::optional<float> previousValue = std::nullopt);
 }
 
 } // namespace purrlude

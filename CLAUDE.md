@@ -8,7 +8,7 @@ Purrlude is a cross-platform digital audio workstation (DAW) for composing, reco
 >   - prebuilt releases (signed, notarised macOS app; Windows/Linux installers)
 >   - hosting the Demucs model
 >   - real use on Windows/Linux
->   - recording automation (drawing it works), punch-in, tempo/time-signature changes within a song, MIDI learn
+>   - punch-in, tempo/time-signature changes within a song
 >   - a frozen project format
 > - **Public:** github.com/clintcan/Purrlude, AGPLv3.
 
@@ -171,7 +171,13 @@ The app talks to `purrlude::BluetoothMidiManager` (`src/devices/BluetoothMidiMan
     - **Menus:** `TrackHeader::addAutomationItems` builds both automation menus: Purrlude's controls, then a submenu per plugin with its automated, shown and recently moved controls, and Choose a Control... (`ControlChooser`, a searchable list in a call-out).
     - **Recently moved:** `automation::TouchedControls` (owned by `LiveInstrument`) listens to the Edit's `ParameterChangeHandler`. It counts a change only off automation and while a mouse button is down, since plugins also send changes of their own (e.g. when their window opens). Automation playback calls it on the audio thread, so it returns at once then.
     - **Tests:** `[plugins][automation]` automates DLSMusicDevice's volume and checks the fade is heard.
-  - **Not done:** recording automation from control moves, and moving automation with clips.
+  - **Recording** (the transport's Automate button, A; `automation::isWriting`/`setWriting`): Tracktion's newer recorder (`EngineBehaviour::enableExperimentalAutomation`, set in `createEngine`) in touch mode. `automation::Recorder` (owned by `LiveInstrument`) sets every track to touch mode when a pass starts, and makes each pass one undo step: it begins the step at play and holds an `UndoTransactionInhibitor` until stop, then punches out.
+    - **Off on open:** Tracktion keeps the switch in the transport state (on by default with that recorder), so `Recorder` turns it off for every Edit.
+    - **Holding:** a control is recorded while it's held (`automation::Gesture`, i.e. `parameterChangeGestureBegin/End`): the header's fader and pan (`TrackHeader::mixDragStarted`), effect knobs and the send (`track_effects::ControlDrag` holds its parameter). A control moved without a gesture (a MIDI knob) is let go 2 s after it last moved.
+    - **Undo:** controls moved during a pass don't start their own undo steps (`ControlDrag` skips its step; the header uses `TrackMix::changeInCurrentStep`), so undoing the pass also restores them.
+    - **UI:** while Automate is on, automated controls are enabled (to record over them). The arrangement shows the control being recorded on its lane (`automation::findRecording`).
+    - **Tests:** `[recording]` play the transport, so they skip without an audio device.
+  - **Not done:** moving automation with clips.
 - **Third-party plugins** (VST3, AU, LV2; `src/model/PluginLibrary.h`, `src/ui/PluginWindows.h`):
   - **Scanning:** the toolbar's Plugins button opens JUCE's `PluginListComponent` on Tracktion's `knownPluginList`, which Tracktion saves in its own settings (`~/Library/Purrlude/Settings.xml` on macOS). Plugins load only once they're in that list.
   - **Out of process:** the app's engine (`createEngine (name, plugin_windows::Behaviour, true)`) scans in a child process: the app itself, started with a `PluginScan` command line. `PurrludeApplication::initialise` hands that to `PluginManager::startChildProcessPluginScan` before anything else, and such instances are allowed alongside the running app. Tests scan in-process.
@@ -202,6 +208,13 @@ The app talks to `purrlude::BluetoothMidiManager` (`src/devices/BluetoothMidiMan
   - **External sources:** tracks played on an external device show no level.
 - **Score:** the Score view and PDF/MusicXML export use `notation::buildEditScore` (a part per track with notes, one shared key, equal length). File > Export Parts as PDF writes one PDF per track.
 - **Scene list:** `LiveInstrument` creates the Edit's scene list at setup. Tracktion otherwise creates it undoably inside the first track insertion, which breaks undoing that insertion.
+
+**MIDI learn** (`src/model/MidiControls.h`, owned by `LiveInstrument`; `src/ui/MidiLearnPanel`, the toolbar's MIDI Learn button):
+- **Mappings:** a Control Change number and channel to an automation target (`automation::findTarget`: anything `getTargets` lists, or any plugin control). They're stored in the Edit (`PURRLUDE_MIDI_CONTROLS`), so they're saved with the song. Learning and removing one are undo steps. A controller controls one thing, and a control has one controller.
+- **Input:** every `PhysicalMidiInputDevice` gets a listener (re-attached when devices change). It runs on the MIDI thread and keeps the latest value per controller; an `AsyncUpdater` handles them on the message thread. Bank Select (0/32, used for tones), data entry/RPN/NRPN and channel mode messages are ignored (`isReserved`). Tracktion's own `ParameterControlMappings` isn't used: it's only active for the UI's "focused" Edit and keeps its mappings outside the Edit's state.
+- **Learning:** while the panel is open (`setLearning`), the last control the user moved waits for a controller. Moves come through the Edit's `ParameterChangeHandler` while a mouse button is down; the header's volume and pan write their state, so they call `automation::userMoved`. Mapped controllers don't move anything while learning.
+- **Applying:** volume and pan go through `TrackMix::changeInCurrentStep` (they live in the track's state; MixChange actions coalesce), other parameters through `setNormalisedParameter`. Both are undoable, a burst at a time by Tracktion's undo timer, and recorded when Automate is on.
+- **Tests:** `[midi-learn]`.
 
 **Transport:** `TransportBar` stops playback 1 s after the last clip ends (`AudioExport::getSongRange`); recording never stops by itself. Play from at or past the end starts from the beginning.
 
@@ -306,7 +319,7 @@ content/                Bundled content: LICENSES.md manifest, devices/*.json de
 src/model/              Project model on top of tracktion::Edit (Project, LiveInstrument)
 src/notation/           Notation layer: performed notes -> Score -> MusicXML (no UI)
 src/analysis/           Analysis layer: melody, chord (basic-pitch) and drum transcription, instrument separation (Demucs) (no UI, no Tracktion)
-src/ui/                 UI components (TransportBar, ArrangementView, ScoreView, PianoRoll, MidiDevicesPanel, LoopsPanel, EffectsPanel, PluginWindows)
+src/ui/                 UI components (TransportBar, ArrangementView, ScoreView, PianoRoll, MidiDevicesPanel, LoopsPanel, MidiLearnPanel, EffectsPanel, PluginWindows)
 tools/content/          Scripts that generate bundled content (run by hand; output is committed)
 tools/models/           Scripts that make the ML models that are too big to commit (run by hand)
 branding/               The app icon (made from the logo by tools/branding/make_icon.py; ICON_BIG in CMakeLists.txt)

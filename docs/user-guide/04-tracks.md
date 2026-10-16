@@ -100,13 +100,29 @@ While a plugin control follows its line, moving it in the plugin's window has no
 **How it plays:**
 - Between points the setting changes in a straight line. Before the first point and after the last, it holds that point's value.
 - Automation is heard in playback and in exported audio.
-- An automated control follows its line and can't be moved by hand; its tooltip says why. Clear the automation to set it by hand again.
+- An automated control follows its line and can't be moved by hand; its tooltip says why. To change it, record over it (see below), or clear the automation to set it by hand again.
 - Points stay on their beats when you change the tempo.
 - Every change can be undone, and a whole drag is one step.
 
 **Limits:**
-- **No recording:** moving a control during playback doesn't record automation yet; draw it instead.
 - **Tracks playing a keyboard's own sounds** can't be automated, as with effects.
 - **Clips:** moving a clip doesn't move the automation over it.
+
+### Recording automation
+
+Instead of drawing points, you can play the song and move the control: its movements are written as automation.
+
+1. Turn on **Automate** in the transport bar (or press **A**). It turns red.
+2. Play the song.
+3. Move a control while it plays: a track's volume or pan, an effect's knob, the reverb send, a control in a plugin's window, or a knob on your MIDI controller (see [MIDI learn](13-devices.md#midi-learn)).
+4. Stop. Turn **Automate** off when you're done, so later moves aren't recorded.
+
+**What gets recorded:**
+- A control is recorded for as long as you hold it. When you let go, it goes back to following what was there before. A knob on a MIDI controller counts as let go 2 seconds after it last moved.
+- What you record replaces the automation that was there, only for the time you held the control.
+- The control's line appears on its track's lane as you record.
+- Controls that already have automation can be moved while **Automate** is on, to record over them.
+- Everything recorded while the song played is one undo step.
+- **Automate** is off whenever you open a song.
 
 **External sounds:** when a track plays a MIDI keyboard's own sounds, its volume and pan are sent to the keyboard (as MIDI CC 7 and 10). Its meter stays empty and effects aren't available, since the sound is made by the keyboard.

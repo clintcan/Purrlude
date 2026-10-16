@@ -49,6 +49,10 @@ MainComponent::MainComponent (tracktion::Engine& e, BluetoothMidiManager& blueto
     loopsButton.setTooltip ("Drum loops to add to the song");
     loopsButton.onClick = [this] { showSidePanel (loopsButton.getToggleState() ? loopsPanel.get() : nullptr); };
 
+    midiLearnButton.setClickingTogglesState (true);
+    midiLearnButton.setTooltip ("Control Purrlude from the knobs and sliders on your MIDI controller");
+    midiLearnButton.onClick = [this] { showSidePanel (midiLearnButton.getToggleState() ? midiLearnPanel.get() : nullptr); };
+
     editorsButton.setClickingTogglesState (true);
     editorsButton.setToggleState (true, juce::dontSendNotification);
     editorsButton.setTooltip ("Show the score and piano roll below the arrangement");
@@ -78,6 +82,7 @@ MainComponent::MainComponent (tracktion::Engine& e, BluetoothMidiManager& blueto
     addAndMakeVisible (pluginsButton);
     addAndMakeVisible (devicesButton);
     addAndMakeVisible (loopsButton);
+    addAndMakeVisible (midiLearnButton);
     addAndMakeVisible (devicesPanel);
 
     setWantsKeyboardFocus (true);
@@ -105,6 +110,7 @@ MainComponent::~MainComponent()
     stopMidiConversion();
     editorTabs.clearTabs();
     loopsPanel = nullptr;
+    midiLearnPanel = nullptr;
     pianoRoll = nullptr;
     scoreView = nullptr;
     arrangement = nullptr;
@@ -133,6 +139,7 @@ void MainComponent::setProject (std::unique_ptr<Project> newProject)
     auto currentTab = editorTabs.getCurrentTabIndex();
     editorTabs.clearTabs();
     loopsPanel = nullptr;
+    midiLearnPanel = nullptr;
     pianoRoll = nullptr;
     scoreView = nullptr;
     arrangement = nullptr;
@@ -146,6 +153,9 @@ void MainComponent::setProject (std::unique_ptr<Project> newProject)
     loopsPanel = std::make_unique<LoopsPanel> (project->getEdit(), project->getInstrument());
     addChildComponent (*loopsPanel);
     loopsPanel->setVisible (loopsButton.getToggleState());
+    midiLearnPanel = std::make_unique<MidiLearnPanel> (project->getInstrument().getMidiControls());
+    addChildComponent (*midiLearnPanel);
+    midiLearnPanel->setVisible (midiLearnButton.getToggleState());
     addAndMakeVisible (*transportBar);
     arrangementViewport.setViewedComponent (arrangement.get(), false);
     addAndMakeVisible (arrangement->getZoomBar());
@@ -917,10 +927,11 @@ void MainComponent::resized()
     auto r = getLocalBounds();
     auto toolbar = r.removeFromTop (44);
 
-    devicesButton.setBounds (toolbar.removeFromRight (136).reduced (6));
+    devicesButton.setBounds (toolbar.removeFromRight (124).reduced (6));
     loopsButton.setBounds (toolbar.removeFromRight (80).reduced (6));
+    midiLearnButton.setBounds (toolbar.removeFromRight (100).reduced (6));
     pluginsButton.setBounds (toolbar.removeFromRight (84).reduced (6));
-    audioSettingsButton.setBounds (toolbar.removeFromRight (130).reduced (6));
+    audioSettingsButton.setBounds (toolbar.removeFromRight (120).reduced (6));
     editorsButton.setBounds (toolbar.removeFromRight (90).reduced (6));
 
     if (transportBar != nullptr)
@@ -931,6 +942,9 @@ void MainComponent::resized()
 
     if (loopsPanel != nullptr && loopsPanel->isVisible())
         loopsPanel->setBounds (r.removeFromRight (LoopsPanel::preferredWidth));
+
+    if (midiLearnPanel != nullptr && midiLearnPanel->isVisible())
+        midiLearnPanel->setBounds (r.removeFromRight (MidiLearnPanel::preferredWidth));
 
     // The editors take the lower part of the window, or all of it at full height; otherwise the
     // arrangement keeps at least a lane or two.
@@ -982,6 +996,11 @@ void MainComponent::showSidePanel (juce::Component* panel)
         loopsPanel->setVisible (panel != nullptr && panel == loopsPanel.get());
 
     loopsButton.setToggleState (panel != nullptr && panel == loopsPanel.get(), juce::dontSendNotification);
+
+    if (midiLearnPanel != nullptr)
+        midiLearnPanel->setVisible (panel != nullptr && panel == midiLearnPanel.get());
+
+    midiLearnButton.setToggleState (panel != nullptr && panel == midiLearnPanel.get(), juce::dontSendNotification);
     resized();
 }
 
@@ -1020,6 +1039,7 @@ bool MainComponent::keyPressed (const juce::KeyPress& key)
     if (key == juce::KeyPress::homeKey)     { transportBar->returnToStart(); return true; }
     if (code == 'R')                        { transportBar->toggleRecord();  return true; }
     if (code == 'L')                        { transportBar->toggleLoop();    return true; }
+    if (code == 'A')                        { transportBar->toggleAutomationRecording(); return true; }
 
     if ((key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey) && arrangement != nullptr)
         return arrangement->deleteSelectedClips();

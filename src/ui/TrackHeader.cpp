@@ -152,15 +152,17 @@ TrackHeader::TrackHeader (tracktion::Edit& e, LiveInstrument& l, MidiDeviceSetti
         return db <= -59.9f ? -100.0f : db;
     };
 
-    volumeSlider.onDragStart = [this] { valueBeforeDrag = TrackMix::get (edit, trackID, TrackMix::Control::volumeDb); };
-    volumeSlider.onDragEnd = [this, volumeFromSlider]
-    {
-        TrackMix::change (edit, trackID, TrackMix::Control::volumeDb, volumeFromSlider(), valueBeforeDrag);
-    };
+    volumeSlider.onDragStart = [this] { mixDragStarted (false); };
+    volumeSlider.onDragEnd = [this, volumeFromSlider] { mixDragEnded (false, volumeFromSlider()); };
     volumeSlider.onValueChange = [this, volumeFromSlider]
     {
         if (volumeSlider.isMouseButtonDown())
+        {
             TrackMix::set (edit, trackID, TrackMix::Control::volumeDb, volumeFromSlider());
+
+            if (auto* parameter = getMixParameter (false))
+                automation::userMoved (*parameter);   // for MIDI learn
+        }
         else
             TrackMix::change (edit, trackID, TrackMix::Control::volumeDb, volumeFromSlider(),
                               TrackMix::get (edit, trackID, TrackMix::Control::volumeDb));
@@ -180,15 +182,17 @@ TrackHeader::TrackHeader (tracktion::Edit& e, LiveInstrument& l, MidiDeviceSetti
     };
     panKnob.setPopupDisplayEnabled (true, true, nullptr);
     panKnob.setTooltip ("Pan (double-click to centre)");
-    panKnob.onDragStart = [this] { valueBeforeDrag = TrackMix::get (edit, trackID, TrackMix::Control::pan); };
-    panKnob.onDragEnd = [this]
-    {
-        TrackMix::change (edit, trackID, TrackMix::Control::pan, (float) panKnob.getValue(), valueBeforeDrag);
-    };
+    panKnob.onDragStart = [this] { mixDragStarted (true); };
+    panKnob.onDragEnd = [this] { mixDragEnded (true, (float) panKnob.getValue()); };
     panKnob.onValueChange = [this]
     {
         if (panKnob.isMouseButtonDown())
+        {
             TrackMix::set (edit, trackID, TrackMix::Control::pan, (float) panKnob.getValue());
+
+            if (auto* parameter = getMixParameter (true))
+                automation::userMoved (*parameter);   // for MIDI learn
+        }
         else
             TrackMix::change (edit, trackID, TrackMix::Control::pan, (float) panKnob.getValue(),
                               TrackMix::get (edit, trackID, TrackMix::Control::pan));
@@ -250,6 +254,39 @@ TrackHeader::~TrackHeader()
     panKnob.setLookAndFeel (nullptr);
 }
 
+tracktion::AutomatableParameter* TrackHeader::getMixParameter (bool pan) const
+{
+    auto* track = TrackInstrument (edit, trackID).getTrack();
+    auto* volume = track != nullptr ? track->getVolumePlugin() : nullptr;
+
+    if (volume == nullptr)
+        return nullptr;
+
+    return pan ? volume->panParam.get() : volume->volParam.get();
+}
+
+void TrackHeader::mixDragStarted (bool pan)
+{
+    valueBeforeDrag = TrackMix::get (edit, trackID, pan ? TrackMix::Control::pan : TrackMix::Control::volumeDb);
+
+    // Held, it's recorded while recording automation (and goes back to its curve when let go).
+    if (auto* parameter = getMixParameter (pan))
+        mixGesture = std::make_unique<automation::Gesture> (*parameter);
+}
+
+void TrackHeader::mixDragEnded (bool pan, float value)
+{
+    auto control = pan ? TrackMix::Control::pan : TrackMix::Control::volumeDb;
+
+    // While recording automation, the drag is part of the recording's undo step.
+    if (automation::isRecordingPass (edit))
+        TrackMix::changeInCurrentStep (edit, trackID, control, value, valueBeforeDrag);
+    else
+        TrackMix::change (edit, trackID, control, value, valueBeforeDrag);
+
+    mixGesture.reset();
+}
+
 void TrackHeader::refresh()
 {
     if (auto* track = getInstrument().getTrack(); track != nullptr && ! nameLabel.isBeingEdited())
@@ -294,14 +331,21 @@ void TrackHeader::refresh()
                                              + instrument.getSoundSourceName() + "."
                                        : "Effects: the shared reverb, and this track's reverb, delay, EQ, compressor and plugins");
 
-    // An automated volume or pan follows its curve: the control shows it and can't be moved.
+    // An automated volume or pan follows its curve: the control shows it, and can only be
+    // moved to record over it.
     auto* volumePlugin = track != nullptr ? track->getVolumePlugin() : nullptr;
     auto automatedVolume = volumePlugin != nullptr && automation::isAutomated (*volumePlugin->volParam);
     auto automatedPan = volumePlugin != nullptr && automation::isAutomated (*volumePlugin->panParam);
-    volumeSlider.setEnabled (! automatedVolume);
-    panKnob.setEnabled (! automatedPan);
-    volumeSlider.setTooltip (automatedVolume ? "Volume follows its automation (right-click the track > Automation)" : "Volume (double-click for 0 dB)");
-    panKnob.setTooltip (automatedPan ? "Pan follows its automation (right-click the track > Automation)" : "Pan (double-click to centre)");
+    auto writing = automation::isWriting (edit);
+    volumeSlider.setEnabled (! automatedVolume || writing);
+    panKnob.setEnabled (! automatedPan || writing);
+    auto followsAutomation = [writing] (const juce::String& control)
+    {
+        return control + (writing ? " follows its automation: move it while the song plays to record over it"
+                                  : " follows its automation (right-click the track > Automation)");
+    };
+    volumeSlider.setTooltip (automatedVolume ? followsAutomation ("Volume") : "Volume (double-click for 0 dB)");
+    panKnob.setTooltip (automatedPan ? followsAutomation ("Pan") : "Pan (double-click to centre)");
 
     if (! volumeSlider.isMouseButtonDown())
         volumeSlider.setValue (juce::jmax (-60.0f, automatedVolume ? tracktion::volumeFaderPositionToDB (volumePlugin->volParam->getCurrentValue())

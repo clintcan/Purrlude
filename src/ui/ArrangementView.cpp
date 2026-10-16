@@ -1958,6 +1958,13 @@ void ArrangementView::timerCallback()
     // Tracks added, removed or reordered (including by undo).
     syncHeaders();
 
+    // A control being recorded is shown on its track's lane, so its curve is seen as it's drawn.
+    if (automation::isRecordingPass (edit))
+        for (auto* track : getSongTracks (edit))
+            if (auto recording = automation::findRecording (*track))
+                if (auto shown = automation::getShown (*track); ! shown || ! (*shown == *recording))
+                    automation::setShown (*track, recording);
+
     // Waveforms of clips that have gone.
     for (auto it = thumbnails.begin(); it != thumbnails.end();)
         it = tracktion::findClipForID (edit, it->first) == nullptr ? thumbnails.erase (it) : std::next (it);

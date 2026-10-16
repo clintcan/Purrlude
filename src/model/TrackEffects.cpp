@@ -189,10 +189,20 @@ void setControl (tracktion::Edit& edit, tracktion::AutomatableParameter& paramet
     parameter.setParameter (value, juce::sendNotification);
 }
 
-ControlDrag::ControlDrag (tracktion::Edit& edit, const juce::String& undoName)
+ControlDrag::ControlDrag (tracktion::Edit& edit, const juce::String& undoName, tracktion::AutomatableParameter* parameter)
     : inhibitor (edit)
 {
-    edit.getUndoManager().beginNewTransaction (undoName);
+    if (! automation::isRecordingPass (edit))
+        edit.getUndoManager().beginNewTransaction (undoName);
+
+    if (parameter != nullptr)
+        hold (*parameter);
+}
+
+void ControlDrag::hold (tracktion::AutomatableParameter& parameter)
+{
+    if (gesture == nullptr)
+        gesture = std::make_unique<automation::Gesture> (parameter);
 }
 
 ParameterSync::ParameterSync (tracktion::Edit& e)

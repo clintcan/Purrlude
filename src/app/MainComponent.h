@@ -11,6 +11,7 @@
 #include "model/Project.h"
 #include "ui/ArrangementView.h"
 #include "ui/LoopsPanel.h"
+#include "ui/MidiLearnPanel.h"
 #include "ui/MidiDevicesPanel.h"
 #include "ui/PianoRoll.h"
 #include "ui/ScoreView.h"
@@ -27,7 +28,7 @@ namespace purrlude
     bar, the arrangement view, the score view, the MIDI devices and loops panels, and
     provides the menu bar.
 
-    Shortcuts: Space play/stop, R record, Home return to start,
+    Shortcuts: Space play/stop, R record, Home return to start, L loop, A record automation,
     Cmd/Ctrl+Z undo, Cmd/Ctrl+Shift+Z redo, Cmd/Ctrl+N/O/S new/open/save,
     Cmd/Ctrl+Shift+S save as, Cmd/Ctrl+E export the score as PDF, Cmd/Ctrl+Shift+E
     export audio, Cmd/Ctrl+I import a MIDI file, Cmd/Ctrl+Shift+I an audio file (or drop
@@ -105,7 +106,7 @@ private:
 
     void showError (const juce::String& title, const juce::String& message);
     void updateTitle();
-    /** Shows one side panel (or none): the MIDI devices or the loops. */
+    /** Shows one side panel (or none): the MIDI devices, the loops or MIDI learn. */
     void showSidePanel (juce::Component*);
     void timerCallback() override;
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
@@ -124,6 +125,7 @@ private:
     std::unique_ptr<ScoreView> scoreView;
     std::unique_ptr<PianoRoll> pianoRoll;
     std::unique_ptr<LoopsPanel> loopsPanel;
+    std::unique_ptr<MidiLearnPanel> midiLearnPanel;
     juce::TabbedComponent editorTabs { juce::TabbedButtonBar::TabsAtTop };
     std::unique_ptr<juce::FileChooser> fileChooser;
 
@@ -131,6 +133,7 @@ private:
     juce::TextButton pluginsButton { "Plugins" };
     juce::TextButton devicesButton { "MIDI Devices" };
     juce::TextButton loopsButton { "Loops" };
+    juce::TextButton midiLearnButton { "MIDI Learn" };
     juce::TextButton editorsButton { "Editors" };
     juce::TextButton fullHeightButton { "Full Height" };   ///< The editors take the whole window, the arrangement hidden
     void setEditorsFullHeight (bool);

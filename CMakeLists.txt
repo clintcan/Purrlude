@@ -83,6 +83,8 @@ target_sources(purrlude_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/TrackInstrument.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/TrackMix.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/TrackMix.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/MidiControls.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/MidiControls.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/LoopRange.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/LoopRange.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/SharedReverb.h
@@ -157,6 +159,8 @@ target_sources(purrlude_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/MidiDevicesPanel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/LoopsPanel.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/LoopsPanel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/MidiLearnPanel.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/MidiLearnPanel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/ExportAudioDialog.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/ExportAudioDialog.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/LevelMeter.h

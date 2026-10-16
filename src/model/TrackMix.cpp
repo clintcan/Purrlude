@@ -17,6 +17,15 @@ namespace
         bool undo() override        { TrackMix::set (edit, trackID, control, from); return true; }
         int getSizeInUnits() override  { return 16; }
 
+        juce::UndoableAction* createCoalescedAction (juce::UndoableAction* next) override
+        {
+            if (auto* later = dynamic_cast<MixChange*> (next))
+                if (&later->edit == &edit && later->trackID == trackID && later->control == control)
+                    return new MixChange (edit, trackID, control, later->to, from);
+
+            return nullptr;
+        }
+
     private:
         tracktion::Edit& edit;
         const tracktion::EditItemID trackID;
@@ -72,6 +81,15 @@ void TrackMix::change (tracktion::Edit& edit, tracktion::EditItemID id, Control 
     um.beginNewTransaction (describe (control));
     um.perform (new MixChange (edit, id, control, newValue, previousValue));
     um.beginNewTransaction();
+}
+
+void TrackMix::changeInCurrentStep (tracktion::Edit& edit, tracktion::EditItemID id, Control control, float newValue,
+                                    std::optional<float> previousValue)
+{
+    auto previous = previousValue.value_or (get (edit, id, control));
+
+    if (! juce::exactlyEqual (previous, newValue))
+        edit.getUndoManager().perform (new MixChange (edit, id, control, newValue, previous));
 }
 
 } // namespace purrlude

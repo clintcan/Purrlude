@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Automation.h"
+#include "MidiControls.h"
 #include "Takes.h"
 #include "TrackEffects.h"
 #include "TrackInstrument.h"
@@ -96,6 +97,9 @@ public:
     /** Third-party plugin controls moved by hand, for the automation menus. */
     const automation::TouchedControls& getTouchedControls() const   { return touchedControls; }
 
+    /** Knobs and sliders on MIDI controllers mapped to controls in the song (MIDI learn). */
+    MidiControls& getMidiControls() noexcept                        { return midiControls; }
+
     /** Device ID of Tracktion's merged MIDI input. */
     static constexpr const char* allMidiInsID = "all_midi_in";
 
@@ -110,6 +114,8 @@ private:
     track_effects::ParameterSync parameterSync { edit };   ///< Undo of an effect's knob is heard
     takes::RecordingFinisher recordingFinisher { edit };   ///< Loop recordings become takes
     automation::TouchedControls touchedControls { edit };
+    automation::Recorder automationRecorder { edit };      ///< A recording pass is one undo step
+    MidiControls midiControls { edit };
     tracktion::EditItemID trackID;
     bool wasPlaying = false;
 

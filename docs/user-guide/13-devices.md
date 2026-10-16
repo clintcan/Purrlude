@@ -24,7 +24,32 @@ Click **MIDI Devices** in the toolbar for the devices panel.
 - Every connected keyboard plays the selected instrument track. They're listed under **Playing the Instrument track**.
 - You don't need to set up any routing. To play a different track, click it.
 
-**Mapping knobs and faders** (MIDI learn) isn't available yet.
+To control Purrlude from your keyboard's knobs and sliders, see MIDI learn below.
+
+<br clear="right">
+
+## MIDI learn
+
+<img src="images/midi-learn.png" alt="The MIDI Learn panel: it asks for a knob for Melody: Pan, and lists Melody: Volume on CC 7, channel 1, with Remove" width="320" align="right">
+
+MIDI learn links a knob, slider or pedal on your MIDI controller to a control in Purrlude, so you can turn it by hand.
+
+1. Click **MIDI Learn** in the toolbar. While its panel is open, Purrlude is learning.
+2. Move a control in Purrlude:
+   - a track's volume or pan
+   - an effect's knob, or the reverb send
+   - a control in a plugin's window
+3. Move a knob, slider or pedal on your controller. The panel says what it now controls.
+4. Repeat for more controls, then close the panel.
+
+**How it works:**
+- **Your song keeps them:** the links are saved with it.
+- **One each:** a controller controls one thing, and a control has one controller. Learning one again moves it.
+- **While the panel is open,** controllers don't move their controls, so you can learn without changing anything.
+- **Removing:** each link has **Remove** in the panel. Learning and removing can be undone.
+- **Recording:** with **Automate** on, controller moves during playback are [recorded as automation](04-tracks.md#recording-automation).
+- **Not learnable:** Bank Select (used to pick a keyboard's tones), data entry and channel mode messages. Notes and the pitch wheel can't be learned either.
+- **Undo:** moving a controller can be undone like moving the control on screen.
 
 <br clear="right">
 

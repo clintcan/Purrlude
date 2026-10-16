@@ -2,7 +2,7 @@
 
 [← Projects](02-projects.md) · [Contents](README.md) · [Next: Tracks and Mixing →](04-tracks.md)
 
-<img src="images/transport-bar.png" alt="The transport bar: |&lt;, Play, Record, Loop, the position, the tempo, 4/4, Metronome and Count-in, then Editors, Audio Settings, Plugins, Loops and MIDI Devices" width="100%">
+<img src="images/transport-bar.png" alt="The transport bar: |&lt;, Play, Record, Loop, Automate, the position, the tempo, 4/4, Metronome and Count-in, then Editors, Audio Settings, Plugins, MIDI Learn, Loops and MIDI Devices" width="100%">
 
 ## Playing
 
@@ -12,6 +12,7 @@
 | **Play** / **Stop** | Space | Starts and stops playback |
 | **Record** / **Stop Rec** | R | Records onto the armed tracks; see [Recording](06-recording.md) |
 | **Loop** | L | Repeats the loop range; see below |
+| **Automate** | A | Records the controls you move while the song plays; see [Recording automation](04-tracks.md#recording-automation) |
 
 **Where playback starts:**
 - It starts from the playhead, the yellow line.

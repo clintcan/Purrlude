@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Automation.h"
+
 #include <tracktion_engine/tracktion_engine.h>
 
 namespace purrlude
@@ -64,14 +66,22 @@ namespace track_effects
     /** Keeps a knob drag in one undo step: starts the step, and while it's held, stops
         Tracktion closing the step when the knob pauses. Set the parameter as the knob
         moves (setParameter with sendNotification records the change).
+
+        It also holds the parameter (an automation::Gesture), so while recording automation
+        the knob is recorded until it's let go; the drag is then part of the recording's
+        undo step rather than one of its own.
     */
     class ControlDrag
     {
     public:
-        ControlDrag (tracktion::Edit&, const juce::String& undoName);
+        ControlDrag (tracktion::Edit&, const juce::String& undoName, tracktion::AutomatableParameter* = nullptr);
+
+        /** Holds the parameter, if it wasn't known when the drag started. */
+        void hold (tracktion::AutomatableParameter&);
 
     private:
         tracktion::Edit::UndoTransactionInhibitor inhibitor;
+        std::unique_ptr<automation::Gesture> gesture;
     };
 
     /** Keeps effects' parameters (what's heard) in step with the song's state.

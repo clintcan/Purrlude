@@ -171,12 +171,17 @@ public:
         power.setToggleState (plugin->isEnabled(), juce::dontSendNotification);
         power.setButtonText (plugin->isEnabled() ? "On" : "Off");
 
-        // An automated control follows its curve: it shows the value and can't be turned.
+        // An automated control follows its curve: it shows the value, and can only be turned
+        // to record over it.
+        auto writing = automation::isWriting (edit);
+        auto followsAutomation = writing ? "Follows its automation: turn it while the song plays to record over it"
+                                         : "Follows its automation (right-click the track > Automation)";
+
         for (auto* knob : knobs)
         {
             auto automated = knob->parameter->hasAutomationPoints();
-            knob->slider.setEnabled (! automated);
-            knob->slider.setTooltip (automated ? "Follows its automation (right-click the track > Automation)" : juce::String());
+            knob->slider.setEnabled (! automated || writing);
+            knob->slider.setTooltip (automated ? followsAutomation : juce::String());
 
             if (! knob->slider.isMouseButtonDown())
                 knob->slider.setValue (knob->parameter->getCurrentValue(), juce::dontSendNotification);
@@ -277,7 +282,8 @@ private:
         knob->slider.onDragStart = [this, knob]
         {
             knob->drag = std::make_unique<track_effects::ControlDrag> (edit, "Change " + name.getText() + " "
-                                                                               + knob->label.getText().toLowerCase());
+                                                                               + knob->label.getText().toLowerCase(),
+                                                                       knob->parameter.get());
         };
         knob->slider.onDragEnd = [knob] { knob->drag.reset(); };
         knob->slider.onValueChange = [this, knob]
@@ -364,7 +370,8 @@ EffectsPanel::EffectsPanel (tracktion::Edit& e, tracktion::EditItemID id)
             sendDrag = std::make_unique<track_effects::ControlDrag> (edit, "Change reverb send");
 
             if (auto* track = getTrack())
-                shared_reverb::getOrCreateSend (edit, *track);
+                if (auto* send = shared_reverb::getOrCreateSend (edit, *track))
+                    sendDrag->hold (*send->gain);
         };
         sendKnob.onDragEnd = [this] { sendDrag.reset(); };
         sendKnob.onValueChange = [this]
@@ -422,9 +429,11 @@ void EffectsPanel::refreshSend()
     auto* track = getTrack();
     auto* send = track != nullptr ? shared_reverb::findSend (*track) : nullptr;
     auto automated = send != nullptr && send->gain->hasAutomationPoints();
-    sendKnob.setEnabled (! automated);
-    sendKnob.setTooltip (automated ? "The send follows its automation (right-click the track > Automation)"
-                                   : "How much of this track goes to the shared reverb (double-click for none)");
+    auto writing = automation::isWriting (edit);
+    sendKnob.setEnabled (! automated || writing);
+    sendKnob.setTooltip (! automated ? "How much of this track goes to the shared reverb (double-click for none)"
+                         : writing   ? "The send follows its automation: turn it while the song plays to record over it"
+                                     : "The send follows its automation (right-click the track > Automation)");
     sendKnob.setValue (send != nullptr ? send->gain->getCurrentValue() : 0.0f, juce::dontSendNotification);
     sendKnob.updateText();
 }

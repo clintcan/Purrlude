@@ -13,6 +13,10 @@ namespace
 
         bool canScanPluginsOutOfProcess() override      { return scanInSeparateProcess; }
 
+        // Tracktion's newer automation recorder: touch mode (a control is recorded while
+        // it's held), and curves drawn as they're recorded. See automation::Recorder.
+        bool enableExperimentalAutomation() override    { return true; }
+
         const bool scanInSeparateProcess;
     };
 }

@@ -373,6 +373,23 @@ void DocScreenshots::addSteps()
     then (0, [this] { main.showSidePanel (&main.devicesPanel); });
     then (1000, [this] { capture ("midi-devices", boundsInMain (main.devicesPanel).withHeight (330)); });
 
+    // MIDI learn: one control mapped, another waiting for a controller.
+    then (0, [this]
+    {
+        main.showSidePanel (main.midiLearnPanel.get());
+
+        auto& live = main.project->getInstrument();
+        auto& controls = live.getMidiControls();
+
+        if (auto* volume = live.getTrack() != nullptr ? live.getTrack()->getVolumePlugin() : nullptr)
+        {
+            controls.controlMoved (*volume->volParam);
+            controls.controllerMoved ({ 1, 7 }, 100);
+            controls.controlMoved (*volume->panParam);
+        }
+    });
+    then (1000, [this] { capture ("midi-learn", boundsInMain (*main.midiLearnPanel).withHeight (420)); });
+
     // Dialogs.
     then (0, [this] { main.exportAudio(); });
 

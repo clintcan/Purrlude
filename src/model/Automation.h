@@ -113,6 +113,77 @@ namespace automation
     private:
         tracktion::Edit::UndoTransactionInhibitor inhibitor;
     };
+
+    /** The target a parameter of the track is, if it's one that can be automated (and so
+        recorded or controlled from MIDI): what getTargets lists, or any third-party plugin control.
+    */
+    std::optional<Target> findTarget (tracktion::AudioTrack&, const tracktion::AutomatableParameter&);
+
+    /** Tells the Edit the user moved a parameter's control, for what listens to its
+        ParameterChangeHandler (MIDI learn, the recently moved plugin controls). Controls
+        that set their parameter with a notification don't need it; the track's volume and
+        pan are written to its state, which doesn't notify.
+    */
+    void userMoved (tracktion::AutomatableParameter&);
+
+    //==============================================================================
+    // Recording automation
+
+    /** Recording automation: while it's on and the song plays, moving a control writes its
+        movements into its curve, replacing what was there for as long as it's held. Letting
+        go returns the control to its curve; a control moved without a hold (a MIDI knob)
+        lets go 2 s after it last moved.
+
+        It's not saved with the song: it's off whenever a song is opened.
+    */
+    bool isWriting (tracktion::Edit&);
+    void setWriting (tracktion::Edit&, bool);
+
+    /** True while playing with recording on: what's moved now is being recorded. */
+    bool isRecordingPass (tracktion::Edit&);
+
+    /** The track's control being recorded now, if any (the first, if several are). */
+    std::optional<Target> findRecording (tracktion::AudioTrack&);
+
+    /** A control held by the user (the mouse is down on it): while recording, it's recorded
+        until it's released. Tracktion's touch mode: the control follows its curve again then.
+    */
+    class Gesture final
+    {
+    public:
+        explicit Gesture (tracktion::AutomatableParameter&);
+        ~Gesture();
+
+    private:
+        tracktion::AutomatableParameter::Ptr parameter;
+
+        JUCE_DECLARE_NON_COPYABLE (Gesture)
+    };
+
+    /** Makes each playback with recording on one undo step, whatever was recorded in it:
+        the step starts when playback starts and ends when it stops. Controls moved while
+        recording therefore shouldn't start undo steps of their own.
+
+        Uses Tracktion's automation recording (EngineBehaviour::enableExperimentalAutomation,
+        set by createEngine) in touch mode. One per Edit, owned by LiveInstrument.
+    */
+    class Recorder final : private juce::ChangeListener,
+                           private tracktion::AutomationRecordManager::Listener
+    {
+    public:
+        explicit Recorder (tracktion::Edit&);
+        ~Recorder() override;
+
+    private:
+        void changeListenerCallback (juce::ChangeBroadcaster*) override    { update(); }
+        void automationModeChanged() override                               { update(); }
+        void update();
+
+        tracktion::Edit& edit;
+        std::unique_ptr<tracktion::Edit::UndoTransactionInhibitor> pass;   ///< While a recording pass plays
+
+        JUCE_DECLARE_NON_COPYABLE (Recorder)
+    };
 }
 
 } // namespace purrlude
