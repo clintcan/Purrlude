@@ -2,6 +2,7 @@
 
 #include "model/PluginLibrary.h"
 #include "model/SharedReverb.h"
+#include "model/TrackMix.h"
 #include "ui/PluginWindows.h"
 
 namespace purrlude
@@ -327,6 +328,7 @@ EffectsPanel::EffectsPanel (tracktion::Edit& e, tracktion::EditItemID id)
                  auto* track = tracktion::findAudioTrackForID (e, id);
                  return track != nullptr && shared_reverb::isBus (*track);
              }()),
+      isMaster (id == TrackMix::masterID()),
       knobLook (std::make_unique<KnobLook>())
 {
     if (! isBus)
@@ -360,7 +362,8 @@ EffectsPanel::EffectsPanel (tracktion::Edit& e, tracktion::EditItemID id)
         sendLabel.setJustificationType (juce::Justification::centred);
         sendLabel.setFont (juce::FontOptions (13.0f));
         sendLabel.setColour (juce::Label::textColourId, juce::Colours::lightgrey);
-        addAndMakeVisible (sendLabel);
+        addChildComponent (sendLabel);
+        sendLabel.setVisible (! isMaster);
         sendKnob.setWantsKeyboardFocus (false);
 
         // A drag is one undo step. The first one makes the send (and, the first time, the
@@ -387,21 +390,39 @@ EffectsPanel::EffectsPanel (tracktion::Edit& e, tracktion::EditItemID id)
             else
                 track_effects::setControl (edit, *send->gain, (float) sendKnob.getValue());
         };
-        addAndMakeVisible (sendKnob);
+
+        // The master has no send: its volume and balance are there instead, and the reverb's
+        // settings, which are for the whole song.
+        if (isMaster)
+        {
+            sendTitle.setText ("The whole mix", juce::dontSendNotification);
+            sendHelp.setText ("The whole mix goes through here, in playback and in exported audio. Each track "
+                              "sends to the shared reverb from its own FX panel.", juce::dontSendNotification);
+            setUpMasterKnob (masterVolumeKnob, masterVolumeLabel, "Volume", false);
+            setUpMasterKnob (balanceKnob, balanceLabel, "Balance", true);
+            refreshMaster();
+        }
+        else
+        {
+            addAndMakeVisible (sendKnob);
+        }
 
         reverbSettingsButton.setTooltip ("The shared reverb's size, damping and level, for every track");
         reverbSettingsButton.setWantsKeyboardFocus (false);
         reverbSettingsButton.onClick = [this] { showReverbSettings(); };
         addAndMakeVisible (reverbSettingsButton);
 
-        refreshSend();
+        if (! isMaster)
+            refreshSend();
     }
 
     title.setFont (juce::FontOptions (16.0f, juce::Font::bold));
     addAndMakeVisible (title);
 
-    emptyLabel.setText ("No effects yet. Add reverb for space, delay for echoes, EQ to shape the tone, "
-                        "or a compressor to even out the level.", juce::dontSendNotification);
+    emptyLabel.setText (isMaster ? "No effects on the whole mix yet. An EQ shapes its tone, and a compressor "
+                                   "evens out its level and makes it sound fuller."
+                                 : "No effects yet. Add reverb for space, delay for echoes, EQ to shape the tone, "
+                                   "or a compressor to even out the level.", juce::dontSendNotification);
     emptyLabel.setFont (juce::FontOptions (13.0f));
     emptyLabel.setColour (juce::Label::textColourId, juce::Colours::lightgrey);
     emptyLabel.setJustificationType (juce::Justification::centredLeft);
@@ -419,6 +440,89 @@ EffectsPanel::~EffectsPanel()
 {
     stopTimer();
     sendKnob.setLookAndFeel (nullptr);
+    masterVolumeKnob.setLookAndFeel (nullptr);
+    balanceKnob.setLookAndFeel (nullptr);
+}
+
+void EffectsPanel::setUpMasterKnob (juce::Slider& knob, juce::Label& label, const juce::String& name, bool pan)
+{
+    auto control = pan ? TrackMix::Control::pan : TrackMix::Control::volumeDb;
+    knob.setLookAndFeel (knobLook.get());
+    knob.setWantsKeyboardFocus (false);
+    knob.setTextBoxStyle (juce::Slider::TextBoxBelow, true, 86, 18);
+    knob.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+
+    if (pan)
+    {
+        knob.setRange (-1.0, 1.0, 0.01);
+        knob.setDoubleClickReturnValue (true, 0.0);
+        knob.textFromValueFunction = [] (double value)
+        {
+            auto percent = juce::roundToInt (std::abs (value) * 100.0);
+            return percent == 0 ? juce::String ("Centre") : juce::String (percent) + (value < 0 ? "% L" : "% R");
+        };
+        knob.setTooltip ("Master balance: the whole mix to the left or right (double-click to centre)");
+    }
+    else
+    {
+        knob.setRange (-60.0, 6.0, 0.1);
+        knob.setSkewFactorFromMidPoint (-12.0);
+        knob.setDoubleClickReturnValue (true, 0.0);
+        knob.textFromValueFunction = [] (double db) { return db <= -59.9 ? juce::String ("-inf dB") : juce::String (db, 1) + " dB"; };
+        knob.setTooltip ("Master volume: the level of the whole mix (double-click for 0 dB)");
+    }
+
+    knob.updateText();
+
+    auto valueOf = [&knob, pan] { auto v = (float) knob.getValue(); return ! pan && v <= -59.9f ? -100.0f : v; };
+    auto parameter = [this, pan]() -> tracktion::AutomatableParameter*
+    {
+        auto master = edit.getMasterVolumePlugin();
+        return master == nullptr ? nullptr : (pan ? master->panParam.get() : master->volParam.get());
+    };
+
+    // A drag is one undo step (part of the recording's while recording automation).
+    knob.onDragStart = [this, control] { masterValueBeforeDrag = TrackMix::get (edit, TrackMix::masterID(), control); };
+    knob.onDragEnd = [this, control, valueOf]
+    {
+        if (automation::isRecordingPass (edit))
+            TrackMix::changeInCurrentStep (edit, TrackMix::masterID(), control, valueOf(), masterValueBeforeDrag);
+        else
+            TrackMix::change (edit, TrackMix::masterID(), control, valueOf(), masterValueBeforeDrag);
+    };
+    knob.onValueChange = [this, &knob, control, valueOf, parameter]
+    {
+        if (knob.isMouseButtonDown())
+        {
+            TrackMix::set (edit, TrackMix::masterID(), control, valueOf());
+
+            if (auto* p = parameter())
+                automation::userMoved (*p);   // for MIDI learn
+        }
+        else
+        {
+            TrackMix::change (edit, TrackMix::masterID(), control, valueOf(),
+                              TrackMix::get (edit, TrackMix::masterID(), control));
+        }
+    };
+    addAndMakeVisible (knob);
+
+    label.setText (name, juce::dontSendNotification);
+    label.setJustificationType (juce::Justification::centred);
+    label.setFont (juce::FontOptions (13.0f));
+    label.setColour (juce::Label::textColourId, juce::Colours::lightgrey);
+    addAndMakeVisible (label);
+}
+
+void EffectsPanel::refreshMaster()
+{
+    // Changed here, in the arrangement's master strip, by a MIDI controller or by undo.
+    if (! masterVolumeKnob.isMouseButtonDown())
+        masterVolumeKnob.setValue (juce::jmax (-60.0f, TrackMix::get (edit, TrackMix::masterID(), TrackMix::Control::volumeDb)),
+                                   juce::dontSendNotification);
+
+    if (! balanceKnob.isMouseButtonDown())
+        balanceKnob.setValue (TrackMix::get (edit, TrackMix::masterID(), TrackMix::Control::pan), juce::dontSendNotification);
 }
 
 void EffectsPanel::refreshSend()
@@ -449,18 +553,40 @@ void EffectsPanel::showReverbSettings()
     if (bus == nullptr)
         return;
 
-    auto area = getScreenBounds();
-    auto panel = std::make_unique<EffectsPanel> (edit, bus->itemID);
+    auto* button = anchor.getComponent();
 
     if (auto* box = findParentComponentOfClass<juce::CallOutBox>())
         box->dismiss();
 
-    juce::CallOutBox::launchAsynchronously (std::move (panel), area.withHeight (40), nullptr);
+    if (button != nullptr)
+        show (edit, bus->itemID, *button);
+}
+
+void EffectsPanel::show (tracktion::Edit& edit, tracktion::EditItemID track, juce::Component& button)
+{
+    auto panel = std::make_unique<EffectsPanel> (edit, track);
+    panel->anchor = &button;
+
+    // Inside the window, so the panel can't run off its edge.
+    auto* window = button.getTopLevelComponent();
+    auto area = window->getLocalArea (&button, button.getLocalBounds());
+    juce::CallOutBox::launchAsynchronously (std::move (panel), area, window);
 }
 
 tracktion::AudioTrack* EffectsPanel::getTrack() const
 {
     return tracktion::findAudioTrackForID (edit, trackID);
+}
+
+juce::Array<tracktion::Plugin*> EffectsPanel::getEffects() const
+{
+    if (isMaster)
+        return track_effects::getMasterEffects (edit);
+
+    if (auto* track = getTrack())
+        return track_effects::getEffects (*track);
+
+    return {};
 }
 
 void EffectsPanel::rebuild()
@@ -469,15 +595,15 @@ void EffectsPanel::rebuild()
     shownEffects.clear();
 
     if (auto* track = getTrack())
-    {
         title.setText (isBus ? juce::String ("Shared reverb")
                              : "Effects on " + track->getName(), juce::dontSendNotification);
+    else if (isMaster)
+        title.setText ("Master", juce::dontSendNotification);
 
-        for (auto* plugin : track_effects::getEffects (*track))
-        {
-            shownEffects.add (plugin->itemID);
-            addAndMakeVisible (rows.add (new EffectRow (edit, *plugin)));
-        }
+    for (auto* plugin : getEffects())
+    {
+        shownEffects.add (plugin->itemID);
+        addAndMakeVisible (rows.add (new EffectRow (edit, *plugin)));
     }
 
     auto rowsHeight = rows.isEmpty() ? 60 : 0;
@@ -496,9 +622,8 @@ void EffectsPanel::timerCallback()
     // just bring the controls up to date.
     juce::Array<tracktion::EditItemID> now;
 
-    if (auto* track = getTrack())
-        for (auto* plugin : track_effects::getEffects (*track))
-            now.add (plugin->itemID);
+    for (auto* plugin : getEffects())
+        now.add (plugin->itemID);
 
     if (now != shownEffects)
     {
@@ -509,7 +634,10 @@ void EffectsPanel::timerCallback()
     for (auto* row : rows)
         row->refresh();
 
-    refreshSend();
+    if (isMaster)
+        refreshMaster();
+    else
+        refreshSend();
 }
 
 void EffectsPanel::showAddMenu()
@@ -535,16 +663,20 @@ void EffectsPanel::showAddMenu()
             return;
 
         auto* track = safe->getTrack();
+        auto& edit = safe->edit;
+        auto master = safe->isMaster;
 
         if (result == findPluginsId)
         {
             plugin_windows::showPluginList (safe->edit.engine);
         }
-        else if (juce::isPositiveAndBelow (result - firstPluginId, (int) plugins.size()) && track != nullptr)
+        else if (juce::isPositiveAndBelow (result - firstPluginId, (int) plugins.size()) && (track != nullptr || master))
         {
             auto description = plugins[(size_t) (result - firstPluginId)];
+            auto error = master ? track_effects::addToMaster (edit, description)
+                                : track_effects::add (edit, *track, description);
 
-            if (auto error = track_effects::add (safe->edit, *track, description); error.isNotEmpty())
+            if (error.isNotEmpty())
             {
                 juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't load " + description.name, error);
                 return;
@@ -552,12 +684,18 @@ void EffectsPanel::showAddMenu()
 
             safe->rebuild();
 
-            if (auto effects = track_effects::getEffects (*track); ! effects.isEmpty())
+            if (auto effects = safe->getEffects(); ! effects.isEmpty())
                 showPluginWindow (*safe, *effects.getLast());
         }
-        else if (juce::isPositiveAndBelow (result - 1, (int) std::size (track_effects::allKinds)) && track != nullptr)
+        else if (juce::isPositiveAndBelow (result - 1, (int) std::size (track_effects::allKinds)) && (track != nullptr || master))
         {
-            track_effects::add (safe->edit, *track, track_effects::allKinds[result - 1]);
+            auto kind = track_effects::allKinds[result - 1];
+
+            if (master)
+                track_effects::addToMaster (edit, kind);
+            else
+                track_effects::add (edit, *track, kind);
+
             safe->rebuild();
         }
     });
@@ -586,7 +724,18 @@ void EffectsPanel::resized()
     if (! isBus)
     {
         auto send = r.removeFromTop (sendHeight).reduced (8, 0);
-        auto knobArea = send.removeFromRight (92);
+
+        if (isMaster)
+        {
+            auto balanceArea = send.removeFromRight (92);
+            balanceLabel.setBounds (balanceArea.removeFromTop (18));
+            balanceKnob.setBounds (balanceArea.withTrimmedBottom (4));
+            auto volumeArea = send.removeFromRight (92);
+            masterVolumeLabel.setBounds (volumeArea.removeFromTop (18));
+            masterVolumeKnob.setBounds (volumeArea.withTrimmedBottom (4));
+        }
+
+        auto knobArea = send.removeFromRight (isMaster ? 0 : 92);
         sendLabel.setBounds (knobArea.removeFromTop (18));
         sendKnob.setBounds (knobArea.withTrimmedBottom (4));
         send.removeFromRight (8);

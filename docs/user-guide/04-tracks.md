@@ -64,7 +64,12 @@ A MIDI keyboard never plays an audio track: clicking one leaves the keyboard on 
 
 ## Mixing
 
-Every track's volume, pan, mute and solo are saved with the song and can be undone; a whole fader drag is one undo step. The **Master** meter at the left end of the ruler shows the level of the whole mix, with the same over-0 dB light as the track meters.
+Every track's volume, pan, mute and solo are saved with the song and can be undone; a whole fader drag is one undo step.
+
+**The master:** above the track headers, at the left end of the ruler, is the master strip for the whole mix:
+- its **volume** slider
+- its level meter, with the same over-0 dB light as the track meters
+- the **Master** button, which opens its balance, its effects and the shared reverb's settings (see [The master](10-effects.md#the-master))
 
 For reverb, echo, tone and dynamics, see [Effects, Reverb and Plugins](10-effects.md).
 

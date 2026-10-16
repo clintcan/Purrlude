@@ -257,6 +257,56 @@ std::optional<Target> findTarget (tracktion::AudioTrack& track, const tracktion:
     return std::nullopt;
 }
 
+std::vector<Target> getMasterTargets (tracktion::Edit& edit)
+{
+    std::vector<Target> targets;
+
+    if (auto master = edit.getMasterVolumePlugin())
+    {
+        targets.push_back ({ master->itemID, master->volParam->paramID, "Volume" });
+        targets.push_back ({ master->itemID, master->panParam->paramID, "Balance" });
+    }
+
+    for (auto* effect : track_effects::getMasterEffects (edit))
+    {
+        if (auto kind = track_effects::getKind (*effect))
+        {
+            for (auto& control : track_effects::getControls (*effect))
+                targets.push_back ({ effect->itemID, control.parameter->paramID, track_effects::getName (*kind) + " " + control.label });
+        }
+        else if (auto* external = dynamic_cast<tracktion::ExternalPlugin*> (effect); external != nullptr && external->getAudioPluginInstance() != nullptr)
+        {
+            for (auto* parameter : external->getAutomatableParameters())
+                if (isPluginControl (*external, *parameter))
+                    targets.push_back (makePluginTarget (*external, *parameter));
+        }
+    }
+
+    return targets;
+}
+
+std::optional<Target> findMasterTarget (tracktion::Edit& edit, const tracktion::AutomatableParameter& parameter)
+{
+    if (auto* plugin = parameter.getPlugin())
+        for (auto& target : getMasterTargets (edit))
+            if (target.plugin == plugin->itemID && target.parameterID == parameter.paramID)
+                return target;
+
+    return std::nullopt;
+}
+
+tracktion::AutomatableParameter* findMasterParameter (tracktion::Edit& edit, const Target& target)
+{
+    if (auto master = edit.getMasterVolumePlugin(); master != nullptr && master->itemID == target.plugin)
+        return master->getAutomatableParameterByID (target.parameterID).get();
+
+    for (auto* effect : edit.getMasterPluginList().getPlugins())
+        if (effect->itemID == target.plugin)
+            return effect->getAutomatableParameterByID (target.parameterID).get();
+
+    return nullptr;
+}
+
 void userMoved (tracktion::AutomatableParameter& parameter)
 {
     parameter.getEdit().getParameterChangeHandler().parameterChanged (parameter, false);

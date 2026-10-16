@@ -119,6 +119,16 @@ namespace automation
     */
     std::optional<Target> findTarget (tracktion::AudioTrack&, const tracktion::AutomatableParameter&);
 
+    /** The master's controls, for MIDI learn: its volume and balance, then its effects'
+        controls (built-in effects' named controls, every control of a third-party plugin).
+        Not automatable yet: the master has no lane.
+    */
+    std::vector<Target> getMasterTargets (tracktion::Edit&);
+
+    /** A master control, as getMasterTargets names it, if the parameter is one. */
+    std::optional<Target> findMasterTarget (tracktion::Edit&, const tracktion::AutomatableParameter&);
+    tracktion::AutomatableParameter* findMasterParameter (tracktion::Edit&, const Target&);
+
     /** Tells the Edit the user moved a parameter's control, for what listens to its
         ParameterChangeHandler (MIDI learn, the recently moved plugin controls). Controls
         that set their parameter with a notification don't need it; the track's volume and

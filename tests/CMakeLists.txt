@@ -25,6 +25,7 @@ target_sources(PurrludeTests PRIVATE
     AutomationTests.cpp
     AutomationRecordingTests.cpp
     MidiControlsTests.cpp
+    MasterBusTests.cpp
     ChordDetectionTests.cpp
     DeviceChannelsTests.cpp
     PianoRollTests.cpp

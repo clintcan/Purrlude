@@ -24,10 +24,18 @@ namespace
                                         tracktion::EditItemID::fromProperty (control, pluginProperty),
                                         control[parameterProperty].toString(), "(removed)" };
 
-        if (auto* track = findTrack (edit, mapping.track))
+        if (mapping.track == TrackMix::masterID())
+        {
+            if (auto* parameter = automation::findMasterParameter (edit, { mapping.plugin, mapping.parameterID }))
+                if (auto target = automation::findMasterTarget (edit, *parameter))
+                    mapping.name = "Master: " + target->name;
+        }
+        else if (auto* track = findTrack (edit, mapping.track))
+        {
             if (auto* parameter = automation::findParameter (*track, { mapping.plugin, mapping.parameterID }))
                 if (auto target = automation::findTarget (*track, *parameter))
                     mapping.name = track->getName() + ": " + target->name;
+        }
 
         return mapping;
     }
@@ -131,6 +139,9 @@ std::optional<juce::String> MidiControls::getWaitingControl() const
     if (! waiting)
         return std::nullopt;
 
+    if (waiting->track == TrackMix::masterID())
+        return "Master: " + waiting->target.name;
+
     auto* track = findTrack (edit, waiting->track);
     return (track != nullptr ? track->getName() + ": " : juce::String()) + waiting->target.name;
 }
@@ -186,6 +197,9 @@ std::optional<MidiControls::Waiting> MidiControls::findTarget (tracktion::Automa
         if (auto target = automation::findTarget (*track, parameter))
             return Waiting { track->itemID, *target };
 
+    if (auto target = automation::findMasterTarget (edit, parameter))
+        return Waiting { TrackMix::masterID(), *target };
+
     return std::nullopt;
 }
 
@@ -218,24 +232,27 @@ void MidiControls::learn (Controller controller, const Waiting& target)
 
 void MidiControls::apply (const Mapping& mapping, int value)
 {
-    auto* track = findTrack (edit, mapping.track);
-    auto* parameter = track != nullptr ? automation::findParameter (*track, { mapping.plugin, mapping.parameterID }) : nullptr;
+    auto master = mapping.track == TrackMix::masterID();
+    auto* track = master ? nullptr : findTrack (edit, mapping.track);
+    automation::Target target { mapping.plugin, mapping.parameterID };
+    auto* parameter = master ? automation::findMasterParameter (edit, target)
+                             : track != nullptr ? automation::findParameter (*track, target) : nullptr;
 
     if (parameter == nullptr)
         return;
 
     auto position = juce::jlimit (0, 127, value) / 127.0f;
 
-    // The track's volume and pan live in its state, and change through the mixer (which also
-    // sends them to an external sound source).
-    if (auto* volume = track->getVolumePlugin())
+    // Volume and pan (a track's or the master's) live in the volume plugin's state, and
+    // change through the mixer (which also sends a track's to an external sound source).
+    if (auto* volume = master ? edit.getMasterVolumePlugin().get() : track->getVolumePlugin())
     {
         if (parameter == volume->volParam.get())
-            return TrackMix::changeInCurrentStep (edit, track->itemID, TrackMix::Control::volumeDb,
+            return TrackMix::changeInCurrentStep (edit, mapping.track, TrackMix::Control::volumeDb,
                                                   tracktion::volumeFaderPositionToDB (position));
 
         if (parameter == volume->panParam.get())
-            return TrackMix::changeInCurrentStep (edit, track->itemID, TrackMix::Control::pan, position * 2.0f - 1.0f);
+            return TrackMix::changeInCurrentStep (edit, mapping.track, TrackMix::Control::pan, position * 2.0f - 1.0f);
     }
 
     parameter->setNormalisedParameter (position, juce::sendNotification);

@@ -10,10 +10,15 @@ namespace purrlude
     Tracktion keeps mute/solo out of the undo history, and fader moves through a parameter
     don't land in it either; these wrap changes in an undo action on the Edit's UndoManager
     so Cmd-Z works the same for the mixer as for everything else.
+
+    The master bus is the track id masterID() (an invalid id): its volume and pan (the
+    balance) are the Edit's master volume plugin. It has no mute or solo.
 */
 namespace TrackMix
 {
     enum class Control { volumeDb, pan, mute, solo };
+
+    inline tracktion::EditItemID masterID()     { return {}; }
 
     float get (tracktion::Edit&, tracktion::EditItemID, Control);
 

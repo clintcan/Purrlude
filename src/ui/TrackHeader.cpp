@@ -698,8 +698,7 @@ void TrackHeader::renameTrack()
 
 void TrackHeader::showEffects()
 {
-    auto panel = std::make_unique<EffectsPanel> (edit, trackID);
-    juce::CallOutBox::launchAsynchronously (std::move (panel), effectsButton.getScreenBounds(), nullptr);
+    EffectsPanel::show (edit, trackID, effectsButton);
 }
 
 //==============================================================================

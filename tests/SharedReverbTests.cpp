@@ -156,3 +156,15 @@ TEST_CASE ("Sending to the shared reverb is heard, also when the track is soloed
     song.track().setMute (true);
     REQUIRE (rmsBetween (song.render(), 0.6, 1.2) < wetTail * 0.1f);
 }
+
+TEST_CASE ("The shared reverb made from its settings, before any send, has its reverb", "[shared-reverb]")
+{
+    Song song;
+    auto* bus = purrlude::shared_reverb::getOrCreateBus (*song.edit);
+    REQUIRE (bus != nullptr);
+    pump (500);
+
+    auto effects = purrlude::track_effects::getEffects (*bus);
+    REQUIRE (effects.size() == 1);
+    CHECK (purrlude::track_effects::getKind (*effects[0]) == purrlude::track_effects::Kind::reverb);
+}

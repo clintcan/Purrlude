@@ -3,6 +3,8 @@
 #include "SharedReverb.h"
 #include "TrackInstrument.h"
 
+#include <variant>
+
 namespace purrlude::track_effects
 {
 
@@ -35,6 +37,66 @@ namespace
     {
         if (auto parameter = plugin.getAutomatableParameterByID (id))
             parameter->setParameter (value, juce::sendNotification);
+    }
+
+    /** Sets a new effect's starting points: clearly heard without overwhelming the sound.
+        Fully wet reverbs and delays are for the shared reverb's bus, whose dry sound comes
+        from the tracks.
+    */
+    void setStartingPoints (tracktion::Edit& edit, tracktion::Plugin& plugin, Kind kind, bool fullyWet)
+    {
+        switch (kind)
+        {
+            case Kind::reverb:
+                setParameter (plugin, "room size", 0.5f);
+                setParameter (plugin, "damping", 0.5f);
+                setParameter (plugin, "wet level", fullyWet ? 0.5f : 0.25f);
+                setParameter (plugin, "dry level", fullyWet ? 0.0f : 1.0f);
+                break;
+
+            case Kind::delay:
+                setParameter (plugin, "feedback", -12.0f);
+                setParameter (plugin, "mix proportion", fullyWet ? 1.0f : 0.25f);
+                setDelayTime (edit, plugin, 0.75);   // dotted eighth
+                break;
+
+            case Kind::eq:
+                // Flat, with the bands spread where their names say (Tracktion's put both mids
+                // at 3-5 kHz and the high shelf at 17 kHz).
+                setParameter (plugin, "Low-pass freq", 150.0f);
+                setParameter (plugin, "Mid freq 1", 500.0f);
+                setParameter (plugin, "Mid freq 2", 2500.0f);
+                setParameter (plugin, "High-pass freq", 8000.0f);
+                break;
+
+            case Kind::compressor:
+                // -6 dB at 2:1, and a fast enough attack to catch a note's start (Tracktion's is 100 ms).
+                setParameter (plugin, "attack", 10.0f);
+                break;
+        }
+    }
+
+    tracktion::Plugin::Ptr createEffect (tracktion::Edit& edit, Kind kind)
+    {
+        edit.getUndoManager().beginNewTransaction ("Add " + getName (kind));
+        return edit.getPluginCache().createNewPlugin (getTypeName (kind), {});
+    }
+
+    /** Loads a third-party effect, or says why it couldn't be. */
+    std::variant<tracktion::Plugin::Ptr, juce::String> loadPlugin (tracktion::Edit& edit, const juce::PluginDescription& description)
+    {
+        // Loaded before it's put anywhere, so a plugin that fails changes nothing.
+        auto plugin = edit.getPluginCache().createNewPlugin (tracktion::ExternalPlugin::xmlTypeName, description);
+        auto* external = dynamic_cast<tracktion::ExternalPlugin*> (plugin.get());
+
+        if (external == nullptr)
+            return juce::String ("Purrlude couldn't create " + description.name + ".");
+
+        if (auto error = external->getLoadError(); error.isNotEmpty())
+            return error;
+
+        edit.getUndoManager().beginNewTransaction ("Add " + description.name);
+        return plugin;
     }
 
     double getBpm (tracktion::Edit& edit)
@@ -82,68 +144,58 @@ juce::Array<tracktion::Plugin*> getEffects (tracktion::AudioTrack& track)
 
 tracktion::Plugin* add (tracktion::Edit& edit, tracktion::AudioTrack& track, Kind kind)
 {
-    auto& um = edit.getUndoManager();
-    um.beginNewTransaction ("Add " + getName (kind));
-
-    auto plugin = edit.getPluginCache().createNewPlugin (getTypeName (kind), {});
+    auto plugin = createEffect (edit, kind);
 
     if (plugin == nullptr)
         return nullptr;
 
     insertEffect (track, plugin);
-
-    // Starting points that make the effect clearly heard without overwhelming the track. On
-    // the shared reverb's bus, reverbs and delays are fully wet: the dry sound comes from the
-    // tracks.
-    auto onBus = shared_reverb::isBus (track);
-
-    switch (kind)
-    {
-        case Kind::reverb:
-            setParameter (*plugin, "room size", 0.5f);
-            setParameter (*plugin, "damping", 0.5f);
-            setParameter (*plugin, "wet level", onBus ? 0.5f : 0.25f);
-            setParameter (*plugin, "dry level", onBus ? 0.0f : 1.0f);
-            break;
-
-        case Kind::delay:
-            setParameter (*plugin, "feedback", -12.0f);
-            setParameter (*plugin, "mix proportion", onBus ? 1.0f : 0.25f);
-            setDelayTime (edit, *plugin, 0.75);   // dotted eighth
-            break;
-
-        case Kind::eq:
-            // Flat, with the bands spread where their names say (Tracktion's put both mids
-            // at 3-5 kHz and the high shelf at 17 kHz).
-            setParameter (*plugin, "Low-pass freq", 150.0f);
-            setParameter (*plugin, "Mid freq 1", 500.0f);
-            setParameter (*plugin, "Mid freq 2", 2500.0f);
-            setParameter (*plugin, "High-pass freq", 8000.0f);
-            break;
-
-        case Kind::compressor:
-            // -6 dB at 2:1, and a fast enough attack to catch a note's start (Tracktion's is 100 ms).
-            setParameter (*plugin, "attack", 10.0f);
-            break;
-    }
-
+    setStartingPoints (edit, *plugin, kind, shared_reverb::isBus (track));
     return plugin.get();
 }
 
 juce::String add (tracktion::Edit& edit, tracktion::AudioTrack& track, const juce::PluginDescription& description)
 {
-    // Loaded before it's put on the track, so a plugin that fails changes nothing.
-    auto plugin = edit.getPluginCache().createNewPlugin (tracktion::ExternalPlugin::xmlTypeName, description);
-    auto* external = dynamic_cast<tracktion::ExternalPlugin*> (plugin.get());
+    auto loaded = loadPlugin (edit, description);
 
-    if (external == nullptr)
-        return "Purrlude couldn't create " + description.name + ".";
+    if (auto* error = std::get_if<juce::String> (&loaded))
+        return *error;
 
-    if (auto error = external->getLoadError(); error.isNotEmpty())
-        return error;
+    insertEffect (track, std::get<tracktion::Plugin::Ptr> (loaded));
+    return {};
+}
 
-    edit.getUndoManager().beginNewTransaction ("Add " + description.name);
-    insertEffect (track, plugin);
+juce::Array<tracktion::Plugin*> getMasterEffects (tracktion::Edit& edit)
+{
+    juce::Array<tracktion::Plugin*> effects;
+
+    for (auto* plugin : edit.getMasterPluginList().getPlugins())
+        if (getKind (*plugin) || dynamic_cast<tracktion::ExternalPlugin*> (plugin) != nullptr)
+            effects.add (plugin);
+
+    return effects;
+}
+
+tracktion::Plugin* addToMaster (tracktion::Edit& edit, Kind kind)
+{
+    auto plugin = createEffect (edit, kind);
+
+    if (plugin == nullptr)
+        return nullptr;
+
+    edit.getMasterPluginList().insertPlugin (plugin, -1, nullptr);
+    setStartingPoints (edit, *plugin, kind, false);
+    return plugin.get();
+}
+
+juce::String addToMaster (tracktion::Edit& edit, const juce::PluginDescription& description)
+{
+    auto loaded = loadPlugin (edit, description);
+
+    if (auto* error = std::get_if<juce::String> (&loaded))
+        return *error;
+
+    edit.getMasterPluginList().insertPlugin (std::get<tracktion::Plugin::Ptr> (loaded), -1, nullptr);
     return {};
 }
 
@@ -226,11 +278,19 @@ void ParameterSync::valueTreePropertyChanged (juce::ValueTree& tree, const juce:
 
 void ParameterSync::syncNow()
 {
+    auto sync = [] (tracktion::Plugin& plugin)
+    {
+        if (getKind (plugin) || dynamic_cast<tracktion::AuxSendPlugin*> (&plugin) != nullptr)
+            for (auto* parameter : plugin.getAutomatableParameters())
+                parameter->updateFromAttachedValue();
+    };
+
     for (auto* track : tracktion::getAudioTracks (edit))
         for (auto* plugin : track->pluginList.getPlugins())
-            if (getKind (*plugin) || dynamic_cast<tracktion::AuxSendPlugin*> (plugin) != nullptr)
-                for (auto* parameter : plugin->getAutomatableParameters())
-                    parameter->updateFromAttachedValue();
+            sync (*plugin);
+
+    for (auto* plugin : edit.getMasterPluginList().getPlugins())
+        sync (*plugin);
 }
 
 tracktion::Plugin* findPlugin (tracktion::Edit& edit, tracktion::EditItemID id)
@@ -239,6 +299,10 @@ tracktion::Plugin* findPlugin (tracktion::Edit& edit, tracktion::EditItemID id)
         for (auto* plugin : track->pluginList.getPlugins())
             if (plugin->itemID == id)
                 return plugin;
+
+    for (auto* plugin : edit.getMasterPluginList().getPlugins())
+        if (plugin->itemID == id)
+            return plugin;
 
     return nullptr;
 }

@@ -37,7 +37,8 @@ MIDI learn links a knob, slider or pedal on your MIDI controller to a control in
 1. Click **MIDI Learn** in the toolbar. While its panel is open, Purrlude is learning.
 2. Move a control in Purrlude:
    - a track's volume or pan
-   - an effect's knob, or the reverb send
+   - the master's volume or balance
+   - an effect's knob (a track's or the master's), or the reverb send
    - a control in a plugin's window
 3. Move a knob, slider or pedal on your controller. The panel says what it now controls.
 4. Repeat for more controls, then close the panel.

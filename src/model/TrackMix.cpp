@@ -33,8 +33,52 @@ namespace
         const float to, from;
     };
 
-    juce::String describe (TrackMix::Control control)
+    // The master's volume and pan live in its volume plugin's state, as a track's do; the
+    // parameters (what's heard) follow it.
+    tracktion::VolumeAndPanPlugin* getMasterVolume (tracktion::Edit& edit)
     {
+        return edit.getMasterVolumePlugin().get();
+    }
+
+    float getMaster (tracktion::Edit& edit, TrackMix::Control control)
+    {
+        auto* master = getMasterVolume (edit);
+
+        if (master == nullptr)
+            return 0.0f;
+
+        if (control == TrackMix::Control::pan)
+            return (float) master->state.getProperty (tracktion::IDs::pan, 0.0f);
+
+        if (control == TrackMix::Control::volumeDb)
+            return tracktion::volumeFaderPositionToDB ((float) master->state.getProperty (tracktion::IDs::volume,
+                                                                                          tracktion::decibelsToVolumeFaderPosition (0.0f)));
+
+        return 0.0f;
+    }
+
+    void setMaster (tracktion::Edit& edit, TrackMix::Control control, float value)
+    {
+        auto* master = getMasterVolume (edit);
+
+        if (master == nullptr)
+            return;
+
+        if (control == TrackMix::Control::pan)
+            master->state.setProperty (tracktion::IDs::pan, juce::jlimit (-1.0f, 1.0f, value), nullptr);
+        else if (control == TrackMix::Control::volumeDb)
+            master->state.setProperty (tracktion::IDs::volume,
+                                       tracktion::decibelsToVolumeFaderPosition (juce::jlimit (-100.0f, 6.0f, value)), nullptr);
+
+        for (auto* parameter : master->getAutomatableParameters())
+            parameter->updateFromAttachedValue();
+    }
+
+    juce::String describe (tracktion::EditItemID id, TrackMix::Control control)
+    {
+        if (id == TrackMix::masterID())
+            return control == TrackMix::Control::pan ? "Change master balance" : "Change master volume";
+
         switch (control)
         {
             case TrackMix::Control::volumeDb:   return "Change volume";
@@ -49,6 +93,9 @@ namespace
 
 float TrackMix::get (tracktion::Edit& edit, tracktion::EditItemID id, Control control)
 {
+    if (id == masterID())
+        return getMaster (edit, control);
+
     TrackInstrument instrument (edit, id);
 
     switch (control)
@@ -64,6 +111,9 @@ float TrackMix::get (tracktion::Edit& edit, tracktion::EditItemID id, Control co
 
 void TrackMix::set (tracktion::Edit& edit, tracktion::EditItemID id, Control control, float value)
 {
+    if (id == masterID())
+        return setMaster (edit, control, value);
+
     TrackInstrument instrument (edit, id);
 
     switch (control)
@@ -78,7 +128,7 @@ void TrackMix::set (tracktion::Edit& edit, tracktion::EditItemID id, Control con
 void TrackMix::change (tracktion::Edit& edit, tracktion::EditItemID id, Control control, float newValue, float previousValue)
 {
     auto& um = edit.getUndoManager();
-    um.beginNewTransaction (describe (control));
+    um.beginNewTransaction (describe (id, control));
     um.perform (new MixChange (edit, id, control, newValue, previousValue));
     um.beginNewTransaction();
 }

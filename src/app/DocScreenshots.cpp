@@ -303,6 +303,26 @@ void DocScreenshots::addSteps()
         closePopups();
     });
 
+    // The master: its strip in the ruler's corner, and its panel (with an EQ on the mix).
+    then (0, [this]
+    {
+        track_effects::addToMaster (main.project->getEdit(), track_effects::Kind::eq);
+
+        if (auto* button = findButton (*main.arrangement, "Master"))
+            button->triggerClick();
+    });
+
+    then (1200, [this]
+    {
+        if (auto* button = findButton (*main.arrangement, "Master"))
+            capture ("master", around (*button, 20));
+
+        closePopups();
+
+        for (auto* effect : track_effects::getMasterEffects (main.project->getEdit()))
+            track_effects::remove (main.project->getEdit(), *effect);
+    });
+
     // The piano roll and the score.
     then (500, [this, showEditors, clipOn]
     {
@@ -589,6 +609,12 @@ std::vector<juce::Component*> DocScreenshots::getPopups() const
         if (auto* c = desktop.getComponent (i); c != nullptr && c->isVisible() && c != main.getTopLevelComponent()
                                                 && c->getWidth() > 0 && c->getHeight() > 0)
             popups.push_back (c);
+
+    // Call-outs shown inside the window (the effects panels).
+    if (auto* window = main.getTopLevelComponent())
+        for (auto* child : window->getChildren())
+            if (dynamic_cast<juce::CallOutBox*> (child) != nullptr && child->isVisible())
+                popups.push_back (child);
 
     return popups;
 }

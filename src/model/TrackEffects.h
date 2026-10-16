@@ -41,6 +41,19 @@ namespace track_effects
     */
     juce::String add (tracktion::Edit&, tracktion::AudioTrack&, const juce::PluginDescription&);
 
+    /** The master's effects: on the whole mix, after every track and the shared reverb, before
+        the master volume. Tracktion's master plugin list, so they're in playback and export.
+    */
+    juce::Array<tracktion::Plugin*> getMasterEffects (tracktion::Edit&);
+
+    /** Adds an effect at the end of the master's effects. One undo step. */
+    tracktion::Plugin* addToMaster (tracktion::Edit&, Kind);
+
+    /** Adds a third-party effect plugin to the master. Returns why it couldn't be loaded, or
+        an empty string. One undo step.
+    */
+    juce::String addToMaster (tracktion::Edit&, const juce::PluginDescription&);
+
     /** Removes an effect. One undo step. */
     void remove (tracktion::Edit&, tracktion::Plugin&);
 
@@ -111,7 +124,7 @@ namespace track_effects
         JUCE_DECLARE_NON_COPYABLE (ParameterSync)
     };
 
-    /** The effect plugin with this id, on any track (nullptr if it's gone). */
+    /** The effect plugin with this id, on any track or the master (nullptr if it's gone). */
     tracktion::Plugin* findPlugin (tracktion::Edit&, tracktion::EditItemID);
 
     //==============================================================================

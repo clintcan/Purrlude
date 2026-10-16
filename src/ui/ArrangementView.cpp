@@ -6,6 +6,8 @@
 #include "model/Takes.h"
 #include "notation/TrackNotation.h"
 #include "model/SharedReverb.h"
+#include "model/TrackMix.h"
+#include "ui/EffectsPanel.h"
 
 namespace purrlude
 {
@@ -49,7 +51,9 @@ private:
 };
 
 /** The bar ruler, kept at the top of the visible area as the tracks scroll, with the
-    master level meter above the track headers. Click the bar numbers to move the playhead.
+    master strip above the track headers: the Master button (the master's effects, balance
+    and the shared reverb's settings), its volume and its level meter. Click the bar
+    numbers to move the playhead.
 
     Its top strip holds the loop range: drag along it to set a loop (snapping to bars, or
     beats with Shift), drag the band to move it or its ends to resize it, and click the
@@ -69,6 +73,58 @@ public:
     {
         masterMeter.setTooltip ("Master level. A vermillion light means it went over 0 dB: click to clear.");
         addAndMakeVisible (masterMeter);
+
+        masterButton.setTooltip ("The master: the whole mix's effects, volume and balance, and the shared reverb's settings");
+        masterButton.setWantsKeyboardFocus (false);
+        masterButton.onClick = [this]
+        {
+            EffectsPanel::show (owner.edit, TrackMix::masterID(), masterButton);
+        };
+        addAndMakeVisible (masterButton);
+
+        // Like a track's fader: a drag is one undo step.
+        masterVolume.setSliderStyle (juce::Slider::LinearHorizontal);
+        masterVolume.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+        masterVolume.setRange (-60.0, 6.0, 0.1);
+        masterVolume.setSkewFactorFromMidPoint (-12.0);
+        masterVolume.setDoubleClickReturnValue (true, 0.0);
+        masterVolume.textFromValueFunction = [] (double db) { return db <= -59.9 ? juce::String ("-inf dB") : juce::String (db, 1) + " dB"; };
+        masterVolume.setPopupDisplayEnabled (true, true, nullptr);
+        masterVolume.setTooltip ("Master volume: the level of the whole mix (double-click for 0 dB)");
+        masterVolume.setWantsKeyboardFocus (false);
+        masterVolume.onDragStart = [this] { valueBeforeDrag = TrackMix::get (owner.edit, TrackMix::masterID(), TrackMix::Control::volumeDb); };
+        masterVolume.onDragEnd = [this]
+        {
+            if (automation::isRecordingPass (owner.edit))
+                TrackMix::changeInCurrentStep (owner.edit, TrackMix::masterID(), TrackMix::Control::volumeDb, getVolume(), valueBeforeDrag);
+            else
+                TrackMix::change (owner.edit, TrackMix::masterID(), TrackMix::Control::volumeDb, getVolume(), valueBeforeDrag);
+        };
+        masterVolume.onValueChange = [this]
+        {
+            if (masterVolume.isMouseButtonDown())
+            {
+                TrackMix::set (owner.edit, TrackMix::masterID(), TrackMix::Control::volumeDb, getVolume());
+
+                if (auto master = owner.edit.getMasterVolumePlugin())
+                    automation::userMoved (*master->volParam);   // for MIDI learn
+            }
+            else
+            {
+                TrackMix::change (owner.edit, TrackMix::masterID(), TrackMix::Control::volumeDb, getVolume(),
+                                  TrackMix::get (owner.edit, TrackMix::masterID(), TrackMix::Control::volumeDb));
+            }
+        };
+        addAndMakeVisible (masterVolume);
+        refreshMaster();
+    }
+
+    /** Brings the volume up to date (changed in the master panel, by a controller or by undo). */
+    void refreshMaster()
+    {
+        if (! masterVolume.isMouseButtonDown())
+            masterVolume.setValue (juce::jmax (-60.0f, TrackMix::get (owner.edit, TrackMix::masterID(), TrackMix::Control::volumeDb)),
+                                   juce::dontSendNotification);
     }
 
     juce::String getTooltip() override
@@ -87,10 +143,6 @@ public:
     {
         auto bg = getLookAndFeel().findColour (juce::ResizableWindow::backgroundColourId);
         g.fillAll (bg.brighter (0.05f));
-
-        g.setColour (juce::Colours::lightgrey);
-        g.setFont (juce::FontOptions (12.0f));
-        g.drawText ("Master", 8, 0, 50, getHeight(), juce::Justification::centredLeft);
 
         // Bar numbers, right of the headers: every bar, or every 2nd, 4th... when zoomed out.
         auto beatsPerBar = owner.edit.tempoSequence.getTimeSig (0)->numerator.get();
@@ -134,7 +186,9 @@ public:
 
     void resized() override
     {
-        masterMeter.setBounds (juce::Rectangle<int> (58, 0, headerWidth - 66, getHeight()).withSizeKeepingCentre (headerWidth - 66, 10));
+        masterButton.setBounds (4, (getHeight() - 24) / 2, 58, 24);
+        masterVolume.setBounds (64, 1, headerWidth - 70, 22);
+        masterMeter.setBounds (70, 24, headerWidth - 82, 8);
     }
 
     void mouseDown (const juce::MouseEvent& e) override
@@ -275,8 +329,17 @@ private:
         return LoopPart::none;
     }
 
+    float getVolume() const
+    {
+        auto db = (float) masterVolume.getValue();
+        return db <= -59.9f ? -100.0f : db;
+    }
+
     ArrangementView& owner;
     LevelMeter masterMeter;
+    juce::TextButton masterButton { "Master" };
+    juce::Slider masterVolume;
+    float valueBeforeDrag = 0.0f;
     std::optional<LoopDrag> loopDrag;
 };
 
@@ -1982,6 +2045,7 @@ void ArrangementView::timerCallback()
     updateTimeline();
 
     positionOverlays();   // in case anything slipped past moved() and resized()
+    rulerOverlay->refreshMaster();
     rulerOverlay->repaint();
 
     for (auto& header : headers)

@@ -44,9 +44,28 @@ A song has one shared reverb that every track can send to. Tracks sent to it sou
 
 <img src="images/reverb-settings.png" alt="The Shared reverb panel with Size, Damping and Amount" width="580">
 
-**Reverb Settings...** opens the shared reverb itself. Size, Damping and Amount apply to every track's reverb. You can add effects there too; they're applied to the reverb sound only (for example an EQ to darken it).
+**Reverb Settings...** (in a track's FX panel or the master's) opens the shared reverb itself. Size, Damping and Amount apply to every track's reverb. You can add effects there too; they're applied to the reverb sound only (for example an EQ to darken it).
 
 When exporting stems, each stem includes its own share of the reverb, so the stems still add up to the mix.
+
+## The master
+
+<img src="images/master.png" alt="The Master panel: the whole mix's Volume at −3 dB and Balance at Centre, Reverb Settings..., and an EQ on the mix" width="634">
+
+Everything you hear goes through the master, in playback and in exported audio. Its strip is at the left end of the ruler, above the track headers: drag the slider for the master volume, or click **Master** for the rest.
+
+The **Master** panel has:
+- **Volume:** the level of the whole mix (the same as the strip's slider). A new song starts at −3 dB, which leaves some room before the mix clips. Double-click for 0 dB.
+- **Balance:** moves the whole mix to the left or right. Double-click to centre it.
+- **Reverb Settings...:** the shared reverb's settings, for every track.
+- **Effects on the whole mix:** click **Add Effect** for the same effects and plugins as a track. An EQ shapes the mix's tone; a compressor evens out its level and makes it sound fuller.
+
+**Details:**
+- **The order:** master effects come after every track and the shared reverb, and before the master volume, so the meter shows the final level.
+- **Undo and saving:** master changes are saved with the song, and each is one undo step, like a track's.
+- **MIDI learn:** the master's volume, balance and effect controls can be [learnt from a MIDI controller](13-devices.md#midi-learn).
+- **Stems:** exported stems go through the master too.
+- **Not yet:** the master can't be automated, since it has no lane in the arrangement.
 
 ## Plugins
 
