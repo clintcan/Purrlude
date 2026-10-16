@@ -94,7 +94,11 @@ namespace
         }
         else
         {
-            measure.createNewChildElement ("sound")->setAttribute ("tempo", juce::String (bpm, 2));
+            // Where the mark's note can't be drawn (on screen, in the PDF): "100 BPM".
+            auto* direction = measure.createNewChildElement ("direction");
+            direction->setAttribute ("placement", "above");
+            addText (*direction->createNewChildElement ("direction-type"), "words", juce::String (juce::roundToInt (bpm)) + " BPM");
+            direction->createNewChildElement ("sound")->setAttribute ("tempo", juce::String (bpm, 2));
         }
     }
 
@@ -217,8 +221,16 @@ juce::String toMusicXml (const Score& score, const MusicXmlOptions& options)
     if (! score.title.empty())
         addText (*root.createNewChildElement ("work"), "work-title", juce::String (score.title));
 
-    addText (*root.createNewChildElement ("identification")->createNewChildElement ("encoding"),
-             "software", "Purrlude");
+    auto* identification = root.createNewChildElement ("identification");
+
+    if (! score.composer.empty())
+    {
+        auto* creator = identification->createNewChildElement ("creator");
+        creator->setAttribute ("type", "composer");
+        creator->addTextElement (juce::String (score.composer));
+    }
+
+    addText (*identification->createNewChildElement ("encoding"), "software", "Purrlude");
 
     auto* partList = root.createNewChildElement ("part-list");
 
@@ -248,7 +260,9 @@ juce::String toMusicXml (const Score& score, const MusicXmlOptions& options)
             if (m == 0)
             {
                 addAttributes (*measure, score, part);
-                addTempo (*measure, score.tempoBpm, options.tempoMark);
+
+                if (p == 0)   // over the top part only
+                    addTempo (*measure, score.tempoBpm, options.tempoMark);
             }
             else if (measures.startsChange ((int) m))
             {

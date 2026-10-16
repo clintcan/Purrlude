@@ -1,0 +1,17 @@
+--- a/src/pghead.cpp
++++ b/src/pghead.cpp
+@@ -85,9 +85,11 @@
+         this->AddChild(titleRend);
+     }
+ 
+-    nodeSet
+-        = header.select_nodes("//fileDesc/titleStmt/composer|arranger|lyricist|respStmt/persName[contains('lyricist "
+-                              "translator composer harmonizer arranger', @role)]");
++    // Purrlude: each step of the union needs the full path; "respStmt/persName" alone matched
++    // nothing, so composers imported from MusicXML (respStmt/persName[@role]) never showed.
++    nodeSet = header.select_nodes(
++        "//fileDesc/titleStmt/composer|//fileDesc/titleStmt/arranger|//fileDesc/titleStmt/lyricist|"
++        "//fileDesc/titleStmt/respStmt/persName[contains('lyricist translator composer harmonizer arranger', @role)]");
+ 
+     for (auto node : nodeSet) {
+         Rend *personRend = new Rend();

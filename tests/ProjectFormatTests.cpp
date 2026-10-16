@@ -109,6 +109,8 @@ namespace
         // The song: 100 BPM in 4/4, F major.
         edit.tempoSequence.getTempo (0)->setBpm (100.0);
         notation::setKeySignature (edit, notation::KeySignature { -1, false }, &um);
+        notation::setScoreTitle (edit, "The Format Song", &um);
+        notation::setComposer (edit, "A. Tester", &um);
 
         // Melody: a flute, with notes and the sustain pedal, two effects, a reverb send, a mix,
         // volume automation shown on its lane.
@@ -262,6 +264,8 @@ namespace
         auto key = notation::getKeySignature (edit);
         REQUIRE (key.has_value());
         CHECK (key->fifths == -1);
+        CHECK (notation::getScoreTitle (edit) == "The Format Song");
+        CHECK (notation::getComposer (edit) == "A. Tester");
 
         // Melody: instrument, notes, pedal.
         CHECK (TrackInstrument (edit, *melody).getProgram() == 73);

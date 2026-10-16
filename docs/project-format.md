@@ -31,6 +31,7 @@ Parts of the format are Tracktion's (tempo and time signatures, clips, plugins, 
 |---|---|
 | `purrludeFormat` | The format version |
 | `purrludeKeySignature` | The song's key, as `"<fifths> major"` or `"<fifths> minor"` (fifths: -7 to 7; -1 is F major). Absent: estimated from the notes |
+| `purrludeTitle`, `purrludeComposer` | The score's title and composer. Absent: the title is the song's file name, and there's no composer |
 
 | Child | Contents |
 |---|---|

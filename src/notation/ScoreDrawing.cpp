@@ -231,7 +231,16 @@ void ScoreDrawing::addText (const juce::XmlElement& text, const juce::AffineTran
         juce::String id;
     };
 
-    std::vector<Run> runs;
+    // A tspan with its own x or y starts a new line there, aligned by its own text-anchor (as
+    // Verovio writes the title and composer).
+    struct Line
+    {
+        float x, y;
+        juce::String anchor;
+        std::vector<Run> runs;
+    };
+
+    std::vector<Line> lines { { (float) text.getDoubleAttribute ("x"), (float) text.getDoubleAttribute ("y"), textStyle.textAnchor, {} } };
 
     std::function<void (const juce::XmlElement&, const Style&, const juce::String&)> collect
         = [&] (const juce::XmlElement& e, const Style& style, const juce::String& id)
@@ -243,44 +252,54 @@ void ScoreDrawing::addText (const juce::XmlElement& text, const juce::AffineTran
                 auto content = child->getText().replaceCharacters ("\r\n\t", "   ");
 
                 if (content.trim().isNotEmpty())
-                    runs.push_back ({ content, style.getFont(), style, id });
+                    lines.back().runs.push_back ({ content, style.getFont(), style, id });
             }
             else if (child->hasTagName ("tspan"))
             {
+                auto childStyle = style.with (*child);
+
+                if (child->hasAttribute ("x") || child->hasAttribute ("y"))
+                    lines.push_back ({ (float) child->getDoubleAttribute ("x", lines.back().x),
+                                       (float) child->getDoubleAttribute ("y", lines.back().y),
+                                       childStyle.textAnchor, {} });
+
                 auto childId = child->getStringAttribute ("id");
-                collect (*child, style.with (*child), childId.isNotEmpty() ? childId : id);
+                collect (*child, childStyle, childId.isNotEmpty() ? childId : id);
             }
         }
     };
 
     collect (text, textStyle, {});
 
-    float width = 0.0f;
-
-    for (auto& run : runs)
-        width += juce::GlyphArrangement::getStringWidth (run.font, run.text);
-
-    auto x = (float) text.getDoubleAttribute ("x"), y = (float) text.getDoubleAttribute ("y");
-
-    if (textStyle.textAnchor == "middle")    x -= width / 2.0f;
-    else if (textStyle.textAnchor == "end")  x -= width;
-
-    for (auto& run : runs)
+    for (auto& line : lines)
     {
-        juce::GlyphArrangement glyphs;
-        glyphs.addLineOfText (run.font, run.text, x, y);
-        x += juce::GlyphArrangement::getStringWidth (run.font, run.text);
+        float width = 0.0f;
 
-        juce::Path path;
-        glyphs.createPath (path);
+        for (auto& run : line.runs)
+            width += juce::GlyphArrangement::getStringWidth (run.font, run.text);
 
-        auto style = run.style;
-        style.stroke.reset();   // text is filled, as JUCE draws it
-        auto first = (int) shapes.size();
-        addShape (path, transform, style);
+        auto x = line.x;
 
-        if (run.id.isNotEmpty() && (int) shapes.size() > first)
-            elements.emplace (run.id, std::make_pair (first, (int) shapes.size()));
+        if (line.anchor == "middle")    x -= width / 2.0f;
+        else if (line.anchor == "end")  x -= width;
+
+        for (auto& run : line.runs)
+        {
+            juce::GlyphArrangement glyphs;
+            glyphs.addLineOfText (run.font, run.text, x, line.y);
+            x += juce::GlyphArrangement::getStringWidth (run.font, run.text);
+
+            juce::Path path;
+            glyphs.createPath (path);
+
+            auto style = run.style;
+            style.stroke.reset();   // text is filled, as JUCE draws it
+            auto first = (int) shapes.size();
+            addShape (path, transform, style);
+
+            if (run.id.isNotEmpty() && (int) shapes.size() > first)
+                elements.emplace (run.id, std::make_pair (first, (int) shapes.size()));
+        }
     }
 }
 

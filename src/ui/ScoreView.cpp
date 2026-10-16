@@ -291,6 +291,11 @@ ScoreView::ScoreView (tracktion::Edit& e, LiveInstrument& i)
     chordSymbolsButton.onClick = [this] { timerCallback(); };
     addAndMakeVisible (chordSymbolsButton);
 
+    titleButton.setTooltip ("The score's title and composer, at the top of the score and its PDF");
+    titleButton.setWantsKeyboardFocus (false);
+    titleButton.onClick = [this] { askForTitle(); };
+    addAndMakeVisible (titleButton);
+
     renderThread = std::make_unique<RenderThread> (juce::WeakReference<ScoreView> (this));
     startTimerHz (2);
     playheadFollower.startTimerHz (30);
@@ -320,9 +325,53 @@ void ScoreView::resized()
     auto top = r.removeFromTop (24).reduced (8, 0);
     concertPitchButton.setBounds (top.removeFromLeft (130));
     chordSymbolsButton.setBounds (top.removeFromLeft (140));
-    statusLabel.setBounds (top);
+    titleButton.setBounds (top.removeFromLeft (72).withSizeKeepingCentre (64, 20));
+    statusLabel.setBounds (top.withTrimmedLeft (8));
     viewport.setBounds (r.reduced (8, 0).withTrimmedBottom (8));
     page->setSize (viewport.getMaximumVisibleWidth(), page->getHeight());
+}
+
+void ScoreView::setSongName (const juce::String& name)
+{
+    songName = name;
+    timerCallback();
+}
+
+void ScoreView::askForTitle()
+{
+    auto title = notation::getScoreTitle (edit);
+
+    titleWindow = std::make_unique<juce::AlertWindow> ("Score title", "Shown at the top of the score and its PDF.",
+                                                       juce::MessageBoxIconType::NoIcon);
+    titleWindow->addTextEditor ("title", title.isNotEmpty() ? title : songName, "Title");
+    titleWindow->addTextEditor ("composer", notation::getComposer (edit), "Composer");
+    titleWindow->addButton ("OK", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    titleWindow->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+
+    titleWindow->enterModalState (true, juce::ModalCallbackFunction::create ([safe = juce::Component::SafePointer<ScoreView> (this)] (int result)
+    {
+        if (safe == nullptr || safe->titleWindow == nullptr)
+            return;
+
+        // Ending the modal state doesn't hide the window: it goes when this does.
+        auto window = std::move (safe->titleWindow);
+
+        if (result != 1)
+            return;
+
+        auto newTitle = window->getTextEditorContents ("title").trim();
+        auto composer = window->getTextEditorContents ("composer").trim();
+
+        // The song's name stays the title (following the file) unless another is typed.
+        if (newTitle == safe->songName && notation::getScoreTitle (safe->edit).isEmpty())
+            newTitle = {};
+
+        auto& um = safe->edit.getUndoManager();
+        um.beginNewTransaction ("Change the score's title");
+        notation::setScoreTitle (safe->edit, newTitle, &um);
+        notation::setComposer (safe->edit, composer, &um);
+        safe->timerCallback();
+    }), false);
 }
 
 void ScoreView::timerCallback()
@@ -337,6 +386,9 @@ void ScoreView::timerCallback()
     options.chordSymbols = chordSymbolsButton.getToggleState();
     auto input = notation::getEditScoreInput (edit, options);
     auto width = viewport.getMaximumVisibleWidth() - paperMargin * 2;
+
+    if (input.title.empty())
+        input.title = songName.toStdString();
 
     if (width < 200 || (input == lastInput && width == lastWidth))
         return;

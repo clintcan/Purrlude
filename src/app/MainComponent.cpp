@@ -846,8 +846,11 @@ void MainComponent::exportParts()
             if (notation::getTrackNotes (*track).empty())
                 continue;
 
-            auto title = songName + " - " + track->getName();
-            auto file = folder.getChildFile (juce::File::createLegalFileName (title) + ".pdf");
+            auto file = folder.getChildFile (juce::File::createLegalFileName (songName + " - " + track->getName()) + ".pdf");
+
+            // Headed with the score's title, if it has one, and the part.
+            auto scoreTitle = notation::getScoreTitle (safe->project->getEdit());
+            auto title = (scoreTitle.isNotEmpty() ? scoreTitle : songName) + " - " + track->getName();
 
             if (! notation::exportScorePdf (notation::buildTrackScore (*track, title.toStdString()), file, error))
                 break;
@@ -880,6 +883,10 @@ void MainComponent::showError (const juce::String& title, const juce::String& me
 
 void MainComponent::updateTitle()
 {
+    // An unsaved song's score has no title until it's given one.
+    if (scoreView != nullptr)
+        scoreView->setSongName (project->getFile() == juce::File() ? juce::String() : project->getName());
+
     if (auto* window = findParentComponentOfClass<juce::DocumentWindow>())
     {
         auto unsaved = project->hasUnsavedChanges();

@@ -38,7 +38,11 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
 
+    /** The song's name: the score's title unless one is set for it. */
+    void setSongName (const juce::String&);
+
 private:
+    void askForTitle();
     class RenderThread;
     class Page;
 
@@ -59,6 +63,9 @@ private:
     juce::Label statusLabel;
     juce::ToggleButton concertPitchButton { "Concert pitch" };
     juce::ToggleButton chordSymbolsButton { "Chord symbols" };
+    juce::TextButton titleButton { "Title..." };
+    std::unique_ptr<juce::AlertWindow> titleWindow;
+    juce::String songName;
 
     notation::EditScoreInput lastInput;
     int lastWidth = 0, lastRequestId = 0;

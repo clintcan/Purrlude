@@ -15,6 +15,7 @@
 #include "model/TimeSignature.h"
 #include "model/TrackEffects.h"
 #include "model/TrackInstrument.h"
+#include "notation/TrackNotation.h"
 
 namespace purrlude
 {
@@ -555,6 +556,10 @@ void DocScreenshots::buildDemoSong()
         }
 
     tempo.getTempo (0)->setBpm (tempoBpm);   // the loop may have brought its own
+
+    // A title for the score.
+    notation::setScoreTitle (edit, "Sunday Morning", nullptr);
+    notation::setComposer (edit, "Purrlude", nullptr);
 
     // Some reverb and an echo on the melody.
     if (auto* send = shared_reverb::getOrCreateSend (edit, *lead))

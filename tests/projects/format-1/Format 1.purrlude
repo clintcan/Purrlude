@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<EDIT appVersion="Unknown" projectID="0/1cb29af" creationTime="1792135268702"
-      purrludeKeySignature="-1 major" lastSignificantChange="1a143960bc3"
+<EDIT appVersion="Unknown" projectID="0/3e21ea9" creationTime="1792137617806"
+      purrludeKeySignature="-1 major" purrludeTitle="The Format Song"
+      purrludeComposer="A. Tester" lastSignificantChange="1a143b9e418"
       modifiedBy="Clint Christopher Canada" purrludeFormat="1">
   <TRANSPORT automationWrite="0" endToEnd="1" position="0.0" start="0.0" loopPoint1="2.345502940358399"
              loopPoint2="6.71836536832493" purrludeLoopStart="4.0" purrludeLoopEnd="12.0"

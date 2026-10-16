@@ -845,3 +845,20 @@ TEST_CASE ("Time signature changes: each measure as long as its signature", "[no
 
     CHECK (times == std::vector<juce::String> { "4/4", "3/4", "4/4" });
 }
+
+TEST_CASE ("The score's title, composer and starting tempo are written", "[notation]")
+{
+    auto score = buildScore ({ { 0.0, 1.0, 60, 100 } }, {}, { .key = KeySignature {} }, "Cat Whiskers", "Piano", 96.0);
+    score.composer = "C. C. Canada";
+
+    // For other programs: a tempo mark with its note.
+    auto xml = toMusicXml (score);
+    CHECK (xml.contains ("<work-title>Cat Whiskers</work-title>"));
+    CHECK (xml.contains ("<creator type=\"composer\">C. C. Canada</creator>"));
+    CHECK (xml.contains ("<per-minute>96</per-minute>"));
+
+    // Where the mark's note can't be drawn (the screen and the PDF): words.
+    auto drawn = toMusicXml (score, { .tempoMark = false });
+    CHECK (drawn.contains ("<words>96 BPM</words>"));
+    CHECK (drawn.contains ("<sound tempo=\"96.00\"/>"));
+}

@@ -24,6 +24,14 @@ std::vector<NoteEvent> getTrackNotes (tracktion::AudioTrack&);
 std::optional<KeySignature> getKeySignature (tracktion::Edit&);
 void setKeySignature (tracktion::Edit&, std::optional<KeySignature>, juce::UndoManager*);
 
+/** The score's title and composer, saved with the song (empty if not set: the title is then
+    the song's name). Not undoable on their own: begin an undo step first.
+*/
+juce::String getScoreTitle (tracktion::Edit&);
+juce::String getComposer (tracktion::Edit&);
+void setScoreTitle (tracktion::Edit&, const juce::String&, juce::UndoManager*);
+void setComposer (tracktion::Edit&, const juce::String&, juce::UndoManager*);
+
 /** How the track's instrument is written (see transpositionForProgram): known for the
     built-in GM instrument, none otherwise.
 */
@@ -53,6 +61,7 @@ struct EditScoreInput
     BuildOptions options;
     double bpm = 120.0;
     std::vector<TempoChange> tempoChanges;
+    std::string title, composer;   ///< As set for the song (the title may be empty)
 
     /** True if no part has any notes. */
     bool isEmpty() const;

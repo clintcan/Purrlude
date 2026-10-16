@@ -237,6 +237,7 @@ struct TempoChange
 struct Score
 {
     std::string title;
+    std::string composer;                     ///< Shown under the title, on the right
     KeySignature key;
     TimeSignature time;                       ///< At the start
     std::vector<MeterChange> meterChanges;    ///< Later, in order

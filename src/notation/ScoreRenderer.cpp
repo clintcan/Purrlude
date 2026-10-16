@@ -76,7 +76,7 @@ juce::String ScoreRenderer::renderMusicXml (const juce::String& musicXml, int wi
     o->setProperty ("pageWidth", juce::jlimit (100, 60000, widthInPixels * 100 / scalePercent));
     o->setProperty ("pageHeight", 60000);           // one tall page...
     o->setProperty ("adjustPageHeight", true);      // ...trimmed to the music
-    o->setProperty ("header", "none");
+    o->setProperty ("header", "auto");              // the title and composer, if there are any
     o->setProperty ("pageMarginTop", 40);
     o->setProperty ("pageMarginBottom", 40);
     o->setProperty ("pageMarginLeft", 40);

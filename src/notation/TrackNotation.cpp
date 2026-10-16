@@ -11,6 +11,15 @@ namespace purrlude::notation
 namespace
 {
     const juce::Identifier keySignatureProperty ("purrludeKeySignature");   ///< "fifths major|minor"
+    const juce::Identifier titleProperty ("purrludeTitle"), composerProperty ("purrludeComposer");
+
+    void setOrRemove (tracktion::Edit& edit, const juce::Identifier& property, const juce::String& value, juce::UndoManager* um)
+    {
+        if (value.trim().isEmpty())
+            edit.state.removeProperty (property, um);
+        else
+            edit.state.setProperty (property, value.trim(), um);
+    }
 }
 
 std::optional<KeySignature> getKeySignature (tracktion::Edit& edit)
@@ -31,6 +40,12 @@ void setKeySignature (tracktion::Edit& edit, std::optional<KeySignature> key, ju
     else
         edit.state.removeProperty (keySignatureProperty, um);
 }
+
+juce::String getScoreTitle (tracktion::Edit& edit)     { return edit.state[titleProperty].toString(); }
+juce::String getComposer (tracktion::Edit& edit)       { return edit.state[composerProperty].toString(); }
+
+void setScoreTitle (tracktion::Edit& edit, const juce::String& title, juce::UndoManager* um)        { setOrRemove (edit, titleProperty, title, um); }
+void setComposer (tracktion::Edit& edit, const juce::String& composer, juce::UndoManager* um)     { setOrRemove (edit, composerProperty, composer, um); }
 
 Transposition getTransposition (tracktion::AudioTrack& track)
 {
@@ -154,7 +169,8 @@ EditScoreInput getEditScoreInput (tracktion::Edit& edit, const BuildOptions& opt
     if (! withKey.key)
         withKey.key = getKeySignature (edit);
 
-    return { std::move (parts), getTimeSignature (edit), getMeasureMap (edit).getChanges(), withKey, bpm, getTempoChanges (edit) };
+    return { std::move (parts), getTimeSignature (edit), getMeasureMap (edit).getChanges(), withKey, bpm, getTempoChanges (edit),
+             getScoreTitle (edit).toStdString(), getComposer (edit).toStdString() };
 }
 
 std::vector<TempoChange> getTempoChanges (tracktion::Edit& edit)
@@ -171,7 +187,10 @@ std::vector<TempoChange> getTempoChanges (tracktion::Edit& edit)
 
 Score buildEditScore (const EditScoreInput& input, const std::string& title)
 {
-    auto score = buildMultiPartScore (input.parts, MeasureMap (input.timeSignature, input.meterChanges), input.options, title, input.bpm);
+    // The song's own title, if one is set; otherwise the one given (its name).
+    auto score = buildMultiPartScore (input.parts, MeasureMap (input.timeSignature, input.meterChanges), input.options,
+                                      input.title.empty() ? title : input.title, input.bpm);
+    score.composer = input.composer;
     score.tempoChanges = input.tempoChanges;
     return score;
 }
@@ -195,6 +214,7 @@ Score buildTrackScore (tracktion::AudioTrack& track, const std::string& title, c
                                           getTransposition (track) } },
                                       getMeasureMap (edit), withKey, title, bpm);
     score.tempoChanges = getTempoChanges (edit);
+    score.composer = getComposer (edit).toStdString();
     return score;
 }
 

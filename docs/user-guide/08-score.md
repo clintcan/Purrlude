@@ -2,9 +2,15 @@
 
 [← Piano Roll](07-piano-roll.md) · [Contents](README.md) · [Next: Loops and Accompaniment →](09-loops-and-accompaniment.md)
 
-<img src="images/score.png" alt="The Score tab showing the demo song as a four-part score: Melody, Piano, Bass and Drums" width="100%">
+<img src="images/score.png" alt="The Score tab showing the demo song as a four-part score titled Sunday Morning, with the composer on the right, 100 BPM over the first bar, and parts for Melody, Piano, Bass and Drums" width="100%">
 
 The **Score** tab shows the whole song as sheet music, one part per track that has notes. It updates as you edit, record or add loops. While recording, it waits until you stop. When a song has no notes yet, it says *Record something to see it as sheet music.*
+
+## Title, composer and tempo
+
+- **Title and composer:** click **Title...** above the score and type them. They're shown at the top of the score, its PDF and its parts, and saved with the song. Changing them is one undo step.
+- **Default title:** until you set one, the title is the song's name, so it follows the song when you save it under a new name. A song that hasn't been saved yet has no title.
+- **Tempo:** the starting tempo is shown over the first bar, as **100 BPM**, and every tempo change where it happens. Exported MusicXML has the usual tempo mark (a note = 100).
 
 ## Full height
 
@@ -65,8 +71,8 @@ All of these are in the **File** menu. After an export, Purrlude shows the file 
 
 | Command | Shortcut | Writes |
 |---|---|---|
-| Export Score as PDF... | Cmd+E | The full score as an A4 PDF, with the song's name as a header |
-| Export Parts as PDF... | | One PDF per track with notes, named *Song - Track.pdf*, into a folder you choose |
+| Export Score as PDF... | Cmd+E | The full score as an A4 PDF, headed with its title and composer |
+| Export Parts as PDF... | | One PDF per track with notes, named *Song - Track.pdf*, into a folder you choose, each headed with the title and the part |
 | Export MusicXML... | | A `.musicxml` file of the full score, for MuseScore, Sibelius, Finale, Dorico and other notation programs |
 
 **Formats:**
@@ -79,4 +85,4 @@ These aren't handled yet:
 - more than two voices on one staff
 - time signature changes that change the beat unit (other time signature changes are written, and tempo changes are written as tempo marks; gradual ones as *accel.* or *rit.*)
 - tuplets other than triplets within a beat
-- the metronome mark in the on-screen score
+- the tempo mark with a note (a note = 100) on screen and in PDFs: they show **100 BPM** instead

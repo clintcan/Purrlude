@@ -483,11 +483,15 @@ The drawing is scaled to the SVG's declared pixel size (`getSvgDisplaySize`), be
 - **Colouring:** `ScoreDrawing::setHighlighted` marks a note's shapes (everything inside the element with its id), and they're drawn in the highlight colour. There's no re-engraving.
 - **Ties:** a note tied across a barline sounds as its first part, so the continuation isn't coloured.
 
-The on-screen score leaves out the metronome mark, whose note symbol needs a SMuFL text font.
+The on-screen score and the PDF write tempos as words ("100 BPM", `MusicXmlOptions::tempoMark = false`): the metronome mark's note needs a SMuFL text font. Exported MusicXML has the real mark. Tempo marks go over the top part only.
+
+**Title and composer** (`notation::getScoreTitle/getComposer`, `purrludeTitle`/`purrludeComposer` on `EDIT`; the Score tab's Title... button): MusicXML `work-title` and `creator type="composer"`, shown by Verovio's page header (now also on screen). Without a set title, the title is the song's name (`ScoreView::setSongName`; none for an unsaved song). `ScoreDrawing` places text by positioned `tspan`s too (`x`/`y`/`text-anchor`), as Verovio writes the header.
 
 Verovio's `data/` folder (fonts and glyph files) is copied into the app (`Contents/Resources/verovio` on macOS, `verovio/` next to the exe elsewhere). Dev builds and tests fall back to the source tree via `PURRLUDE_VEROVIO_DATA`.
 
 Verovio 6.3.0's `NO_EDIT_SUPPORT` doesn't compile, so leave it off.
+
+Verovio's page header found no composer imported from MusicXML (an XPath union whose later steps lacked the full path): `cmake/patches/verovio-header-composer.patch` fixes it.
 
 Verovio is patched (`cmake/patches/verovio-lazy-thread-locals.patch`, applied by CPM) so its `thread_local` statics with destructors are function-local. MSVC creates namespace-scope ones on every thread, the OS's worker threads included. In Debug builds, a thread that exits during process shutdown then destroys them after the STL's locks are gone, crashing the process. That made Windows test runs fail now and then after all their checks had passed. When upgrading Verovio, re-check `thread_local` in its sources and refresh the patch.
 
