@@ -67,15 +67,18 @@ private:
     friend class DocScreenshots;   // drives the window for the user guide's screenshots
 
     enum MenuIds { newId = 1, openId, saveId, saveAsId, exportPdfId, exportPartsId, exportMusicXmlId, exportAudioId, importMidiId, importAudioId, undoId, redoId,
-                   splitId, cutId, copyId, pasteId, duplicateId, deleteId, selectAllId };
+                   splitId, cutId, copyId, pasteId, duplicateId, deleteId, selectAllId, clearRecentId, quitId };
+    static constexpr int firstRecentId = 2000;   ///< Open Recent's items: firstRecentId + index
 
     void setProject (std::unique_ptr<Project>);
     void startUp();
     void offerRecovery (std::vector<Project::Recoverable>);
-    void reopenLastProject();
 
     void newProject();
     void openProject();
+    void openRecentProject (const juce::File&);
+    void openProjectFile (const juce::File&);   ///< Without asking about unsaved changes
+    void addToRecentProjects (const juce::File&);
     void saveProject (std::function<void (bool saved)> = {});
     void saveProjectAs (std::function<void (bool saved)> = {});
 
@@ -118,6 +121,7 @@ private:
     tracktion::Engine& engine;
     MidiDeviceSettings& deviceSettings;
     juce::PropertiesFile& settings;
+    juce::RecentlyOpenedFilesList recentProjects;   ///< File > Open Recent, kept in the settings
 
     std::unique_ptr<Project> project;
     std::unique_ptr<TransportBar> transportBar;

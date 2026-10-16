@@ -12,8 +12,12 @@ All of these are in the **File** menu.
 |---|---|---|
 | New | Cmd+N | Starts an empty song with one instrument track |
 | Open... | Cmd+O | Opens a `.purrlude` file |
+| Open Recent | | Opens one of the last 10 songs you opened or saved. **Clear Menu** empties the list |
 | Save | Cmd+S | Saves the song. An untitled song asks for a name first |
 | Save As... | Cmd+Shift+S | Saves under a new name or in a new place |
+| Exit (Windows), Quit (Linux) | Alt+F4, Ctrl+Q | Closes Purrlude. On macOS, Quit Purrlude (Cmd+Q) is in the Purrlude menu |
+
+Purrlude always starts with a new, empty song; your earlier songs are under **Open Recent**.
 
 The default folder is `Documents/Purrlude`. The window's title shows the song's name, with a `*` in front when there are unsaved changes ("Untitled" until it's first saved).
 

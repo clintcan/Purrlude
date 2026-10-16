@@ -15,7 +15,8 @@ namespace purrlude
 
 namespace
 {
-    constexpr const char* lastProjectKey = "lastProject";
+    constexpr const char* recentProjectsKey = "recentProjects";
+    constexpr const char* lastProjectKey = "lastProject";   // before Open Recent: the project reopened at launch
     constexpr int autosaveIntervalSeconds = 30;
 
     // AlertWindow result codes for three buttons: first = 1, second = 2, last = 0.
@@ -27,6 +28,22 @@ MainComponent::MainComponent (tracktion::Engine& e, BluetoothMidiManager& blueto
     : engine (e), deviceSettings (d), settings (s), devicesPanel (bluetooth, e, d),
       bluetoothPorts (e, bluetooth, s)
 {
+    recentProjects.setMaxNumberOfItems (10);
+
+    // Not for an empty string, which restoreFromString would turn into one empty entry.
+    if (auto saved = settings.getValue (recentProjectsKey); saved.isNotEmpty())
+        recentProjects.restoreFromString (saved);
+
+    // The project an older Purrlude reopened at launch starts the list.
+    if (auto last = settings.getValue (lastProjectKey); juce::File::isAbsolutePath (last))
+    {
+        if (recentProjects.getNumFiles() == 0)
+            recentProjects.addFile (juce::File (last));
+
+        settings.removeValue (lastProjectKey);
+        settings.setValue (recentProjectsKey, recentProjects.toString());
+    }
+
     deviceSettings.addChangeListener (this);
     engine.getDeviceManager().addChangeListener (this);
 
@@ -207,8 +224,7 @@ void MainComponent::setProject (std::unique_ptr<Project> newProject)
 
     disableButtonFocus (*this);
 
-    if (project->getFile() != juce::File())
-        settings.setValue (lastProjectKey, project->getFile().getFullPathName());
+    addToRecentProjects (project->getFile());
 
     ticksSinceAutosave = 0;
     resized();
@@ -240,8 +256,8 @@ void MainComponent::startUp()
 
         offerRecovery (std::move (recoverable));
     }
-    else
-        reopenLastProject();
+
+    // Otherwise the app starts with a new song; earlier ones are under File > Open Recent.
 }
 
 void MainComponent::offerRecovery (std::vector<Project::Recoverable> remaining)
@@ -287,24 +303,8 @@ void MainComponent::offerRecovery (std::vector<Project::Recoverable> remaining)
             item.autosave.deleteFile();
         }
 
-        if (remaining.empty())
-            safe->reopenLastProject();
-        else
-            safe->offerRecovery (remaining);
+        safe->offerRecovery (remaining);
     });
-}
-
-void MainComponent::reopenLastProject()
-{
-    auto path = settings.getValue (lastProjectKey);
-
-    if (! juce::File::isAbsolutePath (path) || ! juce::File (path).existsAsFile())
-        return;
-
-    juce::String error;
-
-    if (auto opened = Project::open (engine, juce::File (path), getAutosaveDirectory(), error))
-        setProject (std::move (opened));
 }
 
 //==============================================================================
@@ -366,17 +366,50 @@ void MainComponent::openProject()
         {
             auto file = chooser.getResult();
 
-            if (safe == nullptr || file == juce::File())
-                return;
-
-            juce::String error;
-
-            if (auto opened = Project::open (safe->engine, file, safe->getAutosaveDirectory(), error))
-                safe->setProject (std::move (opened));
-            else
-                safe->showError ("Couldn't open the project", error);
+            if (safe != nullptr && file != juce::File())
+                safe->openProjectFile (file);
         });
     });
+}
+
+void MainComponent::openRecentProject (const juce::File& file)
+{
+    confirmClose ([safe = juce::WeakReference<MainComponent> (this), file] (bool ok)
+    {
+        if (ok && safe != nullptr)
+            safe->openProjectFile (file);
+    });
+}
+
+void MainComponent::openProjectFile (const juce::File& file)
+{
+    juce::String error;
+
+    if (auto opened = Project::open (engine, file, getAutosaveDirectory(), error))
+    {
+        setProject (std::move (opened));
+    }
+    else
+    {
+        if (! file.existsAsFile())
+        {
+            recentProjects.removeFile (file);
+            settings.setValue (recentProjectsKey, recentProjects.toString());
+        }
+
+        showError ("Couldn't open the project", error);
+    }
+}
+
+void MainComponent::addToRecentProjects (const juce::File& file)
+{
+    if (file == juce::File())
+        return;
+
+    recentProjects.addFile (file);
+    settings.setValue (recentProjectsKey, recentProjects.toString());
+    juce::RecentlyOpenedFilesList::registerRecentFileNatively (file);
+    menuItemsChanged();
 }
 
 void MainComponent::saveProject (std::function<void (bool)> callback)
@@ -425,7 +458,7 @@ void MainComponent::saveProjectAs (std::function<void (bool)> callback)
             saved = safe->project->saveAs (file, error);
 
             if (saved)
-                safe->settings.setValue (lastProjectKey, safe->project->getFile().getFullPathName());
+                safe->addToRecentProjects (safe->project->getFile());
             else
                 safe->showError ("Couldn't save the project", error);
         }
@@ -1043,6 +1076,9 @@ bool MainComponent::keyPressed (const juce::KeyPress& key)
         {
             case 'N':   newProject();   return true;
             case 'O':   openProject();  return true;
+           #if ! JUCE_MAC && ! JUCE_WINDOWS
+            case 'Q':   juce::JUCEApplication::getInstance()->systemRequestedQuit();   return true;
+           #endif
             case 'S':   if (mods.isShiftDown()) saveProjectAs(); else saveProject();                            return true;
             case 'E':   if (mods.isShiftDown()) exportAudio(); else exportScore (ExportFormat::pdf);            return true;
             case 'I':   if (mods.isShiftDown()) chooseAudioFileToImport(); else chooseMidiFileToImport();       return true;
@@ -1103,6 +1139,19 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
     {
         addItem (newId, "New", "command + N");
         addItem (openId, "Open...", "command + O");
+
+        // Files that have gone are dropped first, so item n is still file n.
+        recentProjects.removeNonExistentFiles();
+        juce::PopupMenu recent;
+        recentProjects.createPopupMenuItems (recent, firstRecentId, false, false);
+
+        if (recent.getNumItems() > 0)
+        {
+            recent.addSeparator();
+            recent.addItem (clearRecentId, "Clear Menu");
+        }
+
+        menu.addSubMenu ("Open Recent", recent, recent.getNumItems() > 0);
         menu.addSeparator();
         addItem (saveId, "Save", "command + S");
         addItem (saveAsId, "Save As...", "command + shift + S");
@@ -1114,6 +1163,15 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
         addItem (exportPartsId, "Export Parts as PDF...", "");
         addItem (exportMusicXmlId, "Export MusicXML...", "");
         addItem (exportAudioId, "Export Audio...", "command + shift + E", audioExport == nullptr);
+
+        // macOS has Quit in the application menu.
+       #if JUCE_WINDOWS
+        menu.addSeparator();
+        addItem (quitId, "Exit", "alt + F4");
+       #elif ! JUCE_MAC
+        menu.addSeparator();
+        addItem (quitId, "Quit", "command + Q");
+       #endif
     }
     else if (index == 2)
     {
@@ -1142,6 +1200,12 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
 
 void MainComponent::menuItemSelected (int id, int)
 {
+    if (id >= firstRecentId && id < firstRecentId + recentProjects.getNumFiles())
+    {
+        openRecentProject (recentProjects.getFile (id - firstRecentId));
+        return;
+    }
+
     switch (id)
     {
         case newId:     newProject();                       break;
@@ -1164,6 +1228,14 @@ void MainComponent::menuItemSelected (int id, int)
         case deleteId:      if (arrangement != nullptr) arrangement->deleteSelectedClips();      break;
         case selectAllId:   if (arrangement != nullptr) arrangement->selectAllClips();          break;
         case aboutMenuId:   about::show (juce::JUCEApplication::getInstance()->getApplicationVersion());   break;
+        case quitId:        juce::JUCEApplication::getInstance()->systemRequestedQuit();         break;   // asks about unsaved changes
+
+        case clearRecentId:
+            recentProjects.clear();
+            settings.setValue (recentProjectsKey, recentProjects.toString());
+            menuItemsChanged();
+            break;
+
         default:        break;
     }
 }

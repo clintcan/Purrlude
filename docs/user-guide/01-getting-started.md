@@ -32,7 +32,7 @@ The window has four areas:
 - **The editors** below it: the **Score** tab shows the whole song as [sheet music](08-score.md), and the **Piano Roll** tab edits one clip's [notes](07-piano-roll.md). **Full Height**, at the right of their tabs, gives them the whole window.
 - **A side panel** on the right, when one is open.
 
-At first launch the window shows an empty song with one instrument track, and the MIDI Devices panel open. After that, Purrlude reopens the project you last had open.
+Purrlude starts with an empty song with one instrument track, and the MIDI Devices panel open. Songs you've worked on are under **File > Open Recent**.
 
 ## A first song in a few minutes
 
