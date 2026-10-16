@@ -193,6 +193,10 @@ TEST_CASE ("Edits leave Tracktion's own clip re-sort nothing to do", "[model][cl
     auto id = addClip (f.track (1), 0.0, 4.0, 72)->itemID;
     pump();
 
+    // Tracktion closes the undo step 350 ms after a change. On a slow machine that can happen
+    // while settling, which would count the step's actions as gone; keep the step open.
+    tracktion::Edit::UndoTransactionInhibitor keepStepOpen (*f.edit);
+
     auto actionsAfterSettling = [&]
     {
         auto before = f.undo().getNumActionsInCurrentTransaction();
@@ -449,6 +453,10 @@ TEST_CASE ("Split, duplicate and paste leave Tracktion's clip re-sort nothing to
     auto id = addClip (f.track (0), 0.0, 8.0, 60)->itemID;
     addClip (f.track (1), 0.0, 16.0, 72);
     pump();
+
+    // Tracktion closes the undo step 350 ms after a change. On a slow machine that can happen
+    // while settling, which would count the step's actions as gone; keep the step open.
+    tracktion::Edit::UndoTransactionInhibitor keepStepOpen (*f.edit);
 
     auto actionsAfterSettling = [&]
     {
