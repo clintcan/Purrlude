@@ -56,6 +56,9 @@ void ToneListener::refreshDevices()
 {
     auto available = juce::MidiInput::getAvailableDevices();
 
+    if (shouldSkip != nullptr)
+        available.removeIf ([this] (const juce::MidiDeviceInfo& d) { return shouldSkip (d.name); });
+
     // Drop connections to devices that went away.
     for (auto it = connections.begin(); it != connections.end();)
     {

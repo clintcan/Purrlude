@@ -40,6 +40,11 @@ public:
     /** Opens connections to inputs that appeared and drops those that went. */
     void refreshDevices();
 
+    /** Inputs this says no to aren't opened, and are closed if open (e.g. Bluetooth
+        devices the user disconnected). Call refreshDevices() when its answers change.
+    */
+    std::function<bool (const juce::String& deviceName)> shouldSkip;
+
     /** Message thread: (device name, tone as learned, with its name). */
     std::function<void (const juce::String& deviceName, const DeviceTone&)> onToneSelected;
 

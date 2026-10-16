@@ -96,6 +96,28 @@ std::vector<BluetoothMidiManager::Device> BluetoothMidiManager::getDevices() con
     return result;
 }
 
+juce::StringArray BluetoothMidiManager::getDisconnectedNames() const
+{
+    juce::StringArray names;
+
+    for (const auto& d : getDevices())
+        if (d.remembered && remembered.at (d.info.id).userDisconnected
+            && d.info.name.isNotEmpty() && d.info.name != placeholderName)
+            names.addIfNotAlreadyThere (d.info.name);
+
+    return names;
+}
+
+bool BluetoothMidiManager::isPortOf (const juce::String& portName, const juce::String& deviceName)
+{
+    if (deviceName.isEmpty() || ! portName.startsWithIgnoreCase (deviceName))
+        return false;
+
+    // "Piano" isn't "Piano Pro"'s, but it is "Piano (Bluetooth MIDI IN)"'s.
+    auto rest = portName.substring (deviceName.length());
+    return rest.isEmpty() || rest.startsWith (" (");
+}
+
 void BluetoothMidiManager::connect (const juce::String& deviceId)
 {
     for (const auto& info : service->getDevices())

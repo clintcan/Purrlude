@@ -178,6 +178,36 @@ TEST_CASE ("A device the user disconnected is not reconnected", "[devices][ble]"
     REQUIRE_FALSE (manager->getDevices()[0].reconnecting);
 }
 
+TEST_CASE ("A device the user disconnected has its ports closed until it's connected again", "[devices][ble]")
+{
+    Fixture f;
+    FakeBleMidiService* fake = nullptr;
+    auto manager = f.makeConnected (fake);
+    REQUIRE (manager->getDisconnectedNames().isEmpty());
+
+    manager->disconnect ("KEYS");
+    REQUIRE (manager->getDisconnectedNames() == juce::StringArray { "GO:KEYS 5 MIDI" });
+
+    // Even while the connect waits for the disconnect to settle.
+    manager->connect ("KEYS");
+    REQUIRE (manager->getDisconnectedNames().isEmpty());
+
+    // Only for this session.
+    manager->disconnect ("KEYS");
+    manager.reset();
+    REQUIRE (f.makeManager (fake, { keyboard() })->getDisconnectedNames().isEmpty());
+}
+
+TEST_CASE ("A Bluetooth device's MIDI ports are found by name", "[devices][ble]")
+{
+    REQUIRE (BluetoothMidiManager::isPortOf ("GO:KEYS 5 MIDI", "GO:KEYS 5 MIDI"));                          // macOS
+    REQUIRE (BluetoothMidiManager::isPortOf ("GO:KEYS 5 MIDI (Bluetooth MIDI IN)", "GO:KEYS 5 MIDI"));      // Windows
+    REQUIRE (BluetoothMidiManager::isPortOf ("go:keys 5 midi (Bluetooth MIDI OUT)", "GO:KEYS 5 MIDI"));
+    REQUIRE_FALSE (BluetoothMidiManager::isPortOf ("GO:KEYS 5 MIDI 2", "GO:KEYS 5 MIDI"));
+    REQUIRE_FALSE (BluetoothMidiManager::isPortOf ("Piano Pro", "Piano"));
+    REQUIRE_FALSE (BluetoothMidiManager::isPortOf ("Anything", ""));
+}
+
 TEST_CASE ("Connecting right after disconnect and forget waits for the device to reset", "[devices][ble]")
 {
     Fixture f;

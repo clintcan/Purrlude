@@ -210,6 +210,9 @@ TEST_CASE ("Connect and exchange MIDI with a Bluetooth device", "[.][hardware][b
 
     WARN ("Note-ons arrived on channel(s): " << (inputChannels.isEmpty() ? juce::String ("none") : inputChannels.joinIntoString (", ")));
 
+    // Open ports keep the link up on Windows: its Bluetooth MIDI driver connects for them.
+    input = nullptr;
+    output = nullptr;
     service->disconnect (device.id);
 
     bool disconnected = runLoopUntil ([&]
