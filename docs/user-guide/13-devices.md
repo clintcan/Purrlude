@@ -6,7 +6,7 @@
 
 <img src="images/audio-settings.png" alt="The Audio Settings window: Output, Input, active channels, sample rate and buffer size" width="522">
 
-Click **Audio Settings** in the toolbar to choose:
+Click **Audio** in the toolbar to choose:
 - **Output** and **Input:** the device you listen through and record from. This can be your computer's built-in speakers and microphone, headphones, or an audio interface. **Test** plays a tone, and the meter beside the input shows its level.
 - **Active output and input channels:** which channels of a multi-channel interface are used. The active inputs are what audio tracks can [record from](06-recording.md#recording-audio).
 - **Sample rate** and **Audio buffer size:** a smaller buffer means less delay between playing and hearing, but more risk of clicks on a busy computer.

@@ -28,7 +28,7 @@ namespace purrlude
     bar, the arrangement view, the score view, the MIDI devices and loops panels, and
     provides the menu bar.
 
-    Shortcuts: Space play/stop, R record, Home return to start, L loop, A record automation,
+    Shortcuts: Space play/stop, R record, Home return to start, L loop, P punch in/out, A record automation,
     Cmd/Ctrl+Z undo, Cmd/Ctrl+Shift+Z redo, Cmd/Ctrl+N/O/S new/open/save,
     Cmd/Ctrl+Shift+S save as, Cmd/Ctrl+E export the score as PDF, Cmd/Ctrl+Shift+E
     export audio, Cmd/Ctrl+I import a MIDI file, Cmd/Ctrl+Shift+I an audio file (or drop
@@ -129,7 +129,7 @@ private:
     juce::TabbedComponent editorTabs { juce::TabbedButtonBar::TabsAtTop };
     std::unique_ptr<juce::FileChooser> fileChooser;
 
-    juce::TextButton audioSettingsButton { "Audio Settings" };
+    juce::TextButton audioSettingsButton { "Audio" };
     juce::TextButton pluginsButton { "Plugins" };
     juce::TextButton devicesButton { "MIDI Devices" };
     juce::TextButton loopsButton { "Loops" };

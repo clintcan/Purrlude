@@ -38,6 +38,7 @@ MainComponent::MainComponent (tracktion::Engine& e, BluetoothMidiManager& blueto
             instrument.setDeviceTone (tone);
     };
 
+    audioSettingsButton.setTooltip ("Audio settings: the audio interface, its inputs and outputs, and the buffer size");
     audioSettingsButton.onClick = [this] { showAudioSettings(); };
     pluginsButton.setTooltip ("Third-party instruments and effects (VST3, AU, LV2): scan for them here");
     pluginsButton.onClick = [this] { plugin_windows::showPluginList (engine); };
@@ -931,7 +932,7 @@ void MainComponent::resized()
     loopsButton.setBounds (toolbar.removeFromRight (80).reduced (6));
     midiLearnButton.setBounds (toolbar.removeFromRight (100).reduced (6));
     pluginsButton.setBounds (toolbar.removeFromRight (84).reduced (6));
-    audioSettingsButton.setBounds (toolbar.removeFromRight (120).reduced (6));
+    audioSettingsButton.setBounds (toolbar.removeFromRight (72).reduced (6));
     editorsButton.setBounds (toolbar.removeFromRight (90).reduced (6));
 
     if (transportBar != nullptr)
@@ -1040,6 +1041,7 @@ bool MainComponent::keyPressed (const juce::KeyPress& key)
     if (code == 'R')                        { transportBar->toggleRecord();  return true; }
     if (code == 'L')                        { transportBar->toggleLoop();    return true; }
     if (code == 'A')                        { transportBar->toggleAutomationRecording(); return true; }
+    if (code == 'P')                        { transportBar->togglePunch();   return true; }
 
     if ((key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey) && arrangement != nullptr)
         return arrangement->deleteSelectedClips();

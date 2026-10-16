@@ -11,6 +11,7 @@ On Windows and Linux, use **Ctrl** for **Cmd** and **Alt** for **Option**.
 | Space | Play / stop |
 | R | Record / stop recording |
 | L | Loop on / off |
+| P | Punch in/out on / off |
 | A | Record automation on / off |
 | Home | Return to start |
 

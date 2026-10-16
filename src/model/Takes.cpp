@@ -1,6 +1,7 @@
 #include "Takes.h"
 
 #include "ClipEditing.h"
+#include "LoopRange.h"
 
 namespace purrlude::takes
 {
@@ -147,9 +148,13 @@ void prepareMidiInputs (tracktion::Edit& edit)
 {
     auto looping = edit.getTransport().looping.get();
 
+    // A punch replaces what was in its range, like a new recording, rather than adding to it.
+    auto merge = ! looping && ! loop_range::isPunching (edit);
+    loop_range::sync (edit);
+
     for (auto& input : edit.engine.getDeviceManager().getMidiInDevices())
     {
-        input->mergeRecordings = ! looping;
+        input->mergeRecordings = merge;
         input->replaceExistingClips = false;
     }
 }

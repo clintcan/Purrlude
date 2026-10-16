@@ -20,7 +20,7 @@ The notes land in a new MIDI clip. Recording over an existing MIDI clip on the s
 
 ## Recording audio
 
-1. Choose your audio interface or microphone under **Audio Settings** ([Devices](13-devices.md#audio-settings)).
+1. Choose your audio interface or microphone under **Audio** (the toolbar button) ([Devices](13-devices.md#audio-settings)).
 2. Add an audio track (**+ Track > Audio Track**).
 3. In its header, choose an **input** from the input menu, e.g. *MacBook Pro Microphone - Input 1*, or a pair of channels on an interface. Each input can feed one track.
 4. Click **Arm** on the track. Arming with no input chosen picks the first free one.
@@ -48,3 +48,21 @@ The clip shows **Take n/m**: which take is heard, out of how many. The last comp
 - **Delete Other Takes** keeps only the current one. The other audio files stay on disk.
 
 While recording, the loop range can't be changed and **Loop** can't be turned off.
+
+## Punch in/out
+
+To re-record just part of a recording, a wrong bar say, without touching the rest, punch in:
+
+1. Set the range on the ruler over the bars to replace (the same range as the [loop](03-transport.md#loop-playback)), with **Loop** off.
+2. Turn on **Punch** (or press **P**). The band turns vermillion.
+3. Press **R**. Playback starts a bar before the range, so you can play along into it. If the playhead is already up to four bars before the range, it starts there instead.
+4. Recording starts by itself at the start of the range and stops at its end. A bar later, playback stops too.
+
+**What gets recorded:**
+- **Inside the range:** what you play there replaces what was in it, as any recording does. MIDI isn't merged into the clip that was there.
+- **Outside the range:** nothing you play before or after the range is recorded, so a fumble in the lead-in doesn't matter.
+- **Audio and MIDI:** punching works the same for every armed track.
+
+**With Loop on too:** Purrlude records the way it does with looping alone: round and round the range, with each pass a take. You can then choose the best one.
+
+Punch is saved with the song. It can't be turned on or off while recording.

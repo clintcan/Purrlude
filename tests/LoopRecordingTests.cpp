@@ -257,3 +257,128 @@ TEST_CASE ("Loop recording in a Purrlude project, as the transport bar starts it
     devices.removeHostedAudioDeviceInterface();
     devices.deviceManager.closeAudioDevice();
 }
+
+TEST_CASE ("Punch recording records only inside the punch range, replacing what was there", "[punch][loop-takes]")
+{
+    juce::ScopedJuceInitialiser_GUI juceInit;
+    auto engine = purrlude::createEngine ("PurrludeTests");
+    auto folder = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("PurrludePunch-" + juce::Uuid().toString());
+
+    auto& devices = engine->getDeviceManager();
+    auto& audioIO = devices.getHostedAudioDeviceInterface();
+    tracktion::HostedAudioDeviceInterface::Parameters params;
+    params.sampleRate = SimulatedDevice::sampleRate;
+    params.blockSize = SimulatedDevice::blockSize;
+    params.inputChannels = 1;
+    audioIO.initialise (params);
+    audioIO.prepareToPlay (params.sampleRate, params.blockSize);
+    devices.dispatchPendingUpdates();
+
+    for (auto* input : devices.getWaveInputDevices())
+    {
+        input->setEnabled (true);
+        input->setFilenameMask (folder.getChildFile ("%track% take %take%").getFullPathName());
+    }
+
+    {
+        auto edit = tracktion::Edit::createSingleTrackEdit (*engine);
+        edit->tempoSequence.getTempo (0)->setBpm (120.0);   // a bar is 2 s
+        edit->ensureNumberOfAudioTracks (2);
+        auto tracks = tracktion::getAudioTracks (*edit);
+        auto* audioTrack = tracks[0];
+        auto* midiTrack = tracks[1];
+        edit->setCountInMode (tracktion::Edit::CountIn::none);
+        edit->clickTrackEnabled = false;
+
+        // A clip over bars 1-4, with a note on every beat.
+        auto* existing = midiTrack->insertMIDIClip ({ tracktion::TimePosition(), tracktion::TimePosition::fromSeconds (8.0) }, nullptr).get();
+
+        for (int beat = 0; beat < 16; ++beat)
+            existing->getSequence().addNote (40, tracktion::BeatPosition::fromBeats (beat), tracktion::BeatDuration::fromBeats (0.5), 100, 0, nullptr);
+
+        auto& transport = edit->getTransport();
+        transport.ensureContextAllocated();
+        auto* context = transport.getCurrentPlaybackContext();
+        REQUIRE (context != nullptr);
+
+        for (auto* instance : context->getAllInputs())
+        {
+            auto* target = instance->owner.isMidi() ? midiTrack : audioTrack;
+            [[maybe_unused]] auto res = instance->setTarget (target->itemID, true, nullptr, 0);
+            instance->setRecordingEnabled (target->itemID, true);
+        }
+
+        // Punch bar 2 (2-4 s): recording plays bar 1 first.
+        purrlude::loop_range::set (*edit, { tracktion::BeatPosition::fromBeats (4.0), tracktion::BeatPosition::fromBeats (8.0) });
+        purrlude::loop_range::setPunchOn (*edit, true);
+        REQUIRE (purrlude::loop_range::isPunching (*edit));
+
+        takes::RecordingFinisher finisher (*edit);
+        takes::prepareMidiInputs (*edit);
+        pump (200);
+
+        SimulatedDevice device (audioIO);
+        transport.setPosition (purrlude::loop_range::getRecordStart (*edit));
+        CHECK (transport.getPosition() == tracktion::TimePosition());
+        transport.record (false, false);
+
+        // Past the punch-out, to where the transport bar would stop it.
+        auto stopAt = purrlude::loop_range::getPunchStopTime (*edit);
+        REQUIRE (stopAt.has_value());
+
+        for (int i = 0; i < 1000 && context->getPosition() < *stopAt; ++i)
+            pump (20);
+
+        REQUIRE (transport.isRecording());
+        transport.stop (false, false);
+        pump (500);
+
+        auto starts = [] (tracktion::AudioTrack& t)
+        {
+            std::vector<double> result;
+
+            for (auto* clip : t.getClips())
+                result.push_back (clip->getPosition().getStart().inSeconds());
+
+            return result;
+        };
+
+        SECTION ("Audio")
+        {
+            auto clips = audioTrack->getClips();
+            REQUIRE (clips.size() == 1);
+            auto range = clips.getFirst()->getPosition().time;
+            CHECK (std::abs (range.getStart().inSeconds() - 2.0) < 0.05);
+            CHECK (std::abs (range.getEnd().inSeconds() - 4.0) < 0.05);
+        }
+
+        SECTION ("MIDI")
+        {
+            // Bar 1, the punch, then bars 3-4 of the clip that was there.
+            auto clips = midiTrack->getClips();
+            INFO ("clip starts: " << Catch::Detail::stringify (starts (*midiTrack)));
+            REQUIRE (clips.size() == 3);
+
+            tracktion::MidiClip* punched = nullptr;
+
+            for (auto* clip : clips)
+                if (std::abs (clip->getPosition().getStart().inSeconds() - 2.0) < 0.05 && clip != existing)
+                    punched = dynamic_cast<tracktion::MidiClip*> (clip);
+
+            REQUIRE (punched != nullptr);
+            CHECK (std::abs (punched->getPosition().getEnd().inSeconds() - 4.0) < 0.05);
+
+            // Only what was played in it: the simulated keyboard's notes, not the old ones.
+            auto& notes = punched->getSequence().getNotes();
+            CHECK (notes.size() >= 3);
+
+            for (auto* note : notes)
+                CHECK (note->getNoteNumber() != 40);
+        }
+    }
+
+    folder.deleteRecursively();
+    devices.closeDevices();
+    devices.removeHostedAudioDeviceInterface();
+    devices.deviceManager.closeAudioDevice();
+}

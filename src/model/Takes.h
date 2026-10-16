@@ -36,8 +36,9 @@ namespace takes
     juce::StringArray getAudioSources (tracktion::Clip&);
     void setAudioSource (tracktion::Clip&, int index, const juce::String& source);
 
-    /** Sets up recording for the loop: MIDI passes become takes while looping, and merge into
-        what's there otherwise. Call before recording starts.
+    /** Sets up recording for the loop: MIDI passes become takes while looping, a punch
+        replaces what's in its range, and other recordings merge into what's there. Also
+        brings Tracktion's punch switch up to date. Call before recording starts.
     */
     void prepareMidiInputs (tracktion::Edit&);
 

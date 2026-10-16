@@ -8,7 +8,7 @@ Purrlude is a cross-platform digital audio workstation (DAW) for composing, reco
 >   - prebuilt releases (signed, notarised macOS app; Windows/Linux installers)
 >   - hosting the Demucs model
 >   - real use on Windows/Linux
->   - punch-in, tempo/time-signature changes within a song
+>   - tempo/time-signature changes within a song
 >   - a frozen project format
 > - **Public:** github.com/clintcan/Purrlude, AGPLv3.
 
@@ -240,7 +240,10 @@ The app talks to `purrlude::BluetoothMidiManager` (`src/devices/BluetoothMidiMan
 - **Saving:** `Project::gatherAudio` gathers take files with the clip's own file.
 - **UI:** clips with takes show "Take n/m"; the clip menu's Takes submenu chooses one (one undo step) or deletes the others (the files stay).
 - **Tests:** `[loop-takes]` (the hidden `[takes]` tag is the MusicXML check of a real project).
-- **UI:** the ruler's top strip (`ArrangementView::RulerOverlay`) shows the range as a band: drag to set it (bars, Shift for beats), drag the band or its ends, click it to toggle. The lanes are shaded while looping. A clip's menu has Loop This Clip.
+- **Punch in/out** (the Punch button or P; `loop_range::isPunchOn/setPunchOn`, `purrludePunch` on the transport state): the loop range is also the punch range, as in Tracktion. `isPunching` (punch on, looping off) is Tracktion's `recordingPunchInOut`, which `sync` keeps in step: Tracktion refuses to record with both on, and loop recording already records only inside the range, a take per pass.
+  - **Recording:** Record starts at `getRecordStart` (a bar before the punch-in, or the playhead if it's up to four bars before), and `TransportBar` stops it a bar after the punch-out (`getPunchStopTime`). Tracktion crops the recordings to the range. `takes::prepareMidiInputs` turns MIDI merging off while punching, so the punch replaces what was there.
+  - **Tests:** `[punch]` (the real recording uses the simulated device, like `[loop-takes]`).
+- **UI:** the ruler's top strip (`ArrangementView::RulerOverlay`) shows the range as a band: drag to set it (bars, Shift for beats), drag the band or its ends, click it to toggle. The band is orange while looping and vermillion while punching, and the lanes under it are shaded then. A clip's menu has Loop This Clip.
 
 **Drum loops:**
 - **Content:** `content/loops/groove.json` holds 37 4-bar loops in 14 styles from the Groove MIDI Dataset (CC BY 4.0). They're MIDI on the GM drum map, timed in quarter notes.

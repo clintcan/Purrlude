@@ -32,6 +32,13 @@ TransportBar::TransportBar (tracktion::Edit& e)
     loopButton.setColour (juce::TextButton::buttonOnColourId, loopColour);
     loopButton.onClick = [this] { toggleLoop(); };
 
+    punchButton.setClickingTogglesState (false);
+    punchButton.setTooltip ("Punch in/out (P): Record plays from a bar before the range on the ruler, records only "
+                            "inside it, replacing what was there, and stops a bar after it. With Loop on too, "
+                            "each pass round the range becomes a take.");
+    punchButton.setColour (juce::TextButton::buttonOnColourId, recordColour);
+    punchButton.onClick = [this] { togglePunch(); };
+
     automateButton.setClickingTogglesState (false);
     automateButton.setTooltip ("Record automation (A): while it's on, moving a control as the song plays "
                                "(a fader, a knob, a plugin's control, or a knob on your MIDI controller) records "
@@ -62,7 +69,7 @@ TransportBar::TransportBar (tracktion::Edit& e)
     positionLabel.setFont (juce::FontOptions (18.0f));
     positionLabel.setJustificationType (juce::Justification::centred);
 
-    for (auto* c : std::initializer_list<juce::Component*> { &startButton, &playButton, &recordButton, &loopButton, &automateButton,
+    for (auto* c : std::initializer_list<juce::Component*> { &startButton, &playButton, &recordButton, &loopButton, &punchButton, &automateButton,
                                                             &metronomeButton, &countInButton,
                                                             &tempoLabel, &tempoUnitLabel, &timeSignatureButton, &positionLabel })
         addAndMakeVisible (c);
@@ -130,10 +137,8 @@ void TransportBar::toggleRecord()
         // passes are counted from.
         takes::prepareMidiInputs (edit);
 
-        if (loop_range::isOn (edit))
-            if (auto loop = loop_range::get (edit))
-                transport.setPosition (edit.tempoSequence.toTime (loop->getStart()));
-
+        // Punching, it starts a little before the punch-in, to play along into it.
+        transport.setPosition (loop_range::getRecordStart (edit));
         transport.record (false);
     }
 
@@ -151,6 +156,15 @@ void TransportBar::toggleLoop()
         return;
 
     loop_range::setOn (edit, ! loop_range::isOn (edit));
+    updateButtons();
+}
+
+void TransportBar::togglePunch()
+{
+    if (edit.getTransport().isRecording())
+        return;
+
+    loop_range::setPunchOn (edit, ! loop_range::isPunchOn (edit));
     updateButtons();
 }
 
@@ -241,6 +255,8 @@ void TransportBar::updateButtons()
     playButton.setButtonText (transport.isPlaying() ? "Stop" : "Play");
     loopButton.setToggleState (loop_range::isOn (edit), juce::dontSendNotification);
     loopButton.setEnabled (! recording);
+    punchButton.setToggleState (loop_range::isPunchOn (edit), juce::dontSendNotification);
+    punchButton.setEnabled (! recording);
     automateButton.setToggleState (automation::isWriting (edit), juce::dontSendNotification);
     recordButton.setButtonText (recording ? "Stop Rec" : "Record");
     recordButton.setColour (juce::TextButton::buttonColourId,
@@ -267,6 +283,11 @@ void TransportBar::timerCallback()
 
     stopAtEndOfSong();
 
+    // A punch stops by itself a bar after the punch-out.
+    if (transport.isRecording())
+        if (auto stopAt = loop_range::getPunchStopTime (edit); stopAt && transport.getPosition() >= *stopAt)
+            transport.stop (false, false);
+
     auto time = transport.getPosition();
     auto barsBeats = edit.tempoSequence.toBarsAndBeats (time);
     auto seconds = juce::jmax (0.0, time.inSeconds());
@@ -287,8 +308,9 @@ void TransportBar::resized()
     playButton.setBounds (r.removeFromLeft (64));       gap();
     recordButton.setBounds (r.removeFromLeft (82));     gap();
     loopButton.setBounds (r.removeFromLeft (52));       gap();
+    punchButton.setBounds (r.removeFromLeft (58));      gap();
     automateButton.setBounds (r.removeFromLeft (82));   gap();
-    positionLabel.setBounds (r.removeFromLeft (110));   gap();
+    positionLabel.setBounds (r.removeFromLeft (100));   gap();
     tempoLabel.setBounds (r.removeFromLeft (60));
     tempoUnitLabel.setBounds (r.removeFromLeft (36));   gap();
     timeSignatureButton.setBounds (r.removeFromLeft (52)); gap();

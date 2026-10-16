@@ -11,7 +11,9 @@ namespace purrlude
     Playback stops a moment after the last clip ends (recording doesn't), and Play from
     the end of the song starts it again from the beginning. While looping, playback
     repeats the loop range until stopped, and Play from outside it starts at its start;
-    recording starts at its start, and each pass becomes a take. With Automate on, controls
+    recording starts at its start, and each pass becomes a take. With Punch on (and Loop off),
+    recording plays a bar before the range, records only inside it, and stops a bar after it.
+    With Automate on, controls
     moved while the song plays are recorded into their automation.
 */
 class TransportBar final : public juce::Component,
@@ -25,6 +27,7 @@ public:
     void toggleRecord();
     void returnToStart();
     void toggleLoop();
+    void togglePunch();
     void toggleAutomationRecording();
 
     void resized() override;
@@ -42,7 +45,7 @@ private:
     tracktion::Edit& edit;
 
     juce::TextButton startButton { "|<" }, playButton { "Play" }, recordButton { "Record" }, loopButton { "Loop" },
-                     automateButton { "Automate" };
+                     punchButton { "Punch" }, automateButton { "Automate" };
     juce::ToggleButton metronomeButton { "Metronome" }, countInButton { "Count-in" };
     juce::Label tempoLabel, tempoUnitLabel { {}, "BPM" }, positionLabel;
     juce::TextButton timeSignatureButton;

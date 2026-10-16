@@ -6,6 +6,7 @@ namespace purrlude::loop_range
 namespace
 {
     const juce::Identifier startProperty ("purrludeLoopStart"), endProperty ("purrludeLoopEnd");   // quarter notes
+    const juce::Identifier punchProperty ("purrludePunch");
 
     juce::ValueTree getState (tracktion::Edit& edit)
     {
@@ -22,6 +23,24 @@ namespace
     tracktion::TimeRange toTimes (tracktion::Edit& edit, tracktion::BeatRange beats)
     {
         return { edit.tempoSequence.toTime (beats.getStart()), edit.tempoSequence.toTime (beats.getEnd()) };
+    }
+
+    double getBeatsPerBar (tracktion::Edit& edit)
+    {
+        return (double) edit.tempoSequence.getTimeSig (0)->numerator.get();
+    }
+
+    /** Four bars from the playhead's bar, if no range is set yet. */
+    void ensureRange (tracktion::Edit& edit)
+    {
+        if (get (edit))
+            return;
+
+        auto beatsPerBar = getBeatsPerBar (edit);
+        auto playhead = edit.tempoSequence.toBeats (edit.getTransport().getPosition()).inBeats();
+        auto bar = std::floor (juce::jmax (0.0, playhead) / beatsPerBar + 1.0e-6);
+        set (edit, { tracktion::BeatPosition::fromBeats (bar * beatsPerBar),
+                     tracktion::BeatPosition::fromBeats ((bar + 4.0) * beatsPerBar) });
     }
 }
 
@@ -49,7 +68,9 @@ void set (tracktion::Edit& edit, tracktion::BeatRange beats)
     {
         state.removeProperty (startProperty, nullptr);
         state.removeProperty (endProperty, nullptr);
+        state.removeProperty (punchProperty, nullptr);
         edit.getTransport().looping = false;
+        sync (edit);
         return;
     }
 
@@ -68,21 +89,21 @@ void setOn (tracktion::Edit& edit, bool on)
 {
     auto& transport = edit.getTransport();
 
-    if (on && ! get (edit))
-    {
-        auto beatsPerBar = (double) edit.tempoSequence.getTimeSig (0)->numerator.get();
-        auto playhead = edit.tempoSequence.toBeats (transport.getPosition()).inBeats();
-        auto bar = std::floor (juce::jmax (0.0, playhead) / beatsPerBar + 1.0e-6);
-        set (edit, { tracktion::BeatPosition::fromBeats (bar * beatsPerBar),
-                     tracktion::BeatPosition::fromBeats ((bar + 4.0) * beatsPerBar) });
-    }
+    if (on)
+        ensureRange (edit);
 
-    sync (edit);
     transport.looping = on;
+    sync (edit);
 }
 
 void sync (tracktion::Edit& edit)
 {
+    // Tracktion won't record with both on; looping then does the punching.
+    auto punching = isPunching (edit);
+
+    if (edit.recordingPunchInOut.get() != punching && ! edit.getTransport().isRecording())
+        edit.recordingPunchInOut = punching;
+
     auto beats = get (edit);
 
     if (! beats)
@@ -113,6 +134,61 @@ tracktion::TimePosition getPlayStart (tracktion::Edit& edit)
         return times.getStart();
 
     return position;
+}
+
+//==============================================================================
+bool isPunchOn (tracktion::Edit& edit)
+{
+    return (bool) getState (edit).getProperty (punchProperty, false) && get (edit).has_value();
+}
+
+void setPunchOn (tracktion::Edit& edit, bool on)
+{
+    if (on)
+        ensureRange (edit);
+
+    getState (edit).setProperty (punchProperty, on, nullptr);
+    sync (edit);
+}
+
+bool isPunching (tracktion::Edit& edit)
+{
+    return isPunchOn (edit) && ! isOn (edit);
+}
+
+tracktion::TimePosition getRecordStart (tracktion::Edit& edit)
+{
+    auto position = edit.getTransport().getPosition();
+    auto beats = get (edit);
+
+    if (! beats)
+        return position;
+
+    if (isOn (edit))
+        return edit.tempoSequence.toTime (beats->getStart());
+
+    if (! isPunching (edit))
+        return position;
+
+    // Into the punch-in from the playhead, if it's a few bars before it.
+    auto punchIn = beats->getStart().inBeats();
+    auto playhead = edit.tempoSequence.toBeats (position).inBeats();
+    auto beatsPerBar = getBeatsPerBar (edit);
+
+    if (playhead < punchIn - 1.0e-6 && playhead >= punchIn - 4.0 * beatsPerBar)
+        return position;
+
+    return edit.tempoSequence.toTime (tracktion::BeatPosition::fromBeats (juce::jmax (0.0, punchIn - preRollBars * beatsPerBar)));
+}
+
+std::optional<tracktion::TimePosition> getPunchStopTime (tracktion::Edit& edit)
+{
+    auto beats = get (edit);
+
+    if (! beats || ! isPunching (edit))
+        return std::nullopt;
+
+    return edit.tempoSequence.toTime (beats->getEnd() + tracktion::BeatDuration::fromBeats (getBeatsPerBar (edit)));
 }
 
 } // namespace purrlude::loop_range

@@ -134,8 +134,9 @@ public:
         if (pos.x < headerWidth)
             return {};
 
-        return pos.y < loopStripHeight ? "Loop: drag here to set the loop range (Shift snaps to beats). Drag the band "
-                                         "or its ends to change it; click it to turn looping on or off (L)."
+        return pos.y < loopStripHeight ? "Loop and punch range: drag here to set it (Shift snaps to beats). Drag the band "
+                                         "or its ends to change it; click it to turn looping on or off (L). Orange: "
+                                         "looping; vermillion: punch recording (P)."
                                        : "Click to move the playhead";
     }
 
@@ -163,10 +164,12 @@ public:
         {
             auto x1 = owner.beatToX (loop->getStart().inBeats()), x2 = owner.beatToX (loop->getEnd().inBeats());
             auto band = juce::Rectangle<float> (x1, 1.0f, x2 - x1, (float) loopStripHeight - 2.0f);
-            auto on = loop_range::isOn (owner.edit);
-            g.setColour (on ? loopColour : juce::Colours::grey.withAlpha (0.6f));
+            // Orange when looping, vermillion when punching, grey when neither.
+            auto on = loop_range::isOn (owner.edit) || loop_range::isPunching (owner.edit);
+            auto colour = loop_range::isOn (owner.edit) ? loopColour : recordColour;
+            g.setColour (on ? colour : juce::Colours::grey.withAlpha (0.6f));
             g.fillRoundedRectangle (band, 3.0f);
-            g.setColour (on ? loopColour.brighter (0.5f) : juce::Colours::lightgrey);
+            g.setColour (on ? colour.brighter (0.5f) : juce::Colours::lightgrey);
             g.fillRect (band.withWidth (3.0f));
             g.fillRect (band.withLeft (band.getRight() - 3.0f));
         }
@@ -634,15 +637,15 @@ void ArrangementView::paint (juce::Graphics& g)
         g.drawVerticalLine ((int) beatToX (beat), (float) rulerHeight, (float) lanesBottom);
     }
 
-    // While looping, the loop range is shaded across the lanes.
-    if (auto loop = loop_range::get (edit); loop && loop_range::isOn (edit))
+    // While looping or punching, the range is shaded across the lanes.
+    if (auto loop = loop_range::get (edit); loop && (loop_range::isOn (edit) || loop_range::isPunching (edit)))
     {
         auto x1 = juce::jmax ((float) headerWidth, beatToX (loop->getStart().inBeats()));
         auto x2 = beatToX (loop->getEnd().inBeats());
 
         if (x2 > x1)
         {
-            g.setColour (loopColour.withAlpha (0.07f));
+            g.setColour ((loop_range::isOn (edit) ? loopColour : recordColour).withAlpha (0.07f));
             g.fillRect (juce::Rectangle<float> (x1, (float) rulerHeight, x2 - x1, (float) (lanesBottom - rulerHeight)));
         }
     }

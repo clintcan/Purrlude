@@ -22,7 +22,7 @@ The window has four areas:
 
 - **The toolbar** at the top. On the left are the [transport controls](03-transport.md): return to start, Play, Record, Loop, the position, tempo and time signature, and the Metronome and Count-in switches. On the right are five buttons:
   - **Editors** shows or hides the Score and Piano Roll below the arrangement.
-  - **Audio Settings** chooses your audio interface ([Devices](13-devices.md)).
+  - **Audio** chooses your audio interface ([Devices](13-devices.md)).
   - **Plugins** finds the third-party instruments and effects on your computer ([Plugins](10-effects.md#plugins)).
   - **Loops** opens the [Loops & Accompaniment](09-loops-and-accompaniment.md) panel.
   - **MIDI Devices** opens the [MIDI and Bluetooth devices](13-devices.md) panel.

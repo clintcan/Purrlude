@@ -2,7 +2,7 @@
 
 [← Projects](02-projects.md) · [Contents](README.md) · [Next: Tracks and Mixing →](04-tracks.md)
 
-<img src="images/transport-bar.png" alt="The transport bar: |&lt;, Play, Record, Loop, Automate, the position, the tempo, 4/4, Metronome and Count-in, then Editors, Audio Settings, Plugins, MIDI Learn, Loops and MIDI Devices" width="100%">
+<img src="images/transport-bar.png" alt="The transport bar: |&lt;, Play, Record, Loop, Punch, Automate, the position, the tempo, 4/4, Metronome and Count-in, then Editors, Audio, Plugins, MIDI Learn, Loops and MIDI Devices" width="100%">
 
 ## Playing
 
@@ -12,6 +12,7 @@
 | **Play** / **Stop** | Space | Starts and stops playback |
 | **Record** / **Stop Rec** | R | Records onto the armed tracks; see [Recording](06-recording.md) |
 | **Loop** | L | Repeats the loop range; see below |
+| **Punch** | P | Records only inside the loop range; see [Punch in/out](06-recording.md#punch-inout) |
 | **Automate** | A | Records the controls you move while the song plays; see [Recording automation](04-tracks.md#recording-automation) |
 
 **Where playback starts:**
@@ -55,7 +56,7 @@ Click the time signature (it says **4/4**) and choose another, or **Other...** f
 
 <img src="images/ruler.png" alt="The ruler with an orange loop band over bars 1 to 4" width="100%">
 
-The thin strip along the top of the ruler holds the **loop range**, shown as a band. While looping is on, the band is orange and the lanes under it are shaded. While it's off, the band is grey.
+The thin strip along the top of the ruler holds the **loop range**, shown as a band. While looping is on, the band is orange and the lanes under it are shaded. When **Punch** is on (and Loop is off), the same range is the punch range, and the band is vermillion. Otherwise the band is grey.
 
 **Setting the loop:**
 - Turn looping on and off with the **Loop** button or **L**.
