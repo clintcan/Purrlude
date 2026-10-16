@@ -21,7 +21,7 @@ struct BuildOptions
 };
 
 /** Builds a one-part score from performed notes. */
-Score buildScore (const std::vector<NoteEvent>&, TimeSignature, const BuildOptions& = {},
+Score buildScore (const std::vector<NoteEvent>&, const MeasureMap&, const BuildOptions& = {},
                   const std::string& title = {}, const std::string& partName = "Instrument",
                   double tempoBpm = 120.0);
 
@@ -44,7 +44,7 @@ struct PartNotes
     Transposing parts are written at their written pitch, in their written key, unless
     options.concertPitch is set.
 */
-Score buildMultiPartScore (const std::vector<PartNotes>&, TimeSignature, const BuildOptions& = {},
+Score buildMultiPartScore (const std::vector<PartNotes>&, const MeasureMap&, const BuildOptions& = {},
                            const std::string& title = {}, double tempoBpm = 120.0);
 
 /** One part, in a given key, at least minMeasures long.
@@ -53,7 +53,7 @@ Score buildMultiPartScore (const std::vector<PartNotes>&, TimeSignature, const B
     clef, each instrument on its own line or space (see drumPitch), and each hit lasting
     until the next one in its measure, without ties.
 */
-Part buildPart (const std::vector<NoteEvent>&, TimeSignature, KeySignature, const BuildOptions&,
+Part buildPart (const std::vector<NoteEvent>&, const MeasureMap&, KeySignature, const BuildOptions&,
                 const std::string& partName, int minMeasures, bool percussion = false);
 
 //==============================================================================

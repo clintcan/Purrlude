@@ -1,5 +1,7 @@
 #include "LoopRange.h"
 
+#include "TimeSignature.h"
+
 namespace purrlude::loop_range
 {
 
@@ -25,22 +27,17 @@ namespace
         return { edit.tempoSequence.toTime (beats.getStart()), edit.tempoSequence.toTime (beats.getEnd()) };
     }
 
-    double getBeatsPerBar (tracktion::Edit& edit)
-    {
-        return (double) edit.tempoSequence.getTimeSig (0)->numerator.get();
-    }
-
     /** Four bars from the playhead's bar, if no range is set yet. */
     void ensureRange (tracktion::Edit& edit)
     {
         if (get (edit))
             return;
 
-        auto beatsPerBar = getBeatsPerBar (edit);
+        bars::Map barMap (edit);
         auto playhead = edit.tempoSequence.toBeats (edit.getTransport().getPosition()).inBeats();
-        auto bar = std::floor (juce::jmax (0.0, playhead) / beatsPerBar + 1.0e-6);
-        set (edit, { tracktion::BeatPosition::fromBeats (bar * beatsPerBar),
-                     tracktion::BeatPosition::fromBeats ((bar + 4.0) * beatsPerBar) });
+        auto bar = barMap.getBarAt (playhead);
+        set (edit, { tracktion::BeatPosition::fromBeats (barMap.getBarStart (bar)),
+                     tracktion::BeatPosition::fromBeats (barMap.getBarStart (bar + 4)) });
     }
 }
 
@@ -171,14 +168,17 @@ tracktion::TimePosition getRecordStart (tracktion::Edit& edit)
         return position;
 
     // Into the punch-in from the playhead, if it's a few bars before it.
+    bars::Map barMap (edit);
     auto punchIn = beats->getStart().inBeats();
+    auto punchInBar = barMap.getBarAt (punchIn);
     auto playhead = edit.tempoSequence.toBeats (position).inBeats();
-    auto beatsPerBar = getBeatsPerBar (edit);
 
-    if (playhead < punchIn - 1.0e-6 && playhead >= punchIn - 4.0 * beatsPerBar)
+    if (playhead < punchIn - 1.0e-6 && playhead >= barMap.getBarStart (punchInBar - 4) - 1.0e-6)
         return position;
 
-    return edit.tempoSequence.toTime (tracktion::BeatPosition::fromBeats (juce::jmax (0.0, punchIn - preRollBars * beatsPerBar)));
+    // A bar before it (or the start of the song).
+    auto lead = punchInBar - (int) preRollBars;
+    return edit.tempoSequence.toTime (tracktion::BeatPosition::fromBeats (lead < 0 ? 0.0 : barMap.getBarStart (lead)));
 }
 
 std::optional<tracktion::TimePosition> getPunchStopTime (tracktion::Edit& edit)
@@ -188,7 +188,10 @@ std::optional<tracktion::TimePosition> getPunchStopTime (tracktion::Edit& edit)
     if (! beats || ! isPunching (edit))
         return std::nullopt;
 
-    return edit.tempoSequence.toTime (beats->getEnd() + tracktion::BeatDuration::fromBeats (getBeatsPerBar (edit)));
+    // The end of the bar after the punch-out's.
+    bars::Map barMap (edit);
+    auto end = beats->getEnd().inBeats();
+    return edit.tempoSequence.toTime (tracktion::BeatPosition::fromBeats (barMap.getBarStart (barMap.getBarAt (end - 1.0e-3) + 2)));
 }
 
 } // namespace purrlude::loop_range

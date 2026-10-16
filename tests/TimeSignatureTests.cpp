@@ -148,3 +148,92 @@ TEST_CASE ("Loops keep looping the same music in a new meter", "[model][meter]")
     for (size_t i = 0; i < notesAfter.size(); ++i)
         REQUIRE_THAT (notesAfter[i].start, WithinAbs (notesBefore[i].start, 0.001));
 }
+
+TEST_CASE ("Time signature changes: bars, undo, and the music staying put", "[time-signature][meter]")
+{
+    Song song;
+    auto& edit = *song.edit;
+    namespace bars = purrlude::bars;
+    namespace meter = purrlude::meter;
+    auto* clip = song.addClip();
+    auto before = song.heard();
+    auto& um = edit.getUndoManager();
+    pump();
+    um.clearUndoHistory();
+
+    // 4/4 throughout: bar 5 (index 4) starts on beat 16.
+    CHECK (bars::getBarStart (edit, 4) == 16.0);
+    CHECK (bars::getBarAt (edit, 17.0) == 4);
+
+    // One bar of 3/4 at bar 5, then 4/4 again from bar 6.
+    CHECK (meter::add (edit, 4, 3) == 1);
+    CHECK (meter::add (edit, 5, 4) == 2);
+
+    auto changes = meter::getChanges (edit);
+    REQUIRE (changes.size() == 3);
+    CHECK (changes[1].beat == 16.0);
+    CHECK (changes[1].bar == 4);
+    CHECK (changes[1].numerator == 3);
+    CHECK (changes[1].denominator == 4);
+    CHECK (changes[2].beat == 19.0);
+    CHECK (changes[2].bar == 5);
+
+    CHECK (bars::getBarLength (edit, 4) == 3.0);
+    CHECK (bars::getBarStart (edit, 5) == 19.0);
+    CHECK (bars::getBarStart (edit, 6) == 23.0);
+    CHECK (bars::getBarAt (edit, 18.9) == 4);
+    CHECK (bars::getBarAt (edit, 19.0) == 5);
+    CHECK (bars::getBeatsPerBarAt (edit, 17.0) == 3);
+    CHECK (bars::snapToBar (edit, 18.0) == 19.0);
+
+    // Tracktion's own bar arithmetic agrees.
+    auto& tempo = edit.tempoSequence;
+
+    for (int bar = 0; bar < 10; ++bar)
+        CHECK_THAT (tempo.toBeats (tracktion::tempo::BarsAndBeats { bar, {} }).inBeats(), WithinAbs (bars::getBarStart (edit, bar), 1.0e-6));
+
+    // The music didn't move.
+    CHECK (song.heard() == before);
+    CHECK_THAT (clip->getPosition().getStart().inSeconds(), WithinAbs (2.0, 1.0e-6));
+
+    // Changing and removing, each one undo step.
+    meter::setNumerator (edit, 1, 2);
+    CHECK (bars::getBarStart (edit, 5) == 18.0);
+    // Removing the odd bar takes the "back to 4/4" after it too: it would say the same.
+    meter::remove (edit, 1);
+    CHECK (meter::getChanges (edit).size() == 1);
+    CHECK (bars::getBarStart (edit, 5) == 20.0);
+
+    REQUIRE (um.undo());
+    CHECK (meter::getChanges (edit).size() == 3);
+    REQUIRE (um.undo());
+    CHECK (meter::getChanges (edit)[1].numerator == 3);
+
+    // The first can't be removed, and the beat unit can't change while there are changes.
+    meter::remove (edit, 0);
+    CHECK (meter::getChanges (edit).size() == 3);
+    CHECK_FALSE (purrlude::changeTimeSignature (edit, 6, 8));
+    CHECK (purrlude::changeTimeSignature (edit, 3, 4));
+    CHECK (meter::getChanges (edit)[0].numerator == 3);
+    CHECK (song.heard() == before);
+}
+
+TEST_CASE ("A time signature change part way through a bar takes effect at the next bar", "[time-signature][meter]")
+{
+    Song song;
+    auto& edit = *song.edit;
+    namespace bars = purrlude::bars;
+
+    // As a MIDI file can have: 3/4 from beat 6, half way through bar 2.
+    edit.tempoSequence.insertTimeSig (tracktion::BeatPosition::fromBeats (6.0))->numerator = 3;
+
+    CHECK (bars::getBarLength (edit, 1) == 4.0);
+    CHECK (bars::getBarStart (edit, 2) == 8.0);
+    CHECK (bars::getBarStart (edit, 3) == 11.0);
+    CHECK (bars::getBarAt (edit, 7.0) == 1);
+    CHECK (purrlude::meter::getChanges (edit)[1].beat == 8.0);
+    CHECK (purrlude::meter::getChanges (edit)[1].bar == 2);
+
+    for (int bar = 0; bar < 6; ++bar)
+        CHECK_THAT (edit.tempoSequence.toBeats (tracktion::tempo::BarsAndBeats { bar, {} }).inBeats(), WithinAbs (bars::getBarStart (edit, bar), 1.0e-6));
+}

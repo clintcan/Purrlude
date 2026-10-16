@@ -3,6 +3,7 @@
 #include "model/TrackInstrument.h"
 #include "model/SharedReverb.h"
 #include "model/TempoChanges.h"
+#include "model/TimeSignature.h"
 
 namespace purrlude::notation
 {
@@ -46,6 +47,18 @@ TimeSignature getTimeSignature (tracktion::Edit& edit)
 {
     auto* sig = edit.tempoSequence.getTimeSig (0);
     return sig != nullptr ? TimeSignature { sig->numerator.get(), sig->denominator.get() } : TimeSignature {};
+}
+
+MeasureMap getMeasureMap (tracktion::Edit& edit)
+{
+    std::vector<MeterChange> changes;
+    auto all = meter::getChanges (edit);
+
+    // The song's bars are the score's measures.
+    for (size_t i = 1; i < all.size(); ++i)
+        changes.push_back ({ all[i].bar, { all[i].numerator, all[i].denominator } });
+
+    return { getTimeSignature (edit), std::move (changes) };
 }
 
 std::vector<NoteEvent> getClipNotes (tracktion::MidiClip& clip)
@@ -141,7 +154,7 @@ EditScoreInput getEditScoreInput (tracktion::Edit& edit, const BuildOptions& opt
     if (! withKey.key)
         withKey.key = getKeySignature (edit);
 
-    return { std::move (parts), getTimeSignature (edit), withKey, bpm, getTempoChanges (edit) };
+    return { std::move (parts), getTimeSignature (edit), getMeasureMap (edit).getChanges(), withKey, bpm, getTempoChanges (edit) };
 }
 
 std::vector<TempoChange> getTempoChanges (tracktion::Edit& edit)
@@ -158,7 +171,7 @@ std::vector<TempoChange> getTempoChanges (tracktion::Edit& edit)
 
 Score buildEditScore (const EditScoreInput& input, const std::string& title)
 {
-    auto score = buildMultiPartScore (input.parts, input.timeSignature, input.options, title, input.bpm);
+    auto score = buildMultiPartScore (input.parts, MeasureMap (input.timeSignature, input.meterChanges), input.options, title, input.bpm);
     score.tempoChanges = input.tempoChanges;
     return score;
 }
@@ -180,7 +193,7 @@ Score buildTrackScore (tracktion::AudioTrack& track, const std::string& title, c
 
     auto score = buildMultiPartScore ({ { track.getName().toStdString(), getTrackNotes (track), TrackInstrument (edit, track).playsDrumKit(),
                                           getTransposition (track) } },
-                                      getTimeSignature (edit), withKey, title, bpm);
+                                      getMeasureMap (edit), withKey, title, bpm);
     score.tempoChanges = getTempoChanges (edit);
     return score;
 }

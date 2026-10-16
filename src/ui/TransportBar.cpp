@@ -64,7 +64,8 @@ TransportBar::TransportBar (tracktion::Edit& e)
     tempoLabel.setColour (juce::Label::outlineColourId, juce::Colours::grey);
     tempoLabel.onTextChange = [this] { setTempo (tempoLabel.getText().getDoubleValue()); };
 
-    timeSignatureButton.setTooltip ("Time signature: click to change it. The music stays where it is; only the bars change.");
+    timeSignatureButton.setTooltip ("Time signature at the playhead: click to change it. The music stays where it is; only the "
+                                    "bars change. Right-click the ruler to change it from a bar on.");
     timeSignatureButton.setWantsKeyboardFocus (false);
     timeSignatureButton.onClick = [this] { showTimeSignatureMenu(); };
 
@@ -195,14 +196,18 @@ void TransportBar::showTimeSignatureMenu()
     static const std::array<std::pair<int, int>, 8> common
     {{ { 2, 4 }, { 3, 4 }, { 4, 4 }, { 5, 4 }, { 6, 8 }, { 7, 8 }, { 9, 8 }, { 12, 8 } }};
 
-    auto* sig = edit.tempoSequence.getTimeSig (0);
+    // The signature in effect at the playhead. With changes in the song, its beat unit stays.
+    auto changes = meter::getChanges (edit);
+    auto& current = changes[(size_t) meter::getChangeAt (edit, getPlayheadBeat())];
+    auto hasChanges = changes.size() > 1;
     juce::PopupMenu menu;
 
     for (size_t i = 0; i < common.size(); ++i)
     {
         auto [numerator, denominator] = common[i];
-        menu.addItem ((int) i + 1, juce::String (numerator) + "/" + juce::String (denominator), true,
-                      sig->numerator.get() == numerator && sig->denominator.get() == denominator);
+        menu.addItem ((int) i + 1, juce::String (numerator) + "/" + juce::String (denominator),
+                      ! hasChanges || denominator == current.denominator,
+                      current.numerator == numerator && current.denominator == denominator);
     }
 
     menu.addSeparator();
@@ -217,15 +222,24 @@ void TransportBar::showTimeSignatureMenu()
         if (result == 100)
             safe->askForTimeSignature();
         else
-            changeTimeSignature (safe->edit, common[(size_t) result - 1].first, common[(size_t) result - 1].second);
+            safe->setTimeSignature (common[(size_t) result - 1].first, common[(size_t) result - 1].second);
 
         safe->updateButtons();
     });
 }
 
+void TransportBar::setTimeSignature (int numerator, int denominator)
+{
+    // The whole song's, or, with changes in it, the one the playhead is in.
+    if (edit.tempoSequence.getNumTimeSigs() > 1)
+        meter::setNumerator (edit, meter::getChangeAt (edit, getPlayheadBeat()), numerator);
+    else
+        changeTimeSignature (edit, numerator, denominator);
+}
+
 void TransportBar::askForTimeSignature()
 {
-    auto* sig = edit.tempoSequence.getTimeSig (0);
+    auto* sig = edit.tempoSequence.getTimeSig (meter::getChangeAt (edit, getPlayheadBeat()));
 
     timeSignatureWindow = std::make_unique<juce::AlertWindow> ("Time signature", "How many beats in a bar, and which note gets the beat?",
                                                                juce::MessageBoxIconType::NoIcon);
@@ -234,6 +248,7 @@ void TransportBar::askForTimeSignature()
 
     auto* unit = timeSignatureWindow->getComboBoxComponent ("unit");
     unit->setSelectedItemIndex (juce::jmax (0, juce::StringArray { "2", "4", "8", "16" }.indexOf (juce::String (sig->denominator.get()))));
+    unit->setEnabled (edit.tempoSequence.getNumTimeSigs() == 1);   // every signature in a song shares its beat unit
 
     timeSignatureWindow->addButton ("OK", 1, juce::KeyPress (juce::KeyPress::returnKey));
     timeSignatureWindow->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
@@ -250,7 +265,7 @@ void TransportBar::askForTimeSignature()
         {
             auto beats = window->getTextEditorContents ("beats").getIntValue();
             auto unitText = window->getComboBoxComponent ("unit")->getText();
-            changeTimeSignature (safe->edit, juce::jlimit (1, 32, beats), unitText.getIntValue());
+            safe->setTimeSignature (juce::jlimit (1, 32, beats), unitText.getIntValue());
         }
 
         safe->updateButtons();
@@ -275,8 +290,8 @@ void TransportBar::updateButtons()
     if (! tempoLabel.isBeingEdited())
         tempoLabel.setText (juce::String (tempo::getBpmAt (edit, getPlayheadBeat()), 1), juce::dontSendNotification);
 
-    // Changed here, by undo, or by an imported file.
-    if (auto* sig = edit.tempoSequence.getTimeSig (0))
+    // At the playhead; changed here, on the ruler, by undo, or by an imported file.
+    if (auto* sig = edit.tempoSequence.getTimeSig (meter::getChangeAt (edit, getPlayheadBeat())))
         timeSignatureButton.setButtonText (juce::String (sig->numerator.get()) + "/" + juce::String (sig->denominator.get()));
 
     // No changing the meter in the middle of a take.

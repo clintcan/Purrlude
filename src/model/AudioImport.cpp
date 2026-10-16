@@ -1,4 +1,5 @@
 #include "AudioImport.h"
+#include "TimeSignature.h"
 
 #include "ClipOrder.h"
 
@@ -49,8 +50,7 @@ Result importFile (tracktion::Edit& edit, LiveInstrument& live, const juce::File
     auto name = file.getFileNameWithoutExtension();
     track->setName (name);
 
-    auto beatsPerBar = (double) edit.tempoSequence.getTimeSig (0)->numerator.get();
-    auto start = edit.tempoSequence.toTime (tracktion::BeatPosition::fromBeats (juce::jmax (0, startBar) * beatsPerBar));
+    auto start = edit.tempoSequence.toTime (tracktion::BeatPosition::fromBeats (bars::getBarStart (edit, startBar)));
     auto range = tracktion::TimeRange (start, tracktion::TimeDuration::fromSeconds (audio.getLength()));
 
     auto clip = track->insertWaveClip (name, file, { range }, false);

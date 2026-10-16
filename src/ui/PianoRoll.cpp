@@ -1,5 +1,7 @@
 #include "PianoRoll.h"
 
+#include "model/TimeSignature.h"
+
 #include "model/NoteEditing.h"
 #include "model/SharedReverb.h"
 
@@ -107,7 +109,7 @@ public:
 
         auto& theEdit = owner.edit;
         auto contentStart = clip->getStartBeat().inBeats() - clip->getOffsetInBeats().inBeats();   // edit beat of content beat 0
-        auto beatsPerBar = theEdit.tempoSequence.getTimeSig (0)->numerator.get();
+        bars::Map barMap (theEdit);
         auto totalBeats = xToBeat ((float) getWidth());
         auto gridStep = owner.getGrid();
 
@@ -120,7 +122,7 @@ public:
                 continue;
 
             auto isBeat = std::abs (editBeat - std::round (editBeat)) < 1e-6;
-            auto isBar = isBeat && ((int) std::round (editBeat)) % beatsPerBar == 0;
+            auto isBar = isBeat && barMap.isBarStart (std::round (editBeat));
             g.setColour (juce::Colours::white.withAlpha (isBar ? 0.3f : isBeat ? 0.12f : 0.05f));
             g.drawVerticalLine ((int) x, 0.0f, (float) getHeight());
         }

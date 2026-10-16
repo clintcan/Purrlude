@@ -77,6 +77,6 @@ All of these are in the **File** menu. After an export, Purrlude shows the file 
 
 These aren't handled yet:
 - more than two voices on one staff
-- time signature changes within a song (tempo changes are written as tempo marks; gradual ones as *accel.* or *rit.*)
+- time signature changes that change the beat unit (other time signature changes are written, and tempo changes are written as tempo marks; gradual ones as *accel.* or *rit.*)
 - tuplets other than triplets within a beat
 - the metronome mark in the on-screen score

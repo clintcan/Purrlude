@@ -1,4 +1,5 @@
 #include "LoopLibrary.h"
+#include "TimeSignature.h"
 
 #include "ClipOrder.h"
 
@@ -153,9 +154,9 @@ tracktion::MidiClip* LoopLibrary::insertLoop (tracktion::Edit& edit, LiveInstrum
 
     // Loops are in quarter notes; Tracktion beats are time-signature beats.
     auto quartersToBeats = edit.tempoSequence.getTimeSig (0)->denominator.get() / 4.0;
-    auto beatsPerBar = (double) edit.tempoSequence.getTimeSig (0)->numerator.get();
-    auto startBeat = startBar * beatsPerBar;
-    auto lengthBeats = juce::jmax (1, bars) * beatsPerBar;
+    purrlude::bars::Map barMap (edit);
+    auto startBeat = barMap.getBarStart (startBar);
+    auto lengthBeats = barMap.getBarStart (startBar + juce::jmax (1, bars)) - startBeat;
     auto loopBeats = loop.lengthBeats * quartersToBeats;
 
     auto& tempo = edit.tempoSequence;

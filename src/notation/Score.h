@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cmath>
 
 #include <string>
@@ -50,6 +51,87 @@ struct TimeSignature
 
     int getMeasureTicks() const    { return numerator * ticksPerQuarter * 4 / denominator; }
     bool operator== (const TimeSignature&) const = default;
+};
+
+/** A time signature change: from a measure (0-based) on. */
+struct MeterChange
+{
+    int measure = 0;
+    TimeSignature time;
+
+    bool operator== (const MeterChange&) const = default;
+};
+
+/** Where each measure starts and how long it is, with time signature changes. Made from a
+    plain TimeSignature, every measure has it.
+*/
+class MeasureMap
+{
+public:
+    MeasureMap (TimeSignature first = {}, std::vector<MeterChange> laterChanges = {})
+        : changes (std::move (laterChanges))
+    {
+        changes.erase (std::remove_if (changes.begin(), changes.end(), [] (const MeterChange& c) { return c.measure <= 0; }),
+                       changes.end());
+        std::sort (changes.begin(), changes.end(), [] (const MeterChange& a, const MeterChange& b) { return a.measure < b.measure; });
+        changes.insert (changes.begin(), { 0, first });
+    }
+
+    TimeSignature getTime (int measure) const   { return changeAt (measure).time; }
+    int getLength (int measure) const           { return getTime (measure).getMeasureTicks(); }
+
+    int getStart (int measure) const
+    {
+        auto& change = changeAt (measure);
+        return startOf (change) + (std::max (0, measure) - change.measure) * change.time.getMeasureTicks();
+    }
+
+    int getMeasureAt (int tick) const
+    {
+        auto* found = &changes.front();
+
+        for (auto& change : changes)
+            if (startOf (change) <= tick)
+                found = &change;
+
+        return found->measure + (std::max (0, tick) - startOf (*found)) / found->time.getMeasureTicks();
+    }
+
+    /** How many measures it takes to hold music ending at a tick. */
+    int countToCover (int endTick) const        { return endTick <= 0 ? 0 : getMeasureAt (endTick - 1) + 1; }
+
+    /** True if the signature changes at this measure (not the first). */
+    bool startsChange (int measure) const
+    {
+        return measure > 0 && std::any_of (changes.begin() + 1, changes.end(), [measure] (auto& c) { return c.measure == measure; });
+    }
+
+    /** The changes after the first signature. */
+    std::vector<MeterChange> getChanges() const { return { changes.begin() + 1, changes.end() }; }
+
+private:
+    const MeterChange& changeAt (int measure) const
+    {
+        auto* found = &changes.front();
+
+        for (auto& change : changes)
+            if (change.measure <= measure)
+                found = &change;
+
+        return *found;
+    }
+
+    int startOf (const MeterChange& target) const
+    {
+        int start = 0;
+
+        for (size_t i = 0; i + 1 < changes.size() && changes[i].measure < target.measure; ++i)
+            start += (changes[i + 1].measure - changes[i].measure) * changes[i].time.getMeasureTicks();
+
+        return start;
+    }
+
+    std::vector<MeterChange> changes;   ///< The first at measure 0
 };
 
 struct KeySignature
@@ -156,10 +238,13 @@ struct Score
 {
     std::string title;
     KeySignature key;
-    TimeSignature time;
+    TimeSignature time;                       ///< At the start
+    std::vector<MeterChange> meterChanges;    ///< Later, in order
     double tempoBpm = 120.0;                  ///< At the start
     std::vector<TempoChange> tempoChanges;    ///< Later, in order
     std::vector<Part> parts;
+
+    MeasureMap getMeasureMap() const    { return { time, meterChanges }; }
 };
 
 } // namespace purrlude::notation

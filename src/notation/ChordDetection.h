@@ -17,7 +17,7 @@ namespace purrlude::notation
     A symbol is written only where the chord changes. Windows with too little harmony
     (silence, or a single line) get none.
 */
-std::vector<ChordSymbol> detectChords (const std::vector<NoteEvent>& pitchedNotes, TimeSignature, KeySignature,
+std::vector<ChordSymbol> detectChords (const std::vector<NoteEvent>& pitchedNotes, const MeasureMap&, KeySignature,
                                        int numMeasures);
 
 /** Spells a chord root (a pitch class) for a key by its scale degree: in C major, the flat

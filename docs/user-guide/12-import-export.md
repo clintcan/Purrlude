@@ -21,10 +21,10 @@ You can also **drag files onto the window**, MIDI and audio together. Each impor
 
 **Into an empty song,** the file also sets:
 - the tempo, with its changes through the song
-- the time signature
+- the time signature, with its changes (only those that keep the beat unit: a 4/4 file's bars of 3/4, not 6/8)
 - the key, which the score and accompaniment then use
 
-For the time signature and key, only the first is used; later changes in the file are ignored. Files timed in SMPTE frames can't be imported.
+For the key, only the first is used. Files timed in SMPTE frames can't be imported.
 
 ### Audio files
 

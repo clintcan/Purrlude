@@ -1,5 +1,6 @@
 #include "MidiImport.h"
 #include "TempoChanges.h"
+#include "TimeSignature.h"
 
 #include "ClipOrder.h"
 
@@ -66,6 +67,7 @@ Result importMidi (tracktion::Edit& edit, LiveInstrument& live, const juce::Midi
     std::optional<double> bpm;
     std::map<double, double> tempoChanges;   ///< Tick -> BPM, after the first tempo
     std::optional<std::pair<int, int>> timeSignature;
+    std::map<double, int> meterChanges;   ///< Tick -> upper number, after the first signature
     std::optional<notation::KeySignature> keySignature;
 
     for (int t = 0; t < source.getNumTracks(); ++t)
@@ -89,11 +91,15 @@ Result importMidi (tracktion::Edit& edit, LiveInstrument& live, const juce::Midi
                     tempoChanges[m.getTimeStamp()] = tempoBpm;
             }
 
-            if (m.isTimeSignatureMetaEvent() && ! timeSignature)
+            if (m.isTimeSignatureMetaEvent())
             {
                 int numerator = 4, denominator = 4;
                 m.getTimeSignatureInfo (numerator, denominator);
-                timeSignature = std::make_pair (numerator, denominator);
+
+                if (! timeSignature || m.getTimeStamp() <= 0.0)
+                    timeSignature = std::make_pair (numerator, denominator);
+                else if (denominator == timeSignature->second)   // one beat unit through the song
+                    meterChanges[m.getTimeStamp()] = numerator;
             }
 
             if (m.isKeySignatureMetaEvent() && ! keySignature)
@@ -156,9 +162,16 @@ Result importMidi (tracktion::Edit& edit, LiveInstrument& live, const juce::Midi
 
     auto* sig = edit.tempoSequence.getTimeSig (0);
     auto quartersToBeats = sig->denominator.get() / 4.0;
-    auto beatsPerBar = (double) sig->numerator.get();
-    auto startBeat = startBar * beatsPerBar;
     auto& tempo = edit.tempoSequence;
+
+    // The file's later time signature changes (those keeping its beat unit), into an empty song.
+    if (emptySong)
+        for (auto [tick, numerator] : meterChanges)
+            if (auto change = tempo.insertTimeSig (tracktion::BeatPosition::fromBeats (tick / ticksPerQuarter * quartersToBeats)))
+                change->numerator = juce::jlimit (1, 32, numerator);
+
+    bars::Map barMap (edit);
+    auto startBeat = barMap.getBarStart (startBar);
 
     // The file's later tempo changes, into an empty song (before its clips, which are placed
     // in beats; there's nothing to keep on its beats yet). Each holds until the next.
@@ -232,7 +245,8 @@ Result importMidi (tracktion::Edit& edit, LiveInstrument& live, const juce::Midi
             endQuarters = std::max (endQuarters, end / ticksPerQuarter);
         }
 
-        auto lengthBeats = std::max (1.0, std::ceil (endQuarters * quartersToBeats / beatsPerBar)) * beatsPerBar;
+        auto endBeat = startBeat + juce::jmax (1.0e-3, endQuarters * quartersToBeats);
+        auto lengthBeats = barMap.getBarStart (barMap.getBarAt (endBeat - 1.0e-3) + 1) - startBeat;
         auto range = tracktion::TimeRange (tempo.toTime (tracktion::BeatPosition::fromBeats (startBeat)),
                                            tempo.toTime (tracktion::BeatPosition::fromBeats (startBeat + lengthBeats)));
 

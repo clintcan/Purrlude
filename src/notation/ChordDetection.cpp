@@ -198,23 +198,25 @@ std::pair<char, int> spellChordRoot (int pitchClass, KeySignature key)
     return spellAbove (tonicPitch.step, stepsForInterval (pitchClass - tonic), mod12 (pitchClass));
 }
 
-std::vector<ChordSymbol> detectChords (const std::vector<NoteEvent>& notes, TimeSignature time, KeySignature key, int numMeasures)
+std::vector<ChordSymbol> detectChords (const std::vector<NoteEvent>& notes, const MeasureMap& measures, KeySignature key, int numMeasures)
 {
-    auto measureQuarters = time.getMeasureTicks() / (double) ticksPerQuarter;
-
-    // Half bars in 4/4, 6/8, 12/8...; whole bars in 2/4, 3/4 and odd meters.
-    auto windowsPerMeasure = time.numerator % 2 == 0 && time.numerator >= 4 ? 2 : 1;
-    auto windowQuarters = measureQuarters / windowsPerMeasure;
-    auto windowTicks = time.getMeasureTicks() / windowsPerMeasure;
-
     std::vector<ChordSymbol> symbols;
     std::optional<Found> previous;
 
     for (int m = 0; m < numMeasures; ++m)
     {
+        auto time = measures.getTime (m);
+        auto measureQuarters = time.getMeasureTicks() / (double) ticksPerQuarter;
+        auto measureStart = measures.getStart (m) / (double) ticksPerQuarter;
+
+        // Half bars in 4/4, 6/8, 12/8...; whole bars in 2/4, 3/4 and odd meters.
+        auto windowsPerMeasure = time.numerator % 2 == 0 && time.numerator >= 4 ? 2 : 1;
+        auto windowQuarters = measureQuarters / windowsPerMeasure;
+        auto windowTicks = time.getMeasureTicks() / windowsPerMeasure;
+
         for (int w = 0; w < windowsPerMeasure; ++w)
         {
-            auto start = m * measureQuarters + w * windowQuarters;
+            auto start = measureStart + w * windowQuarters;
             auto found = findChord (notes, start, start + windowQuarters);
 
             // Only where the chord changes; a window without one leaves the last in force.

@@ -7,6 +7,7 @@
 #include "notation/TrackNotation.h"
 #include "model/SharedReverb.h"
 #include "model/TempoChanges.h"
+#include "model/TimeSignature.h"
 #include "model/TrackMix.h"
 #include "ui/EffectsPanel.h"
 
@@ -21,6 +22,7 @@ namespace
     const auto loopColour     = juce::Colour (0xffe69f00);   // orange
     const auto automationColour = juce::Colour (0xff56b4e9); // sky blue
     const auto tempoColour    = juce::Colour (0xff3fc49a);   // bluish green, lightened
+    const auto meterColour    = juce::Colour (0xffe28fbd);   // reddish purple, lightened
     constexpr int minimumBars = 16;
     constexpr int edgeGrabWidth = 6;   ///< pixels at a clip's edges that trim it
     constexpr float handleSize = 9.0f; ///< an audio clip's fade handles
@@ -139,7 +141,7 @@ public:
         return pos.y < loopStripHeight ? "Loop and punch range: drag here to set it (Shift snaps to beats). Drag the band "
                                          "or its ends to change it; click it to turn looping on or off (L). Orange: "
                                          "looping; vermillion: punch recording (P)."
-                                       : "Click to move the playhead. Right-click to add or change a tempo change.";
+                                       : "Click to move the playhead. Right-click to add or change a tempo or time signature change.";
     }
 
     void paint (juce::Graphics& g) override
@@ -147,16 +149,16 @@ public:
         auto bg = getLookAndFeel().findColour (juce::ResizableWindow::backgroundColourId);
         g.fillAll (bg.brighter (0.05f));
 
+        g.reduceClipRegion (headerWidth, 0, getWidth() - headerWidth, getHeight());
+        auto [firstBeat, lastBeat] = owner.getVisibleBeatRange();
+
         // Bar numbers, right of the headers: every bar, or every 2nd, 4th... when zoomed out.
-        auto beatsPerBar = owner.edit.tempoSequence.getTimeSig (0)->numerator.get();
-        auto barWidth = beatsPerBar * owner.timeline.getPixelsPerBeat();
+        bars::Map barMap (owner.edit);
+        auto barWidth = barMap.getBeatsPerBarAt (firstBeat) * owner.timeline.getPixelsPerBeat();
         int barStep = 1;
 
         while (barStep * barWidth < 28.0 && barStep < 1024)
             barStep *= 2;
-
-        g.reduceClipRegion (headerWidth, 0, getWidth() - headerWidth, getHeight());
-        auto [firstBeat, lastBeat] = owner.getVisibleBeatRange();
 
         // The loop strip, with the loop range as a band: orange when looping, grey when not.
         g.setColour (juce::Colours::black.withAlpha (0.2f));
@@ -176,47 +178,100 @@ public:
             g.fillRect (band.withLeft (band.getRight() - 3.0f));
         }
 
-        for (int bar = (int) (firstBeat / beatsPerBar) / barStep * barStep; bar * beatsPerBar <= lastBeat; bar += barStep)
+        auto isNumbered = [barStep] (int bar) { return bar % barStep == 0; };
+
+        for (int bar = barMap.getBarAt (firstBeat) / barStep * barStep; barMap.getBarStart (bar) <= lastBeat; bar += barStep)
         {
-            auto x = (int) owner.beatToX (bar * beatsPerBar);
+            auto x = (int) owner.beatToX (barMap.getBarStart (bar));
             g.setColour (juce::Colours::white.withAlpha (0.25f));
             g.drawVerticalLine (x, (float) loopStripHeight, (float) getHeight());
             g.setColour (juce::Colours::lightgrey);
             g.drawText (juce::String (bar + 1), x + 3, loopStripHeight, 40, getHeight() - loopStripHeight, juce::Justification::centredLeft);
         }
 
-        // Tempo changes, after their bar numbers: "120 BPM", or "→ 120 BPM" when reached gradually.
-        auto changes = tempo::getChanges (owner.edit);
-        g.setFont (juce::FontOptions (11.0f, juce::Font::bold));
-
-        for (size_t i = 1; i < changes.size(); ++i)
+        // Time signature and tempo changes, after their bar numbers: "3/4", "120 BPM" ("→ 120 BPM"
+        // when reached gradually), shortened or left out when the next bar number is too close.
+        struct Tag
         {
-            auto x = owner.beatToX (changes[i].beat);
+            double beat;
+            juce::String text, shortText;
+            juce::Colour colour;
+        };
 
-            if (x < (float) headerWidth - 2.0f || x > (float) getWidth())
-                continue;
+        std::vector<Tag> tags;
+        auto meters = meter::getChanges (owner.edit);
 
-            auto barNumber = juce::String ((int) (changes[i].beat / beatsPerBar) + 1);
-            auto onBarLine = std::abs (std::fmod (changes[i].beat, (double) beatsPerBar)) < 1.0e-6;
-            auto textX = onBarLine ? x + 3.0f + juce::GlyphArrangement::getStringWidth (juce::FontOptions (14.0f), barNumber) + 6.0f
-                                   : x + 3.0f;
-            auto number = (changes[i].gradual ? juce::String (juce::CharPointer_UTF8 ("\xe2\x86\x92 ")) : juce::String())
-                            + juce::String (changes[i].bpm, changes[i].bpm == std::round (changes[i].bpm) ? 0 : 1);
+        for (size_t i = 1; i < meters.size(); ++i)
+        {
+            auto sig = juce::String (meters[i].numerator) + "/" + juce::String (meters[i].denominator);
+            tags.push_back ({ meters[i].beat, sig, sig, meterColour });
+        }
 
-            // Up to the next bar number drawn: "120 BPM", or just "120", or nothing if even that won't fit.
-            auto barStart = std::floor (changes[i].beat / beatsPerBar + 1.0e-6);
-            auto nextNumberX = owner.beatToX ((std::floor (barStart / barStep) + 1.0) * barStep * beatsPerBar);
-            auto room = nextNumberX - textX - 4.0f;
-            auto font = juce::FontOptions (11.0f, juce::Font::bold);
-            auto text = number + " BPM";
+        auto tempos = tempo::getChanges (owner.edit);
 
-            if (juce::GlyphArrangement::getStringWidth (font, text) > room)
-                text = juce::GlyphArrangement::getStringWidth (font, number) <= room ? number : juce::String();
+        for (size_t i = 1; i < tempos.size(); ++i)
+        {
+            auto number = (tempos[i].gradual ? juce::String (juce::CharPointer_UTF8 ("\xe2\x86\x92 ")) : juce::String())
+                            + juce::String (tempos[i].bpm, tempos[i].bpm == std::round (tempos[i].bpm) ? 0 : 1);
+            tags.push_back ({ tempos[i].beat, number + " BPM", number, tempoColour });
+        }
 
-            g.setColour (tempoColour);
-            g.fillRect (juce::Rectangle<float> (x - 1.0f, (float) loopStripHeight, 2.0f, (float) (getHeight() - loopStripHeight)));
-            g.drawText (text, juce::Rectangle<float> (textX, (float) loopStripHeight, juce::jmax (0.0f, room), (float) (getHeight() - loopStripHeight)),
-                        juce::Justification::centredLeft, false);
+        std::stable_sort (tags.begin(), tags.end(), [] (const Tag& a, const Tag& b) { return a.beat < b.beat - 1.0e-6; });
+
+        auto font = juce::FontOptions (11.0f, juce::Font::bold);
+        g.setFont (font);
+
+        for (size_t i = 0; i < tags.size();)
+        {
+            auto beat = tags[i].beat;
+            auto x = owner.beatToX (beat);
+            auto bar = barMap.getBarAt (beat);
+            auto afterNumber = barMap.isBarStart (beat) && isNumbered (bar);
+            auto textX = afterNumber ? x + 3.0f + juce::GlyphArrangement::getStringWidth (juce::FontOptions (14.0f), juce::String (bar + 1)) + 6.0f
+                                     : x + 3.0f;
+
+            // Up to the next bar number, or the next change.
+            auto limit = owner.beatToX (barMap.getBarStart ((bar / barStep + 1) * barStep));
+            auto groupEnd = i;
+
+            while (groupEnd < tags.size() && std::abs (tags[groupEnd].beat - beat) < 1.0e-6)
+                ++groupEnd;
+
+            if (groupEnd < tags.size())
+                limit = juce::jmin (limit, owner.beatToX (tags[groupEnd].beat));
+
+            if (x >= (float) headerWidth - 2.0f && x <= (float) getWidth())
+            {
+                // The line, split between the colours of the changes here (so each shows even if
+                // its label doesn't fit).
+                auto lineTop = (float) loopStripHeight, lineHeight = (float) (getHeight() - loopStripHeight);
+                auto share = lineHeight / (float) (groupEnd - i);
+
+                for (auto t = i; t < groupEnd; ++t)
+                {
+                    g.setColour (tags[t].colour);
+                    g.fillRect (juce::Rectangle<float> (x - 1.0f, lineTop + share * (float) (t - i), 2.0f, share));
+                }
+
+                for (auto t = i; t < groupEnd; ++t)
+                {
+                    auto room = limit - textX - 4.0f;
+                    auto text = tags[t].text;
+
+                    if (juce::GlyphArrangement::getStringWidth (font, text) > room)
+                        text = juce::GlyphArrangement::getStringWidth (font, tags[t].shortText) <= room ? tags[t].shortText : juce::String();
+
+                    if (text.isEmpty())
+                        break;
+
+                    g.setColour (tags[t].colour);
+                    g.drawText (text, juce::Rectangle<float> (textX, (float) loopStripHeight, room, (float) (getHeight() - loopStripHeight)),
+                                juce::Justification::centredLeft, false);
+                    textX += juce::GlyphArrangement::getStringWidth (font, text) + 6.0f;
+                }
+            }
+
+            i = groupEnd;
         }
 
         g.setColour (juce::Colours::black.withAlpha (0.3f));
@@ -239,7 +294,7 @@ public:
 
         if (e.mods.isPopupMenu())
         {
-            showTempoMenu (e.x);
+            showRulerMenu (e.x);
             return;
         }
 
@@ -285,8 +340,13 @@ public:
             return;
 
         drag.moved = true;
-        auto unit = e.mods.isShiftDown() ? 1.0 : (double) owner.edit.tempoSequence.getTimeSig (0)->numerator.get();
-        auto snap = [unit] (double beat) { return juce::jmax (0.0, std::round (beat / unit) * unit); };
+        // Bars, or beats with Shift.
+        bars::Map barMap (owner.edit);
+        auto byBeats = e.mods.isShiftDown();
+        auto snap = [&] (double b) { return juce::jmax (0.0, byBeats ? std::round (b) : barMap.snapToBar (b)); };
+        auto unitStart = [&] (double b) { return byBeats ? std::floor (b) : barMap.getBarStart (barMap.getBarAt (b)); };
+        auto unitAfter = [&] (double b) { return byBeats ? std::floor (b) + 1.0 : barMap.getBarStart (barMap.getBarAt (b) + 1); };
+        auto unitBefore = [&] (double b) { return byBeats ? std::ceil (b) - 1.0 : barMap.getBarStart (barMap.getBarAt (b - 1.0e-3)); };
         auto beat = owner.xToBeat ((float) e.x);
         auto start = drag.original.getStart().inBeats(), end = drag.original.getEnd().inBeats();
 
@@ -295,16 +355,16 @@ public:
             case LoopPart::none:
             {
                 // A new loop, from the bar (or beat) where the drag began to where it is.
-                auto from = std::floor (drag.grabBeat / unit) * unit;
+                auto from = unitStart (drag.grabBeat);
                 start = beat < from ? snap (beat) : from;
-                end = beat < from ? from + unit : juce::jmax (from + unit, snap (beat));
+                end = beat < from ? unitAfter (from) : juce::jmax (unitAfter (from), snap (beat));
                 break;
             }
-            case LoopPart::start:   start = juce::jmin (snap (beat), end - unit); break;
-            case LoopPart::end:     end = juce::jmax (snap (beat), start + unit); break;
+            case LoopPart::start:   start = juce::jmin (snap (beat), unitBefore (end)); break;
+            case LoopPart::end:     end = juce::jmax (snap (beat), unitAfter (start)); break;
             case LoopPart::body:
             {
-                auto offset = juce::jmax (-start, snap (beat - drag.grabBeat + start) - start);
+                auto offset = juce::jmax (-start, snap (beat - drag.grabBeat + start) - start);   // the start onto a bar
                 start += offset;
                 end += offset;
                 break;
@@ -377,96 +437,173 @@ private:
         return LoopPart::none;
     }
 
-    /** Right-click on the ruler: add a tempo change at the bar, or change the one there. */
-    void showTempoMenu (int x)
+    /** Right-click on the ruler: add a tempo or time signature change at the bar, or change
+        the ones there.
+    */
+    void showRulerMenu (int x)
     {
         auto& edit = owner.edit;
-        auto beatsPerBar = (double) edit.tempoSequence.getTimeSig (0)->numerator.get();
+        bars::Map barMap (edit);
         auto beat = juce::jmax (0.0, owner.xToBeat ((float) x));
-        auto barBeat = std::floor (beat / beatsPerBar + 1.0e-6) * beatsPerBar;
-        auto barName = "Bar " + juce::String ((int) (barBeat / beatsPerBar) + 1);
-        auto changes = tempo::getChanges (edit);
+        auto bar = barMap.getBarAt (beat);
+        auto barBeat = barMap.getBarStart (bar);
+        auto barEnd = barMap.getBarStart (bar + 1);
+        auto barName = "Bar " + juce::String (bar + 1);
 
-        // The change in this bar, or one drawn just here.
-        int index = -1;
+        // The tempo change in this bar, or one drawn just here.
+        auto tempos = tempo::getChanges (edit);
+        int tempoIndex = -1;
 
-        for (size_t i = 0; i < changes.size(); ++i)
-            if ((changes[i].beat >= barBeat - 1.0e-6 && changes[i].beat < barBeat + beatsPerBar - 1.0e-6)
-                 || std::abs (owner.beatToX (changes[i].beat) - (float) x) < 6.0f)
-                index = (int) i;
+        for (size_t i = 0; i < tempos.size(); ++i)
+            if ((tempos[i].beat >= barBeat - 1.0e-6 && tempos[i].beat < barEnd - 1.0e-6)
+                 || std::abs (owner.beatToX (tempos[i].beat) - (float) x) < 6.0f)
+                tempoIndex = (int) i;
 
-        enum { addId = 1, changeId, gradualId, removeId };
+        // The time signature that starts at this bar.
+        auto meters = meter::getChanges (edit);
+        int meterIndex = -1;
+
+        for (size_t i = 0; i < meters.size(); ++i)
+            if (meters[i].bar == bar)
+                meterIndex = (int) i;
+
+        auto denominator = meters.front().denominator;
+        auto sigName = [denominator] (int numerator) { return juce::String (numerator) + "/" + juce::String (denominator); };
+        constexpr int numerators[] = { 2, 3, 4, 5, 6, 7, 9, 12 };
+
+        enum { addTempoId = 1, changeTempoId, gradualId, removeTempoId, loopId, removeLoopId,
+               addMeterId = 100, addMeterOtherId = 150, changeMeterId = 200, changeMeterOtherId = 250, removeMeterId = 300 };
         juce::PopupMenu menu;
 
-        if (index >= 0)
+        if (tempoIndex >= 0)
         {
-            auto& change = changes[(size_t) index];
-            auto where = index == 0 ? juce::String ("Starting tempo")
-                                    : "Tempo change at Bar " + juce::String ((int) (change.beat / beatsPerBar) + 1);
+            auto& change = tempos[(size_t) tempoIndex];
+            auto where = tempoIndex == 0 ? juce::String ("Starting tempo")
+                                         : "Tempo change at Bar " + juce::String (barMap.getBarAt (change.beat) + 1);
             menu.addSectionHeader (where + ": " + juce::String (change.bpm, 1) + " BPM");
-            menu.addItem (changeId, "Change Tempo...");
+            menu.addItem (changeTempoId, "Change Tempo...");
 
-            if (index > 0)
+            if (tempoIndex > 0)
             {
                 menu.addItem (gradualId, "Gradual (from the tempo before)", true, change.gradual);
-                menu.addItem (removeId, "Remove Tempo Change");
+                menu.addItem (removeTempoId, "Remove Tempo Change");
             }
         }
         else
         {
-            menu.addItem (addId, "Add Tempo Change at " + barName + "...");
+            menu.addItem (addTempoId, "Add Tempo Change at " + barName + "...");
+        }
+
+        menu.addSeparator();
+
+        if (meterIndex >= 0)
+        {
+            auto current = meters[(size_t) meterIndex].numerator;
+            menu.addSectionHeader ((meterIndex == 0 ? juce::String ("Time signature") : "Time signature change at " + barName)
+                                     + ": " + sigName (current));
+            juce::PopupMenu changeTo;
+
+            for (auto n : numerators)
+                changeTo.addItem (changeMeterId + n, sigName (n), true, n == current);
+
+            changeTo.addItem (changeMeterOtherId, "Other...");
+            menu.addSubMenu ("Change To", changeTo);
+
+            if (meterIndex > 0)
+                menu.addItem (removeMeterId, "Remove Time Signature Change");
+        }
+        else
+        {
+            auto current = barMap.getBeatsPerBarAt (barBeat);
+            juce::PopupMenu add;
+
+            for (auto n : numerators)
+                add.addItem (addMeterId + n, sigName (n), n != current);
+
+            add.addItem (addMeterOtherId, "Other...");
+            menu.addSubMenu ("Time Signature from " + barName, add);
+        }
+
+        // The loop (and punch) range.
+        if (loop_range::get (edit))
+        {
+            menu.addSeparator();
+            menu.addItem (loopId, "Loop", ! edit.getTransport().isRecording(), loop_range::isOn (edit));
+            menu.addItem (removeLoopId, "Remove Loop Range", ! edit.getTransport().isRecording());
         }
 
         menu.showMenuAsync (juce::PopupMenu::Options().withTargetScreenArea (localAreaToGlobal (juce::Rectangle<int> (x, 0, 1, getHeight()))),
-                            [safe = juce::Component::SafePointer<RulerOverlay> (this), index, barBeat, barName] (int result)
+                            [safe = juce::Component::SafePointer<RulerOverlay> (this), tempoIndex, meterIndex, bar, barBeat, barName] (int result)
         {
             if (safe == nullptr || result == 0)
                 return;
 
             auto& songEdit = safe->owner.edit;
+            auto beatsPerBar = [&songEdit, bar] { return juce::String ((int) bars::getBarLength (songEdit, bar)); };
 
-            switch (result)
-            {
-                case addId:
-                    safe->askForTempo ("Tempo change at " + barName, "The tempo from " + barName + " on, in beats per minute:",
-                                       tempo::getBpmAt (songEdit, barBeat),
-                                       [&songEdit, barBeat] (double bpm) { tempo::add (songEdit, barBeat, bpm); });
-                    break;
-
-                case changeId:
-                    safe->askForTempo (index == 0 ? "Starting tempo" : "Tempo change", "The tempo, in beats per minute:",
-                                       tempo::getChanges (songEdit)[(size_t) index].bpm,
-                                       [&songEdit, index] (double bpm) { tempo::setBpm (songEdit, index, bpm); });
-                    break;
-
-                case gradualId:     tempo::setGradual (songEdit, index, ! tempo::getChanges (songEdit)[(size_t) index].gradual); break;
-                case removeId:      tempo::remove (songEdit, index); break;
-                default:            break;
-            }
+            if (result == addTempoId)
+                safe->askForNumber ("Tempo change at " + barName, "The tempo from " + barName + " on, in beats per minute:",
+                                    "BPM (20-400)", juce::String (tempo::getBpmAt (songEdit, barBeat), 1),
+                                    [&songEdit, barBeat] (double bpm)
+                                    {
+                                        if (bpm >= tempo::minBpm && bpm <= tempo::maxBpm)
+                                            tempo::add (songEdit, barBeat, bpm);
+                                    });
+            else if (result == changeTempoId)
+                safe->askForNumber (tempoIndex == 0 ? "Starting tempo" : "Tempo change", "The tempo, in beats per minute:",
+                                    "BPM (20-400)", juce::String (tempo::getChanges (songEdit)[(size_t) tempoIndex].bpm, 1),
+                                    [&songEdit, tempoIndex] (double bpm)
+                                    {
+                                        if (bpm >= tempo::minBpm && bpm <= tempo::maxBpm)
+                                            tempo::setBpm (songEdit, tempoIndex, bpm);
+                                    });
+            else if (result == gradualId)
+                tempo::setGradual (songEdit, tempoIndex, ! tempo::getChanges (songEdit)[(size_t) tempoIndex].gradual);
+            else if (result == removeTempoId)
+                tempo::remove (songEdit, tempoIndex);
+            else if (result > addMeterId && result < addMeterOtherId)
+                meter::add (songEdit, bar, result - addMeterId);
+            else if (result == addMeterOtherId)
+                safe->askForNumber ("Time signature from " + barName, "How many beats in a bar, from " + barName + " on?",
+                                    "Beats per bar (1-32)", beatsPerBar(),
+                                    [&songEdit, bar] (double n) { meter::add (songEdit, bar, juce::roundToInt (n)); });
+            else if (result > changeMeterId && result < changeMeterOtherId)
+                meter::setNumerator (songEdit, meterIndex, result - changeMeterId);
+            else if (result == changeMeterOtherId)
+                safe->askForNumber ("Time signature", "How many beats in a bar?", "Beats per bar (1-32)", beatsPerBar(),
+                                    [&songEdit, meterIndex] (double n) { meter::setNumerator (songEdit, meterIndex, juce::roundToInt (n)); });
+            else if (result == removeMeterId)
+                meter::remove (songEdit, meterIndex);
+            else if (result == loopId)
+                loop_range::setOn (songEdit, ! loop_range::isOn (songEdit));
+            else if (result == removeLoopId)
+                loop_range::set (songEdit, {});
 
             safe->owner.repaint();
         });
     }
 
-    void askForTempo (const juce::String& title, const juce::String& message, double bpm, std::function<void (double)> apply)
+    /** A small dialog asking for one number; apply gets it on OK. */
+    void askForNumber (const juce::String& title, const juce::String& message, const juce::String& label,
+                       const juce::String& value, std::function<void (double)> apply)
     {
-        tempoWindow = std::make_unique<juce::AlertWindow> (title, message, juce::MessageBoxIconType::NoIcon);
-        tempoWindow->addTextEditor ("bpm", juce::String (bpm, 1), "BPM (20-400)");
-        tempoWindow->addButton ("OK", 1, juce::KeyPress (juce::KeyPress::returnKey));
-        tempoWindow->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+        numberWindow = std::make_unique<juce::AlertWindow> (title, message, juce::MessageBoxIconType::NoIcon);
+        numberWindow->addTextEditor ("value", value, label);
+        numberWindow->addButton ("OK", 1, juce::KeyPress (juce::KeyPress::returnKey));
+        numberWindow->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
 
-        tempoWindow->enterModalState (true, juce::ModalCallbackFunction::create (
+        numberWindow->enterModalState (true, juce::ModalCallbackFunction::create (
             [safe = juce::Component::SafePointer<RulerOverlay> (this), apply = std::move (apply)] (int result)
             {
-                if (safe == nullptr || safe->tempoWindow == nullptr)
+                if (safe == nullptr || safe->numberWindow == nullptr)
                     return;
 
                 // Ending the modal state doesn't hide the window: it goes when this does.
-                auto window = std::move (safe->tempoWindow);
-                auto value = window->getTextEditorContents ("bpm").getDoubleValue();
+                auto window = std::move (safe->numberWindow);
+                auto text = window->getTextEditorContents ("value").trim();
 
-                if (result == 1 && value >= tempo::minBpm && value <= tempo::maxBpm)
-                    apply (value);
+                if (result == 1 && text.containsOnly ("0123456789.") && text.isNotEmpty())
+                    apply (text.getDoubleValue());
 
                 safe->owner.repaint();
             }), false);
@@ -484,7 +621,7 @@ private:
     juce::Slider masterVolume;
     float valueBeforeDrag = 0.0f;
     std::optional<LoopDrag> loopDrag;
-    std::unique_ptr<juce::AlertWindow> tempoWindow;
+    std::unique_ptr<juce::AlertWindow> numberWindow;
 };
 
 /** Zoom buttons (under the track headers) and the horizontal scrollbar (under the lanes). */
@@ -650,15 +787,15 @@ void ArrangementView::syncHeaders()
 
 double ArrangementView::getSongBeats() const
 {
-    auto beatsPerBar = edit.tempoSequence.getTimeSig (0)->numerator.get();
+    bars::Map barMap (edit);
     auto endBeat = edit.tempoSequence.toBeats (tracktion::toPosition (edit.getLength())).inBeats();
     auto playheadBeat = edit.tempoSequence.toBeats (edit.getTransport().getPosition()).inBeats();
     auto loop = loop_range::get (edit);
     auto loopEnd = loop ? loop->getEnd().inBeats() : 0.0;
 
     // Always a little empty space after the content, the playhead and the loop.
-    auto bars = juce::jmax ((double) minimumBars, std::ceil (juce::jmax (endBeat, playheadBeat, loopEnd) / beatsPerBar) + 4.0);
-    return bars * beatsPerBar;
+    auto lastBar = barMap.getBarAt (juce::jmax (endBeat, playheadBeat, loopEnd) - 1.0e-3);
+    return barMap.getBarStart (juce::jmax (minimumBars, lastBar + 1 + 4));
 }
 
 double ArrangementView::getLaneWidth() const
@@ -764,7 +901,7 @@ void ArrangementView::paint (juce::Graphics& g)
     g.fillAll (bg.darker (0.15f));
 
     auto& tempo = edit.tempoSequence;
-    auto beatsPerBar = tempo.getTimeSig (0)->numerator.get();
+    bars::Map barMap (edit);
     auto tracks = getSongTracks (edit);
     auto lanesBottom = rulerHeight + laneHeight * tracks.size();
     auto [firstBeat, lastBeat] = getVisibleBeatRange();
@@ -774,7 +911,7 @@ void ArrangementView::paint (juce::Graphics& g)
 
     for (int beat = (int) std::floor (firstBeat); beat <= (int) std::ceil (lastBeat); ++beat)
     {
-        bool isBar = beat % beatsPerBar == 0;
+        bool isBar = barMap.isBarStart (beat);
 
         if (! isBar && ! showBeats)
             continue;
@@ -1379,22 +1516,25 @@ void ArrangementView::mouseDrag (const juce::MouseEvent& e)
     drag.moved = true;
 
     // Whole bars, or beats with Shift.
-    double grid = e.mods.isShiftDown() ? 1.0 : (double) edit.tempoSequence.getTimeSig (0)->numerator.get();
+    bars::Map barMap (edit);
+    auto byBeats = e.mods.isShiftDown();
+    auto snap = [&] (double beat) { return byBeats ? std::round (beat) : barMap.snapToBar (beat); };
 
     switch (drag.part)
     {
         case ClipPart::end:
         {
             // The end goes to the nearest grid line, keeping at least one grid step.
-            auto end = std::round (xToBeat ((float) e.x) / grid) * grid;
-            drag.newEnd = juce::jmax (end, drag.startBeat + grid, drag.startBeat + 1.0);
+            auto grid = byBeats ? 1.0 : barMap.getBarLength (barMap.getBarAt (drag.startBeat));
+            drag.newEnd = juce::jmax (snap (xToBeat ((float) e.x)), drag.startBeat + grid, drag.startBeat + 1.0);
             break;
         }
 
         case ClipPart::start:
         {
             // The start goes to the nearest grid line, no earlier than the content allows.
-            auto start = std::round (xToBeat ((float) e.x) / grid) * grid;
+            auto start = snap (xToBeat ((float) e.x));
+            auto grid = byBeats ? 1.0 : barMap.getBarLength (barMap.getBarAt (drag.endBeat - 1.0e-3));
             auto latest = juce::jmax (drag.startBeat, drag.endBeat - juce::jmax (grid, 1.0));
             drag.newStart = juce::jlimit (juce::jmin (drag.earliestStart, drag.startBeat), latest, start);
             break;
@@ -1424,7 +1564,8 @@ void ArrangementView::mouseDrag (const juce::MouseEvent& e)
         case ClipPart::body:
         {
             // Moved by whole grid steps, so a clip starting off the grid stays where it was within it.
-            auto delta = std::round ((xToBeat ((float) e.x) - drag.grabBeat) / grid) * grid;
+            auto offGrid = drag.startBeat - (byBeats ? std::floor (drag.startBeat) : barMap.getBarStart (barMap.getBarAt (drag.startBeat)));
+            auto delta = snap (drag.startBeat - offGrid + xToBeat ((float) e.x) - drag.grabBeat) + offGrid - drag.startBeat;
             delta = juce::jmax (delta, -drag.earliestStart);
             drag.newStart = drag.startBeat + delta;
             drag.newEnd = drag.newStart + (drag.endBeat - drag.startBeat);
@@ -1632,10 +1773,11 @@ void ArrangementView::showClipMenu (tracktion::EditItemID clipID, bool isMidi, d
 
     addItemWithKeys (menu, splitAtPlayhead, "Split at Playhead", "command + T", canSplitSelection);
     // Named by bar, and beat within it unless it's the downbeat.
-    auto beatsPerBar = juce::jmax (1, edit.tempoSequence.getTimeSig (0)->numerator.get());
+    bars::Map barMap (edit);
     auto beatNumber = juce::jmax (0, juce::roundToInt (splitBeat));
-    auto where = "Bar " + juce::String (beatNumber / beatsPerBar + 1)
-                 + (beatNumber % beatsPerBar != 0 ? ", Beat " + juce::String (beatNumber % beatsPerBar + 1) : juce::String());
+    auto bar = barMap.getBarAt (beatNumber);
+    auto beatInBar = juce::roundToInt (beatNumber - barMap.getBarStart (bar));
+    auto where = "Bar " + juce::String (bar + 1) + (beatInBar != 0 ? ", Beat " + juce::String (beatInBar + 1) : juce::String());
     menu.addItem (splitHere, "Split Here (" + where + ")", isInside (clipID, splitBeat));
     menu.addSeparator();
     addItemWithKeys (menu, cut, "Cut" + clipCount, "command + X");

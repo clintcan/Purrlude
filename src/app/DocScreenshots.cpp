@@ -12,6 +12,7 @@
 #include "Splash.h"
 #include "model/SharedReverb.h"
 #include "model/TempoChanges.h"
+#include "model/TimeSignature.h"
 #include "model/TrackEffects.h"
 #include "model/TrackInstrument.h"
 
@@ -202,11 +203,13 @@ void DocScreenshots::addSteps()
         capture ("zoom-bar", boundsInMain (main.arrangement->getZoomBar()).expanded (0, 4));
     });
 
-    // A tempo change at bar 5, on the ruler and with its menu (then taken away again).
+    // A tempo change and a time signature change at bar 5, on the ruler and with its menu
+    // (then taken away again).
     then (0, [this]
     {
         auto& edit = main.project->getEdit();
         tempo::add (edit, 4.0 * edit.tempoSequence.getTimeSig (0)->numerator.get(), 120.0);
+        meter::add (edit, 4, 3);
     });
 
     then (300, [this]
@@ -226,6 +229,7 @@ void DocScreenshots::addSteps()
         capture ("tempo-menu", popupArea().getUnion (boundsInMain (ruler).withX (boundsInMain (ruler).getX() + x - 30).withWidth (60)).expanded (16));
         closePopups();
         tempo::remove (edit, 1);
+        meter::remove (edit, 1);
     });
 
     then (0, [this, headerFor]

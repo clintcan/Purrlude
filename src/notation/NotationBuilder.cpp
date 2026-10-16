@@ -578,18 +578,19 @@ std::vector<NoteValue> splitIntoNoteValues (int startInMeasure, int length, int 
 }
 
 //==============================================================================
-Score buildScore (const std::vector<NoteEvent>& performed, TimeSignature time, const BuildOptions& options,
+Score buildScore (const std::vector<NoteEvent>& performed, const MeasureMap& time, const BuildOptions& options,
                   const std::string& title, const std::string& partName, double tempoBpm)
 {
     return buildMultiPartScore ({ { partName, performed } }, time, options, title, tempoBpm);
 }
 
-Score buildMultiPartScore (const std::vector<PartNotes>& parts, TimeSignature time, const BuildOptions& options,
+Score buildMultiPartScore (const std::vector<PartNotes>& parts, const MeasureMap& time, const BuildOptions& options,
                            const std::string& title, double tempoBpm)
 {
     Score score;
     score.title = title;
-    score.time = time;
+    score.time = time.getTime (0);
+    score.meterChanges = time.getChanges();
     score.tempoBpm = tempoBpm;
 
     // One key for the whole score, from every pitched part's notes.
@@ -651,13 +652,12 @@ Score buildMultiPartScore (const std::vector<PartNotes>& parts, TimeSignature ti
     return score;
 }
 
-Part buildPart (const std::vector<NoteEvent>& performed, TimeSignature time, KeySignature key,
+Part buildPart (const std::vector<NoteEvent>& performed, const MeasureMap& measures, KeySignature key,
                 const BuildOptions& options, const std::string& partName, int minMeasures, bool percussion)
 {
     auto grid = options.gridTicks > 0 ? options.gridTicks : chooseGrid (performed);
     auto tripletBeats = options.triplets ? chooseTripletBeats (performed, grid) : std::set<int>();
     auto notes = quantize (performed, grid, tripletBeats);
-    auto measureTicks = time.getMeasureTicks();
 
     // A note played just before the music ends stays inside it, rather than rounding up
     // into a bar of its own.
@@ -723,7 +723,7 @@ Part buildPart (const std::vector<NoteEvent>& performed, TimeSignature time, Key
     for (const auto& n : notes)
         end = std::max (end, n.start + n.length);
 
-    auto numMeasures = std::max (std::max (1, minMeasures), (end + measureTicks - 1) / measureTicks);
+    auto numMeasures = std::max (std::max (1, minMeasures), measures.countToCover (end));
     part.measures.resize ((size_t) numMeasures);
 
     for (auto& m : part.measures)
@@ -747,13 +747,13 @@ Part buildPart (const std::vector<NoteEvent>& performed, TimeSignature time, Key
 
             for (auto& n : voiceNotes)
             {
-                auto barline = (n.start / measureTicks + 1) * measureTicks;
+                auto barline = measures.getStart (measures.getMeasureAt (n.start) + 1);
                 auto next = std::upper_bound (onsets.begin(), onsets.end(), n.start);
                 n.length = std::min (barline, next != onsets.end() ? *next : barline) - n.start;
             }
         }
 
-        for (const auto& segment : segmentStaff (voiceNotes, numMeasures * measureTicks))
+        for (const auto& segment : segmentStaff (voiceNotes, measures.getStart (numMeasures)))
         {
             std::vector<Pitch> pitches;
 
@@ -774,9 +774,10 @@ Part buildPart (const std::vector<NoteEvent>& performed, TimeSignature time, Key
 
             bool firstPiece = true;
 
-            for (int measure = segment.start / measureTicks; measure * measureTicks < segment.end; ++measure)
+            for (int measure = measures.getMeasureAt (segment.start); measures.getStart (measure) < segment.end; ++measure)
             {
-                auto measureStart = measure * measureTicks;
+                auto measureStart = measures.getStart (measure);
+                auto measureTicks = measures.getLength (measure);
                 auto from = std::max (segment.start, measureStart) - measureStart;
                 auto to = std::min (segment.end, measureStart + measureTicks) - measureStart;
                 auto& measureData = part.measures[(size_t) measure];

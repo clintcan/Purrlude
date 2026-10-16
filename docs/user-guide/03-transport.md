@@ -33,12 +33,12 @@ The tempo is the number before **BPM**: the tempo at the playhead. Click it, typ
 
 A song can change tempo partway through: a slower bridge, say, or a big ritardando at the end.
 
-<img src="images/ruler-tempo.png" alt="The ruler with a tempo change at bar 5: a green line and 120 BPM beside the bar number" width="100%">
+<img src="images/ruler-tempo.png" alt="The ruler with a tempo change and a time signature change at bar 5: a line, half green and half purple, and 3/4 beside the bar number" width="100%">
 
-<img src="images/tempo-menu.png" alt="The ruler's menu for a tempo change: Change Tempo..., Gradual (from the tempo before), Remove Tempo Change" width="458" align="right">
+<img src="images/tempo-menu.png" alt="The ruler's menu at bar 5: the tempo change (Change Tempo..., Gradual, Remove Tempo Change) and the time signature change (Change To, Remove Time Signature Change)" width="468" align="right">
 
 - **Add one:** right-click the ruler in the bar where the new tempo should start, choose **Add Tempo Change at Bar n...**, and type the tempo. It takes effect at the start of that bar.
-- **See them:** each change is a green line on the ruler, with its tempo beside the bar number.
+- **See them:** each change is a green line on the ruler, with its tempo beside the bar number. When the bar is too narrow for the label, the line still shows.
 - **Change or remove one:** right-click it on the ruler.
 - **Gradual:** a change can be **Gradual**: the tempo then speeds up or slows down steadily from the change before (an *accel.* or *rit.*), arriving at the new tempo on its bar. The ruler shows it as **→ 120 BPM**.
 
@@ -56,10 +56,21 @@ Click the time signature (it says **4/4**) and choose another, or **Other...** f
 - The **Other...** dialog asks how many beats are in a bar (1–32) and which note gets the beat (2, 4, 8 or 16).
 - **Changing it keeps the music where it is**: notes don't move, only the bar lines do. For example, a song in 4/4 changed to 3/4 sounds the same, barred in threes.
 - The change is one undo step.
+- If the song changes time signature (see below), the button shows the one at the playhead, and changes that one.
+
+### Time signature changes
+
+A song can change time signature from a bar on: a bar of 2/4 in a 4/4 song, or a section in 3/4.
+
+- **Add one:** right-click the ruler in the bar where it should start, open **Time Signature from Bar n**, and choose one, or **Other...** to type how many beats are in a bar.
+- **See them:** each is a purple line on the ruler, with the signature beside the bar number.
+- **Change or remove one:** right-click it on the ruler. Removing a one-bar change (a bar of 2/4 between bars of 4/4) also removes the change back, so the bars are as they were.
+- **The music stays where it is**, as with the whole song's time signature: only the bar lines after the change move. Bar numbers, the grid, snapping, loops and the score all follow.
+- Every change is one undo step.
 
 **Limits:**
-- A song has one time signature.
-- The built-in drum loops and accompaniment are written in 4/4.
+- **The note that gets the beat stays the same** through a song: a 4/4 song can have bars of 2/4, 3/4 or 5/4, and a 6/8 song bars of 9/8, but a 4/4 song can't change to 6/8 partway. To change it for the whole song, remove the changes first.
+- **Loops and accompaniment:** the built-in drum loops and accompaniment are written in 4/4.
 - The time signature can't be changed while recording.
 
 <br clear="right">
@@ -82,6 +93,7 @@ The thin strip along the top of the ruler holds the **loop range**, shown as a b
 - Drag the band to move it, or drag either end to change its length.
 - Click the band to turn looping on or off.
 - Right-click a clip and choose **Loop This Clip** to loop exactly that clip.
+- Right-click the ruler and choose **Remove Loop Range** to take the band away (and **Loop** to turn looping on or off).
 
 **While looping:**
 - Playback repeats the range until you stop it.

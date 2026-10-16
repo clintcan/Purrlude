@@ -1,4 +1,5 @@
 #include "Accompaniment.h"
+#include "TimeSignature.h"
 
 #include "model/ClipOrder.h"
 
@@ -450,13 +451,13 @@ tracktion::MidiClip* insert (tracktion::Edit& edit, LiveInstrument& live, const 
         TrackInstrument (edit, *track).setProgram (pattern.program);
     }
 
-    auto* timeSig = edit.tempoSequence.getTimeSig (0);
-    auto quartersToBeats = timeSig->denominator.get() / 4.0;
-    auto beatsPerBar = (double) timeSig->numerator.get();
+    // Bars of the signature where it starts.
+    purrlude::bars::Map barMap (edit);
+    auto quartersToBeats = edit.tempoSequence.getTimeSig (0)->denominator.get() / 4.0;
+    auto startBeat = barMap.getBarStart (startBar);
+    auto beatsPerBar = barMap.getBarLength (startBar);
     auto quartersPerBar = juce::roundToInt (beatsPerBar / quartersToBeats);
-
-    auto startBeat = startBar * beatsPerBar;
-    auto lengthBeats = juce::jmax (1, bars) * beatsPerBar;
+    auto lengthBeats = barMap.getBarStart (startBar + juce::jmax (1, bars)) - startBeat;
     auto& tempo = edit.tempoSequence;
     auto range = tracktion::TimeRange (tempo.toTime (tracktion::BeatPosition::fromBeats (startBeat)),
                                        tempo.toTime (tracktion::BeatPosition::fromBeats (startBeat + lengthBeats)));

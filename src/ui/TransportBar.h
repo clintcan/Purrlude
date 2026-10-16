@@ -42,6 +42,7 @@ private:
     static constexpr double endTailSeconds = 1.0;   ///< Played after the last clip before stopping
     void showTimeSignatureMenu();
     void askForTimeSignature();
+    void setTimeSignature (int numerator, int denominator);
 
     tracktion::Edit& edit;
 

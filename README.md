@@ -12,10 +12,10 @@ Purrlude is a cross-platform music workstation for writing, recording, arranging
 
 - **Sheet music from your song.** Every track becomes a part in a live score that follows playback. It includes chord symbols, drum notation and transposing instruments, and exports to PDF (full score or parts) and MusicXML.
 - **Audio to MIDI.** It turns a recorded melody, chords or drums into notes, and can separate a mixed song into drums, bass, vocals, guitar, piano and the rest. Everything runs on your computer; no audio is sent anywhere.
-- **Recording.** It records MIDI and audio, with count-in, metronome, and loop recording into takes.
-- **Arranging and editing.** Clips can be moved, copied and resized, and there's a piano roll. Every edit can be undone, and projects autosave with crash recovery.
+- **Recording.** It records MIDI and audio, with count-in, metronome, loop recording into takes, and punch in/out.
+- **Arranging and editing.** Clips can be split, moved, copied and resized, and there's a piano roll. Songs can change tempo (suddenly or gradually) and time signature partway through. Every edit can be undone, and projects autosave with crash recovery.
 - **Built-in sounds and plugins.** It has the 128 General MIDI instruments, drum loops in 14 styles, and bass and chord accompaniment in any key. It also loads third-party instruments and effects (VST3, Audio Units, LV2).
-- **Mixing.** Each track has volume, pan, mute and solo, plus reverb, delay, EQ and a compressor, and there's a shared reverb. Volume, pan, the reverb send, every effect control and any plugin control can be automated. Export as WAV, FLAC or Ogg, or as stems.
+- **Mixing.** Each track has volume, pan, mute and solo, plus reverb, delay, EQ and a compressor, and there's a shared reverb and a master with its own effects. Volume, pan, the reverb send, every effect control and any plugin control can be automated, by drawing or by recording the moves you make, and knobs on a MIDI controller can be learnt to control them. Export as WAV, FLAC or Ogg, or as stems.
 - **Devices.** It works with any audio interface and any USB or Bluetooth MIDI keyboard. It can play a keyboard's own sounds, and play songs through multi-timbral sound modules and software synths.
 
 The **[user guide](docs/user-guide/README.md)** covers all of it, with screenshots.
@@ -25,7 +25,6 @@ The **[user guide](docs/user-guide/README.md)** covers all of it, with screensho
 - **Releases:** a signed, notarised macOS app to download, then Windows and Linux installers.
 - **Instrument separation for everyone:** host the Demucs model so builds can fetch it.
 - **Testing:** real use on Windows and Linux, and beta testers on other machines and devices.
-- **Missing DAW features:** time-signature changes within a song.
 - **A stable project format** from 1.0 on, so songs saved then keep opening.
 
 ## Building

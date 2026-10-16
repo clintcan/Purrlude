@@ -799,3 +799,49 @@ TEST_CASE ("Two voices are written to MusicXML and engraved", "[notation][voices
     CHECK (svg.contains ("class=\"layer\""));
     CHECK (error.isEmpty());
 }
+
+TEST_CASE ("Time signature changes: each measure as long as its signature", "[notation][meter]")
+{
+    // 4/4, then a bar of 3/4 (measure 2), then 4/4 again: a whole note from the start of
+    // measure 2 lasts past it, tied into measure 3.
+    MeasureMap measures ({ 4, 4 }, { { 1, { 3, 4 } }, { 2, { 4, 4 } } });
+    CHECK (measures.getStart (1) == 4 * ticksPerQuarter);
+    CHECK (measures.getStart (2) == 7 * ticksPerQuarter);
+    CHECK (measures.getLength (1) == 3 * ticksPerQuarter);
+    CHECK (measures.getMeasureAt (6 * ticksPerQuarter) == 1);
+    CHECK (measures.getMeasureAt (7 * ticksPerQuarter) == 2);
+    CHECK (measures.countToCover (8 * ticksPerQuarter) == 3);
+
+    auto score = buildScore ({ { 4.0, 4.0, 72, 100 } }, measures, { .key = KeySignature {}, .chordSymbols = false });
+    REQUIRE (score.parts[0].measures.size() == 3);
+    CHECK (score.meterChanges.size() == 2);
+
+    auto total = [] (const std::vector<Event>& events)
+    {
+        int ticks = 0;
+
+        for (auto& e : events)
+            ticks += e.duration;
+
+        return ticks;
+    };
+
+    CHECK (total (score.parts[0].measures[0].staves[0]) == 4 * ticksPerQuarter);
+    CHECK (total (score.parts[0].measures[1].staves[0]) == 3 * ticksPerQuarter);
+    CHECK (total (score.parts[0].measures[2].staves[0]) == 4 * ticksPerQuarter);
+    CHECK (score.parts[0].measures[1].staves[0].back().tieStart);
+
+    // MusicXML says where the signature changes.
+    auto doc = juce::parseXML (toMusicXml (score));
+    REQUIRE (doc != nullptr);
+    auto* part = doc->getChildByName ("part");
+    REQUIRE (part != nullptr);
+    std::vector<juce::String> times;
+
+    for (auto* measure : part->getChildWithTagNameIterator ("measure"))
+        if (auto* attributes = measure->getChildByName ("attributes"))
+            if (auto* time = attributes->getChildByName ("time"))
+                times.push_back (time->getChildElementAllSubText ("beats", {}) + "/" + time->getChildElementAllSubText ("beat-type", {}));
+
+    CHECK (times == std::vector<juce::String> { "4/4", "3/4", "4/4" });
+}

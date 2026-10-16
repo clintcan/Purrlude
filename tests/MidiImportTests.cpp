@@ -5,6 +5,7 @@
 #include "model/EngineSetup.h"
 #include "model/MidiImport.h"
 #include "model/TempoChanges.h"
+#include "model/TimeSignature.h"
 #include "notation/MusicXmlWriter.h"
 #include "notation/TrackNotation.h"
 
@@ -293,4 +294,48 @@ TEST_CASE ("A MIDI file's tempo changes come in, and the score marks them", "[mi
     f.edit->getUndoManager().undo();
     f.edit->getUndoManager().undo();
     CHECK (purrlude::tempo::getChanges (*f.edit).size() == 1);
+}
+
+TEST_CASE ("A MIDI file's time signature changes come in, if they keep the beat unit", "[midi-import][meter]")
+{
+    Fixture f;
+    auto song = makeSong();   // 3/4
+    juce::MidiFile file;
+    file.setTicksPerQuarterNote (ppq);
+
+    // 2/4 from bar 2 (quarter 3), then 6/8 from quarter 5, which would change the beat unit.
+    for (int t = 0; t < song.getNumTracks(); ++t)
+    {
+        auto track = *song.getTrack (t);
+
+        if (t == 0)
+        {
+            track.addEvent (at (juce::MidiMessage::timeSignatureMetaEvent (2, 4), 3));
+            track.addEvent (at (juce::MidiMessage::timeSignatureMetaEvent (6, 8), 5));
+        }
+
+        file.addTrack (track);
+    }
+
+    auto result = purrlude::midi_import::importMidi (*f.edit, f.live, roundTrip (file), 0);
+    REQUIRE (result.error.isEmpty());
+
+    auto changes = purrlude::meter::getChanges (*f.edit);
+    REQUIRE (changes.size() == 2);
+    CHECK (changes[0].numerator == 3);
+    CHECK (changes[1].numerator == 2);
+    CHECK (changes[1].bar == 1);
+    CHECK (changes[1].beat == 3.0);
+
+    // Clips end on whole bars, which are now 3 beats, then 2: the last part's note ends at
+    // beat 7, a barline, and the first part's at 3 (bar 1).
+    auto tracks = tracktion::getAudioTracks (*f.edit);
+    CHECK_THAT (tracks[3]->getClips()[0]->getEndBeat().inBeats(), WithinAbs (7.0, 0.001));
+    CHECK_THAT (tracks[0]->getClips()[0]->getEndBeat().inBeats(), WithinAbs (3.0, 0.001));
+
+    // The score's measures follow.
+    auto score = purrlude::notation::buildEditScore (*f.edit, {});
+    REQUIRE (score.meterChanges.size() == 1);
+    CHECK (score.meterChanges[0].measure == 1);
+    CHECK (score.meterChanges[0].time.numerator == 2);
 }

@@ -229,7 +229,7 @@ juce::String toMusicXml (const Score& score, const MusicXmlOptions& options)
         addText (*scorePart, "part-name", juce::String (score.parts[p].name));
     }
 
-    auto measureTicks = score.time.getMeasureTicks();
+    auto measures = score.getMeasureMap();
 
     for (size_t p = 0; p < score.parts.size(); ++p)
     {
@@ -241,19 +241,26 @@ juce::String toMusicXml (const Score& score, const MusicXmlOptions& options)
         {
             auto* measure = partElement->createNewChildElement ("measure");
             measure->setAttribute ("number", (int) m + 1);
+            auto time = measures.getTime ((int) m);
+            auto measureTicks = time.getMeasureTicks();
+            auto measureStart = measures.getStart ((int) m);
 
             if (m == 0)
             {
                 addAttributes (*measure, score, part);
                 addTempo (*measure, score.tempoBpm, options.tempoMark);
             }
+            else if (measures.startsChange ((int) m))
+            {
+                // A new time signature from here.
+                auto* timeElement = measure->createNewChildElement ("attributes")->createNewChildElement ("time");
+                addText (*timeElement, "beats", juce::String (time.numerator));
+                addText (*timeElement, "beat-type", juce::String (time.denominator));
+            }
 
             // Tempo changes, over the top part only.
             if (p == 0)
-            {
-                auto measureTicks = score.time.getMeasureTicks();
-                addTempoChanges (*measure, score, (int) m * measureTicks, ((int) m + 1) * measureTicks, options.tempoMark);
-            }
+                addTempoChanges (*measure, score, measureStart, measureStart + measureTicks, options.tempoMark);
 
             // Chord symbols over this measure, each at its offset from the measure's start.
             for (const auto& chord : part.chords)
@@ -312,7 +319,7 @@ juce::String toMusicXml (const Score& score, const MusicXmlOptions& options)
                     // Alterations in force in this measure and voice, keyed by step + octave. Each voice
                     // keeps its own, so an accidental is never missed (at worst one is repeated).
                     std::map<juce::String, int> alterInForce;
-                    auto beams = getBeams (events, score.time);
+                    auto beams = getBeams (events, time);
 
                     for (size_t eventIndex = 0; eventIndex < events.size(); ++eventIndex)
                     {

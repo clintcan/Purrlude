@@ -8,7 +8,6 @@ Purrlude is a cross-platform digital audio workstation (DAW) for composing, reco
 >   - prebuilt releases (signed, notarised macOS app; Windows/Linux installers)
 >   - hosting the Demucs model
 >   - real use on Windows/Linux
->   - time-signature changes within a song
 >   - a frozen project format
 > - **Public:** github.com/clintcan/Purrlude, AGPLv3.
 
@@ -284,11 +283,20 @@ The app talks to `purrlude::BluetoothMidiManager` (`src/devices/BluetoothMidiMan
 - **Parts:** each track/channel pair with notes becomes an instrument track with one clip. The first Program Change picks the GM instrument, channel 10 is the drum kit, and tracks take the file's track names or the instrument.
 - **Content:** notes, CCs (not bank select), pitch bend, channel pressure and aftertouch come in. Ticks convert straight to beats, so placement doesn't depend on tempo.
 - **Placement:** parts start at the playhead's bar.
-- **Empty song:** it reuses the empty track and takes the file's tempo with its changes (inserted before the clips, each holding until the next), and its first time signature and key signature. Later changes of those are ignored, and SMPTE-timed files are refused.
+- **Empty song:** it reuses the empty track and takes the file's tempo and time signature with their changes (inserted before the clips; tempo changes hold until the next, and signature changes that would change the beat unit are dropped), and its first key signature. SMPTE-timed files are refused.
 - **Song key:** the key is stored on the Edit (`notation::get/setKeySignature`). Scores and the accompaniment's key use it instead of estimating, since jazz ii–V material fools the estimate.
 - **Checking a real file:** `PURRLUDE_MIDI_FILE=/path/song.mid PurrludeTests "[.midi-file]" -s` imports it, prints its tracks and writes the score PDF next to it.
 - **Undo:** the import is one undo step, left open like other arrangement edits.
 - **Speed:** each part's events are written straight into a detached `SEQUENCE` ValueTree, and the clip is inserted with it (`insertClipWithState`), one undoable change per part. Adding them through a clip's `MidiList` makes each event an undoable change the Edit reacts to, and `MidiList::addNote` then finds the new note by a linear search. That took tens of seconds for a 12-part, 6-minute file.
+
+**Time signature changes** (`src/model/TimeSignature.h`, namespaces `bars` and `meter`; the ruler's right-click menu):
+- **One beat unit:** every signature in a song shares its lower number, because Tracktion counts beats in that unit; with it fixed, beats keep one length, so adding, changing or removing a change moves no music, only the barring after it. `changeTimeSignature` refuses a new lower number while there are changes, and the transport's menu and dialog don't offer one. Changing the beat unit partway through isn't supported.
+- **Bars:** `bars::Map` (build once, ask many times: drawing) maps bars to beats and back, matching Tracktion's own bar arithmetic (tested): a change part way through a bar takes effect at the next bar. Everything that counts bars uses it (arrangement grid, ruler numbers, snapping, loop and punch ranges, split names, song length, the piano roll's grid, imports, loops and accompaniment), never the first signature's upper number.
+- **Changes:** `meter::add` (at a bar's start, one undo step; a copy of the previous setting, so the same lower number), `setNumerator`, `remove`. Editing or removing one also removes changes that then repeat the signature before them, so taking out a bar of 3/4 takes out the "back to 4/4" too.
+- **UI:** the ruler draws each change (a purple line and "3/4"), and where several changes share a bar line its line is split between their colours. The transport's button shows and changes the signature at the playhead.
+- **Score:** `notation::MeasureMap` (built from the first signature and `MeterChange`s; a plain `TimeSignature` converts to it) gives each measure's start, length and signature. The score builder, chord detection and MusicXML (a `<time>` where it changes) use it. The song's bars are the score's measures.
+- **MIDI import:** an empty song takes a file's signature changes that keep its beat unit.
+- **Tests:** `[meter]`.
 
 **Time signature** (`src/model/TimeSignature.h`, the "4/4" button in the transport bar):
 - **What changes:** `changeTimeSignature` changes the song's one time signature as one undo step, keeping how the song sounds. Clips stay at their times and notes in place; only the barring changes.
@@ -450,7 +458,7 @@ A note quantized past the end of the performance moves back onto the last grid s
 - **MusicXML:** `<harmony>` with `<kind text="m7">`, `<bass>`, and `<offset>` from the measure start (Verovio honours it).
 - **Accidentals:** Verovio writes chord-symbol accidentals as SMuFL characters (U+EA63–EA67) in its Leipzig font, which JUCE can't draw. `prepareVerovioSvg` turns them into "b"/"#" in the text's font (its size is on the sibling tspan).
 
-**Not handled yet:** more than two voices per staff, time-signature changes, and other tuplets (quintuplets, triplets spanning two beats).
+**Not handled yet:** more than two voices per staff, time-signature changes of the beat unit, and other tuplets (quintuplets, triplets spanning two beats).
 
 **On-screen score:** `ScoreView` (`src/ui/`) reads the song's notes twice a second on the message thread (`notation::getEditScoreInput`), skipping while recording. When they or the width change, its render thread builds the score and MusicXML (`buildEditScore (EditScoreInput)`), and, if the MusicXML changed, engraves it with `notation::ScoreRenderer` (Verovio) and builds a `notation::ScoreDrawing`. Verovio has global state, so it is only ever used from that one thread.
 - **ScoreDrawing, not Drawable:** a `juce::Drawable` is a tree of Components, one per shape, and Components may only be used on the message thread (building one elsewhere fires a JUCE assertion per shape: tens of thousands for a song). `ScoreDrawing` (`src/notation/`) reads the prepared SVG into plain paths, fills and strokes in the drawing's units, so it's built on the render thread. It draws only the shapes in the area being painted, and finds and highlights shapes by element id.
