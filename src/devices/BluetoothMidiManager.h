@@ -61,6 +61,16 @@ public:
     /** Disconnects, removes the OS pairing where possible, and stops remembering it. */
     void forget (const juce::String& deviceId);
 
+    /** Names of the devices the user disconnected this session. Their MIDI ports should be
+        closed: on Windows an open port keeps a Bluetooth MIDI device connected.
+    */
+    juce::StringArray getDisconnectedNames() const;
+
+    /** Whether a MIDI port is one of the named Bluetooth device's ("GO:KEYS 5 MIDI" has
+        "GO:KEYS 5 MIDI" on macOS and "GO:KEYS 5 MIDI (Bluetooth MIDI IN)" on Windows).
+    */
+    static bool isPortOf (const juce::String& portName, const juce::String& deviceName);
+
     /** The most recent error, cleared when a device connects. */
     juce::String getLastError() const                   { return lastError; }
 

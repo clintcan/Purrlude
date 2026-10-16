@@ -18,6 +18,10 @@
     gear); devices needing a PIN must be paired in Windows Settings. While
     "connected", a GattSession with MaintainConnection keeps the link up.
 
+    Windows keeps a device connected while any app holds a BluetoothLEDevice for
+    it (or has one of its MIDI ports open), so a device is held only while it's
+    connecting or connected, and disconnect() lets go of it.
+
     MIDI I/O is not done here: with JUCE_USE_WINRT_MIDI=1, JUCE exposes
     connected BLE MIDI devices as ordinary juce::MidiInput / MidiOutput ports.
 
@@ -45,6 +49,9 @@ namespace
 
     // Pairing plus the first connection; a device that hasn't connected by then won't.
     constexpr int connectTimeoutMs = 30000;
+
+    // How many times to ask a just-connected device that's unreachable for its services, a second apart.
+    constexpr int gattAttempts = 10;
 
     juce::String addressToId (uint64_t address)
     {
@@ -131,7 +138,6 @@ namespace
         uint64_t address = 0;
         bt::BluetoothAddressType addressType = bt::BluetoothAddressType::Unspecified;
         juce::String name;
-        bt::BluetoothLEDevice device { nullptr };
     };
 
     class WindowsBleMidiService final : public BleMidiService,
@@ -148,7 +154,7 @@ namespace
             stopScan();
 
             for (auto& [id, entry] : devices)
-                closeSession (entry);
+                release (entry);
 
             // Let in-flight queries finish; they only post results, so this can't deadlock.
             for (int waitedMs = 0; *pending > 0 && waitedMs < 5000; waitedMs += 5)
@@ -277,7 +283,7 @@ namespace
         {
             if (auto it = devices.find (deviceId); it != devices.end())
             {
-                closeSession (it->second);
+                release (it->second);
                 it->second.info.connecting = false;
                 notifyChanged();
             }
@@ -287,7 +293,7 @@ namespace
         {
             if (auto it = devices.find (deviceId); it != devices.end())
             {
-                closeSession (it->second);
+                release (it->second);
                 unpair (selfRef, pending, it->second.address);
             }
         }
@@ -392,6 +398,18 @@ namespace
             }
         }
 
+        /** Closes the session and lets go of the device, so Windows can drop the link.
+            Not Close(): a process gets one shared object per device, so closing it would also
+            close it under a lookup or connect in flight.
+        */
+        static void release (DeviceEntry& entry)
+        {
+            closeSession (entry);
+            entry.statusRevoker.revoke();
+            entry.device = nullptr;
+            entry.info.connected = false;
+        }
+
         //==============================================================================
         // Message-thread handlers
 
@@ -454,9 +472,6 @@ namespace
 
                 if (p.name.isNotEmpty())
                     entry.info.name = p.name;
-
-                if (entry.device == nullptr)
-                    watchConnection (entry, p.device);
             }
 
             // Drop devices that were unpaired and aren't currently advertising.
@@ -465,24 +480,16 @@ namespace
                 auto& entry = it->second;
 
                 // A device we're connecting or connected to stays: the paired list can miss it
-                // (just paired, or its GATT cache is empty), and dropping its listener would
-                // leave it looking disconnected while it's connected.
+                // (just paired, or its GATT cache is empty).
                 bool inUse = entry.info.connecting || entry.session != nullptr;
 
                 if (! entry.info.paired && ! scanning && ! inUse)
                 {
-                    closeSession (entry);
+                    release (entry);
                     it = devices.erase (it);
                 }
                 else
                 {
-                    if (! entry.info.paired && ! inUse)
-                    {
-                        entry.statusRevoker.revoke();
-                        entry.device = nullptr;
-                        entry.info.connected = false;
-                    }
-
                     ++it;
                 }
             }
@@ -544,7 +551,7 @@ namespace
             if (entry.connectAttempt != attempt || ! entry.info.connecting || entry.info.connected)
                 return;
 
-            closeSession (entry);
+            release (entry);
             entry.info.connecting = false;
             notifyChanged();
             reportError (id, "The device didn't connect. Turn it off and on, then try again.");
@@ -596,8 +603,7 @@ namespace
 
                         paired.push_back ({ device.BluetoothAddress(),
                                             device.BluetoothAddressType(),
-                                            toJuceString (device.Name()),
-                                            device });
+                                            toJuceString (device.Name()) });
                     }
                     catch (const winrt::hresult_error&)
                     {
@@ -675,12 +681,32 @@ namespace
                 auto session = co_await gatt::GattSession::FromDeviceIdAsync (device.BluetoothDeviceId());
                 session.MaintainConnection (true);
 
-                // Asking the device itself for its MIDI service makes Windows connect now rather
-                // than whenever it gets round to it, and tells us at once if it can't.
-                auto services = co_await device.GetGattServicesForUuidAsync (midiServiceUuid,
-                                                                            bt::BluetoothCacheMode::Uncached);
+                // Asking the device itself for its services makes Windows connect now rather than
+                // whenever it gets round to it, and tells us soon if it can't. It asks for all of
+                // them: a GO:KEYS always refuses a search for one service by UUID (0x80070016,
+                // "The device does not recognize the command"). Just after the link comes up a
+                // device can be unreachable for a moment, so that's tried for a while.
+                auto services = co_await device.GetGattServicesAsync (bt::BluetoothCacheMode::Uncached);
 
-                if (services.Status() != gatt::GattCommunicationStatus::Success || services.Services().Size() == 0)
+                for (int attempt = 1; services.Status() == gatt::GattCommunicationStatus::Unreachable
+                                        && attempt < gattAttempts; ++attempt)
+                {
+                    co_await winrt::resume_after (std::chrono::seconds (1));
+                    services = co_await device.GetGattServicesAsync (bt::BluetoothCacheMode::Uncached);
+                }
+
+                bool hasMidi = false;
+
+                if (services.Status() == gatt::GattCommunicationStatus::Success)
+                {
+                    for (const auto& service : services.Services())
+                    {
+                        hasMidi = hasMidi || service.Uuid() == midiServiceUuid;
+                        service.Close();
+                    }
+                }
+
+                if (! hasMidi)
                 {
                     auto message = services.Status() == gatt::GattCommunicationStatus::Success
                                      ? juce::String ("This device has no Bluetooth MIDI service.")
@@ -694,9 +720,6 @@ namespace
                     });
                     co_return;
                 }
-
-                for (const auto& service : services.Services())
-                    service.Close();
 
                 post (weak, [address, session, device] (WindowsBleMidiService& s)
                 {

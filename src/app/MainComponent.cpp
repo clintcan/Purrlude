@@ -24,10 +24,16 @@ namespace
 
 MainComponent::MainComponent (tracktion::Engine& e, BluetoothMidiManager& bluetooth, MidiDeviceSettings& d,
                               juce::PropertiesFile& s)
-    : engine (e), deviceSettings (d), settings (s), devicesPanel (bluetooth, e, d)
+    : engine (e), deviceSettings (d), settings (s), devicesPanel (bluetooth, e, d),
+      bluetoothPorts (e, bluetooth, s)
 {
     deviceSettings.addChangeListener (this);
     engine.getDeviceManager().addChangeListener (this);
+
+    // A Bluetooth device the user disconnected stays disconnected only with its ports closed.
+    toneListener.shouldSkip = [this] (const juce::String& name) { return bluetoothPorts.shouldBeClosed (name); };
+    bluetoothPorts.onChanged = [this] { toneListener.refreshDevices(); };
+    toneListener.refreshDevices();
 
     // A tone picked on the keyboard the instrument plays through becomes the track's tone.
     toneListener.onToneSelected = [this] (const juce::String& deviceName, const DeviceTone& tone)

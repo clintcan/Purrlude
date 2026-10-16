@@ -6,6 +6,7 @@
 #include "model/AudioExport.h"
 #include "model/AudioImport.h"
 #include "model/AudioToMidi.h"
+#include "model/BluetoothMidiPorts.h"
 #include "model/InstrumentSeparation.h"
 #include "model/MidiImport.h"
 #include "model/Project.h"
@@ -136,6 +137,7 @@ private:
     void setEditorsFullHeight (bool);
     MidiDevicesPanel devicesPanel;
     ToneListener toneListener { deviceSettings };
+    BluetoothMidiPorts bluetoothPorts;
 
     int ticksSinceAutosave = 0;
 
