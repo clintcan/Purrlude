@@ -98,6 +98,52 @@ namespace
         }
     }
 
+    /** A direction above the staff at an offset into the measure: words ("rit."), or a tempo
+        change: a metronome mark, or (where the mark's note can't be drawn) "120 BPM".
+    */
+    void addDirection (juce::XmlElement& measure, int offset, const juce::String& words, std::optional<double> bpm, bool metronomeMark)
+    {
+        auto* direction = measure.createNewChildElement ("direction");
+        direction->setAttribute ("placement", "above");
+        auto* type = direction->createNewChildElement ("direction-type");
+
+        if (bpm && metronomeMark)
+        {
+            auto* metronome = type->createNewChildElement ("metronome");
+            addText (*metronome, "beat-unit", "quarter");
+            addText (*metronome, "per-minute", juce::String (juce::roundToInt (*bpm)));
+        }
+        else
+        {
+            addText (*type, "words", bpm ? juce::String (juce::roundToInt (*bpm)) + " BPM" : words);
+        }
+
+        if (offset > 0)
+            addText (*direction, "offset", juce::String (offset));
+
+        if (bpm)
+            direction->createNewChildElement ("sound")->setAttribute ("tempo", juce::String (*bpm, 2));
+    }
+
+    /** The tempo changes in a measure (ticks from..to): each as a mark where it arrives, and
+        "accel." or "rit." where a gradual one starts.
+    */
+    void addTempoChanges (juce::XmlElement& measure, const Score& score, int from, int to, bool metronomeMark)
+    {
+        for (size_t i = 0; i < score.tempoChanges.size(); ++i)
+        {
+            const auto& change = score.tempoChanges[i];
+            auto previousBpm = i == 0 ? score.tempoBpm : score.tempoChanges[i - 1].bpm;
+            auto previousTick = i == 0 ? 0 : score.tempoChanges[i - 1].tick;
+
+            if (change.gradual && previousTick >= from && previousTick < to && ! juce::approximatelyEqual (change.bpm, previousBpm))
+                addDirection (measure, previousTick - from, change.bpm > previousBpm ? "accel." : "rit.", std::nullopt, false);
+
+            if (change.tick >= from && change.tick < to)
+                addDirection (measure, change.tick - from, {}, change.bpm, metronomeMark);
+        }
+    }
+
     int numBeams (const Event& e)
     {
         if (e.isRest())         return 0;
@@ -200,6 +246,13 @@ juce::String toMusicXml (const Score& score, const MusicXmlOptions& options)
             {
                 addAttributes (*measure, score, part);
                 addTempo (*measure, score.tempoBpm, options.tempoMark);
+            }
+
+            // Tempo changes, over the top part only.
+            if (p == 0)
+            {
+                auto measureTicks = score.time.getMeasureTicks();
+                addTempoChanges (*measure, score, (int) m * measureTicks, ((int) m + 1) * measureTicks, options.tempoMark);
             }
 
             // Chord symbols over this measure, each at its offset from the measure's start.

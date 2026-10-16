@@ -4,6 +4,7 @@
 #include "model/Automation.h"
 #include "model/LoopRange.h"
 #include "model/Takes.h"
+#include "model/TempoChanges.h"
 #include "model/TimeSignature.h"
 
 namespace purrlude
@@ -58,7 +59,8 @@ TransportBar::TransportBar (tracktion::Edit& e)
 
     tempoLabel.setEditable (true);
     tempoLabel.setJustificationType (juce::Justification::centredRight);
-    tempoLabel.setTooltip ("Tempo: click to type a new value");
+    tempoLabel.setTooltip ("Tempo at the playhead: click to type a new value. Right-click the ruler to add a "
+                           "tempo change partway through the song.");
     tempoLabel.setColour (juce::Label::outlineColourId, juce::Colours::grey);
     tempoLabel.onTextChange = [this] { setTempo (tempoLabel.getText().getDoubleValue()); };
 
@@ -168,6 +170,11 @@ void TransportBar::togglePunch()
     updateButtons();
 }
 
+double TransportBar::getPlayheadBeat() const
+{
+    return juce::jmax (0.0, edit.tempoSequence.toBeats (edit.getTransport().getPosition()).inBeats());
+}
+
 void TransportBar::toggleAutomationRecording()
 {
     automation::setWriting (edit, ! automation::isWriting (edit));
@@ -176,9 +183,9 @@ void TransportBar::toggleAutomationRecording()
 
 void TransportBar::setTempo (double bpm)
 {
-    if (bpm >= 20.0 && bpm <= 400.0)
-        if (auto* tempo = edit.tempoSequence.getTempo (0))
-            tempo->setBpm (bpm);
+    // The tempo in effect at the playhead: the song's, or that of a change before it.
+    if (bpm >= tempo::minBpm && bpm <= tempo::maxBpm)
+        tempo::setBpm (edit, tempo::getChangeAt (edit, getPlayheadBeat()), bpm);
 
     updateButtons();
 }
@@ -236,10 +243,13 @@ void TransportBar::askForTimeSignature()
         if (safe == nullptr || safe->timeSignatureWindow == nullptr)
             return;
 
+        // Ending the modal state doesn't hide the window: it goes when this does.
+        auto window = std::move (safe->timeSignatureWindow);
+
         if (result == 1)
         {
-            auto beats = safe->timeSignatureWindow->getTextEditorContents ("beats").getIntValue();
-            auto unitText = safe->timeSignatureWindow->getComboBoxComponent ("unit")->getText();
+            auto beats = window->getTextEditorContents ("beats").getIntValue();
+            auto unitText = window->getComboBoxComponent ("unit")->getText();
             changeTimeSignature (safe->edit, juce::jlimit (1, 32, beats), unitText.getIntValue());
         }
 
@@ -263,8 +273,7 @@ void TransportBar::updateButtons()
                             recording ? recordColour : getLookAndFeel().findColour (juce::TextButton::buttonColourId));
 
     if (! tempoLabel.isBeingEdited())
-        if (auto* tempo = edit.tempoSequence.getTempo (0))
-            tempoLabel.setText (juce::String (tempo->getBpm(), 1), juce::dontSendNotification);
+        tempoLabel.setText (juce::String (tempo::getBpmAt (edit, getPlayheadBeat()), 1), juce::dontSendNotification);
 
     // Changed here, by undo, or by an imported file.
     if (auto* sig = edit.tempoSequence.getTimeSig (0))

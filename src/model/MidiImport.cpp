@@ -1,4 +1,5 @@
 #include "MidiImport.h"
+#include "TempoChanges.h"
 
 #include "ClipOrder.h"
 
@@ -63,6 +64,7 @@ Result importMidi (tracktion::Edit& edit, LiveInstrument& live, const juce::Midi
     // Split every track by channel, and find the first tempo and time signature.
     std::vector<Part> parts;
     std::optional<double> bpm;
+    std::map<double, double> tempoChanges;   ///< Tick -> BPM, after the first tempo
     std::optional<std::pair<int, int>> timeSignature;
     std::optional<notation::KeySignature> keySignature;
 
@@ -77,7 +79,15 @@ Result importMidi (tracktion::Edit& edit, LiveInstrument& live, const juce::Midi
             const auto& m = holder->message;
 
             if (m.isTrackNameEvent() && trackName.isEmpty())    trackName = m.getTextFromTextMetaEvent().trim();
-            if (m.isTempoMetaEvent() && ! bpm)                  bpm = 60.0 / m.getTempoSecondsPerQuarterNote();
+            if (m.isTempoMetaEvent())
+            {
+                auto tempoBpm = 60.0 / m.getTempoSecondsPerQuarterNote();
+
+                if (! bpm || m.getTimeStamp() <= 0.0)
+                    bpm = tempoBpm;
+                else
+                    tempoChanges[m.getTimeStamp()] = tempoBpm;
+            }
 
             if (m.isTimeSignatureMetaEvent() && ! timeSignature)
             {
@@ -149,6 +159,25 @@ Result importMidi (tracktion::Edit& edit, LiveInstrument& live, const juce::Midi
     auto beatsPerBar = (double) sig->numerator.get();
     auto startBeat = startBar * beatsPerBar;
     auto& tempo = edit.tempoSequence;
+
+    // The file's later tempo changes, into an empty song (before its clips, which are placed
+    // in beats; there's nothing to keep on its beats yet). Each holds until the next.
+    if (emptySong && bpm && ! tempoChanges.empty())
+    {
+        auto previous = juce::jlimit (purrlude::tempo::minBpm, purrlude::tempo::maxBpm, *bpm);
+        tempo.getTempo (0)->set ({}, previous, 1.0f, false);
+
+        for (auto [tick, changeBpm] : tempoChanges)
+        {
+            changeBpm = juce::jlimit (purrlude::tempo::minBpm, purrlude::tempo::maxBpm, changeBpm);
+
+            if (std::abs (changeBpm - previous) < 0.01)
+                continue;
+
+            tempo.insertTempo (tracktion::BeatPosition::fromBeats (startBeat + tick / ticksPerQuarter * quartersToBeats), changeBpm, 1.0f);
+            previous = changeBpm;
+        }
+    }
 
     // Names shared by several parts (e.g. channels of one track) get the instrument added.
     std::map<juce::String, int> nameCounts;

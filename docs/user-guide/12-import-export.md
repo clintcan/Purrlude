@@ -20,11 +20,11 @@ You can also **drag files onto the window**, MIDI and audio together. Each impor
 **What comes in:** notes, controllers, pitch bend and aftertouch.
 
 **Into an empty song,** the file also sets:
-- the tempo
+- the tempo, with its changes through the song
 - the time signature
 - the key, which the score and accompaniment then use
 
-Only the first of each is used; later changes in the file are ignored. Files timed in SMPTE frames can't be imported.
+For the time signature and key, only the first is used; later changes in the file are ignored. Files timed in SMPTE frames can't be imported.
 
 ### Audio files
 

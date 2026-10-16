@@ -15,8 +15,8 @@ namespace purrlude
     Tracks are named after the file's track names, or the instrument.
 
     Parts start at startBar. In an empty song, the empty first track takes the first part,
-    and the project takes the file's first tempo, time signature and key signature (later
-    changes are ignored). The whole import is one undo step.
+    and the project takes the file's tempo and its changes, and its first time signature and
+    key signature (later changes of those are ignored). The whole import is one undo step.
 */
 namespace midi_import
 {

@@ -2,6 +2,7 @@
 
 #include "model/TrackInstrument.h"
 #include "model/SharedReverb.h"
+#include "model/TempoChanges.h"
 
 namespace purrlude::notation
 {
@@ -134,18 +135,32 @@ EditScoreInput getEditScoreInput (tracktion::Edit& edit, const BuildOptions& opt
                 break;
             }
 
-    auto bpm = edit.tempoSequence.getTempo (0) != nullptr ? edit.tempoSequence.getTempo (0)->getBpm() : 120.0;
+    auto bpm = tempo::getChanges (edit).front().bpm;   // the starting tempo
     auto withKey = options;
 
     if (! withKey.key)
         withKey.key = getKeySignature (edit);
 
-    return { std::move (parts), getTimeSignature (edit), withKey, bpm };
+    return { std::move (parts), getTimeSignature (edit), withKey, bpm, getTempoChanges (edit) };
+}
+
+std::vector<TempoChange> getTempoChanges (tracktion::Edit& edit)
+{
+    std::vector<TempoChange> changes;
+    auto quartersPerBeat = 4.0 / getTimeSignature (edit).denominator;
+    auto all = tempo::getChanges (edit);
+
+    for (size_t i = 1; i < all.size(); ++i)
+        changes.push_back ({ juce::roundToInt (all[i].beat * quartersPerBeat * ticksPerQuarter), all[i].bpm, all[i].gradual });
+
+    return changes;
 }
 
 Score buildEditScore (const EditScoreInput& input, const std::string& title)
 {
-    return buildMultiPartScore (input.parts, input.timeSignature, input.options, title, input.bpm);
+    auto score = buildMultiPartScore (input.parts, input.timeSignature, input.options, title, input.bpm);
+    score.tempoChanges = input.tempoChanges;
+    return score;
 }
 
 Score buildEditScore (tracktion::Edit& edit, const std::string& title, const BuildOptions& options)
@@ -156,16 +171,18 @@ Score buildEditScore (tracktion::Edit& edit, const std::string& title, const Bui
 Score buildTrackScore (tracktion::AudioTrack& track, const std::string& title, const BuildOptions& options)
 {
     auto& edit = track.edit;
-    auto bpm = edit.tempoSequence.getTempo (0) != nullptr ? edit.tempoSequence.getTempo (0)->getBpm() : 120.0;
+    auto bpm = tempo::getChanges (edit).front().bpm;   // the starting tempo
 
     auto withKey = options;
 
     if (! withKey.key)
         withKey.key = getKeySignature (edit);
 
-    return buildMultiPartScore ({ { track.getName().toStdString(), getTrackNotes (track), TrackInstrument (edit, track).playsDrumKit(),
-                                    getTransposition (track) } },
-                                getTimeSignature (edit), withKey, title, bpm);
+    auto score = buildMultiPartScore ({ { track.getName().toStdString(), getTrackNotes (track), TrackInstrument (edit, track).playsDrumKit(),
+                                          getTransposition (track) } },
+                                      getTimeSignature (edit), withKey, title, bpm);
+    score.tempoChanges = getTempoChanges (edit);
+    return score;
 }
 
 } // namespace purrlude::notation

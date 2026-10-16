@@ -108,6 +108,10 @@ public:
     juce::Component& getZoomBar();
     static constexpr int zoomBarHeight = 22;
 
+    /** The bar ruler (kept at the top of the visible area), and where a beat is across this view. */
+    juce::Component& getRuler();
+    float beatToX (double beat) const;
+
 private:
     void timerCallback() override;
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
@@ -128,7 +132,6 @@ private:
     double getSongBeats() const;      ///< How far the timeline goes: the song and a little after
     double getLaneWidth() const;
     std::pair<double, double> getVisibleBeatRange() const;
-    float beatToX (double beat) const;
     double xToBeat (float x) const;
 
     void updateTimeline();

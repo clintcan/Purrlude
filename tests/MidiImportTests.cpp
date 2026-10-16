@@ -4,6 +4,7 @@
 #include "instruments/GeneralMidi.h"
 #include "model/EngineSetup.h"
 #include "model/MidiImport.h"
+#include "model/TempoChanges.h"
 #include "notation/MusicXmlWriter.h"
 #include "notation/TrackNotation.h"
 
@@ -234,4 +235,62 @@ TEST_CASE ("The score's input is read once and changes only with the music", "[m
     auto* clip = dynamic_cast<tracktion::MidiClip*> (tracktion::getAudioTracks (*f.edit)[0]->getClips()[0]);
     clip->getSequence().addNote (67, tracktion::BeatPosition::fromBeats (2.0), tracktion::BeatDuration::fromBeats (1.0), 100, 0, nullptr);
     REQUIRE_FALSE (purrlude::notation::getEditScoreInput (*f.edit) == input);
+}
+
+TEST_CASE ("A MIDI file's tempo changes come in, and the score marks them", "[midi-import][tempo]")
+{
+    Fixture f;
+    auto song = makeSong();
+    juce::MidiFile file;
+    file.setTicksPerQuarterNote (ppq);
+
+    // 90 BPM, then 120 from bar 3 (quarter 6 in 3/4), then 60 from bar 5: on the conductor track.
+    for (int t = 0; t < song.getNumTracks(); ++t)
+    {
+        auto track = *song.getTrack (t);
+
+        if (t == 0)
+        {
+            track.addEvent (at (juce::MidiMessage::tempoMetaEvent (60000000 / 120), 6));
+            track.addEvent (at (juce::MidiMessage::tempoMetaEvent (60000000 / 60), 12));
+        }
+
+        file.addTrack (track);
+    }
+
+    auto result = purrlude::midi_import::importMidi (*f.edit, f.live, roundTrip (file), 0);
+    REQUIRE (result.error.isEmpty());
+
+    auto tempos = purrlude::tempo::getChanges (*f.edit);
+    REQUIRE (tempos.size() == 3);
+    CHECK_THAT (tempos[0].bpm, WithinAbs (90.0, 0.01));
+    CHECK_THAT (tempos[1].beat, WithinAbs (6.0, 0.001));
+    CHECK_THAT (tempos[1].bpm, WithinAbs (120.0, 0.01));
+    CHECK_THAT (tempos[2].beat, WithinAbs (12.0, 0.001));
+    CHECK_FALSE (tempos[1].gradual);
+
+    // The note at quarter 6 is on its beat: after 6 quarters at 90 BPM, 4 s in.
+    auto tracks = tracktion::getAudioTracks (*f.edit);
+    auto notes = purrlude::notation::getTrackNotes (*tracks[3]);
+    REQUIRE_THAT (notes[0].start, WithinAbs (6.0, 0.001));
+    CHECK_THAT (f.edit->tempoSequence.toTime (tracktion::BeatPosition::fromBeats (6.0)).inSeconds(), WithinAbs (4.0, 0.001));
+
+    // The score marks the change at bar 3 (the one at bar 5 is after the music ends).
+    auto score = purrlude::notation::buildEditScore (*f.edit, {});
+    REQUIRE (score.tempoChanges.size() == 2);
+    CHECK (score.tempoChanges[0].tick == 6 * purrlude::notation::ticksPerQuarter);
+    auto xml = purrlude::notation::toMusicXml (score);
+    CHECK (xml.contains ("<per-minute>120</per-minute>"));
+    CHECK (xml.contains ("<sound tempo=\"120.00\"/>"));
+    CHECK_FALSE (xml.contains ("<sound tempo=\"60.00\"/>"));
+
+    // A gradual change is marked rit. where it starts.
+    purrlude::tempo::setGradual (*f.edit, 2, true);
+    auto gradual = purrlude::notation::toMusicXml (purrlude::notation::buildEditScore (*f.edit, {}));
+    CHECK (gradual.contains ("<words>rit.</words>"));
+
+    // Undo takes them away with the rest of the import.
+    f.edit->getUndoManager().undo();
+    f.edit->getUndoManager().undo();
+    CHECK (purrlude::tempo::getChanges (*f.edit).size() == 1);
 }

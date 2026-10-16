@@ -60,6 +60,13 @@ bool changeTimeSignature (tracktion::Edit& edit, int numerator, int denominator)
             if (midi->isLooping())
                 midi->setLoopRangeBeats ({ rescale (midi->getLoopStartBeats()), rescaleLength (midi->getLoopLengthBeats()) });
         }
+
+        // Tempo changes stay where they are in time too (their BPM is in quarter notes).
+        auto& tempos = edit.tempoSequence;
+
+        for (int i = 1; i < tempos.getNumTempos(); ++i)
+            if (auto* setting = tempos.getTempo (i))
+                setting->set (rescale (setting->getStartBeat()), setting->getBpm(), setting->getCurve(), false);
     }
 
     // Back where they were in time (Tracktion keeps bar-and-beat clips on their beats).

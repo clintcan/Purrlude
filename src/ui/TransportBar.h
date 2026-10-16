@@ -36,6 +36,7 @@ private:
     void timerCallback() override;
     void updateButtons();
     void setTempo (double bpm);
+    double getPlayheadBeat() const;
     void stopAtEndOfSong();
 
     static constexpr double endTailSeconds = 1.0;   ///< Played after the last clip before stopping

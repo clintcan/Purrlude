@@ -6,6 +6,7 @@
 #include "model/Takes.h"
 #include "notation/TrackNotation.h"
 #include "model/SharedReverb.h"
+#include "model/TempoChanges.h"
 #include "model/TrackMix.h"
 #include "ui/EffectsPanel.h"
 
@@ -19,6 +20,7 @@ namespace
     const auto playheadColour = juce::Colour (0xfff0e442);   // yellow
     const auto loopColour     = juce::Colour (0xffe69f00);   // orange
     const auto automationColour = juce::Colour (0xff56b4e9); // sky blue
+    const auto tempoColour    = juce::Colour (0xff3fc49a);   // bluish green, lightened
     constexpr int minimumBars = 16;
     constexpr int edgeGrabWidth = 6;   ///< pixels at a clip's edges that trim it
     constexpr float handleSize = 9.0f; ///< an audio clip's fade handles
@@ -137,7 +139,7 @@ public:
         return pos.y < loopStripHeight ? "Loop and punch range: drag here to set it (Shift snaps to beats). Drag the band "
                                          "or its ends to change it; click it to turn looping on or off (L). Orange: "
                                          "looping; vermillion: punch recording (P)."
-                                       : "Click to move the playhead";
+                                       : "Click to move the playhead. Right-click to add or change a tempo change.";
     }
 
     void paint (juce::Graphics& g) override
@@ -183,6 +185,40 @@ public:
             g.drawText (juce::String (bar + 1), x + 3, loopStripHeight, 40, getHeight() - loopStripHeight, juce::Justification::centredLeft);
         }
 
+        // Tempo changes, after their bar numbers: "120 BPM", or "→ 120 BPM" when reached gradually.
+        auto changes = tempo::getChanges (owner.edit);
+        g.setFont (juce::FontOptions (11.0f, juce::Font::bold));
+
+        for (size_t i = 1; i < changes.size(); ++i)
+        {
+            auto x = owner.beatToX (changes[i].beat);
+
+            if (x < (float) headerWidth - 2.0f || x > (float) getWidth())
+                continue;
+
+            auto barNumber = juce::String ((int) (changes[i].beat / beatsPerBar) + 1);
+            auto onBarLine = std::abs (std::fmod (changes[i].beat, (double) beatsPerBar)) < 1.0e-6;
+            auto textX = onBarLine ? x + 3.0f + juce::GlyphArrangement::getStringWidth (juce::FontOptions (14.0f), barNumber) + 6.0f
+                                   : x + 3.0f;
+            auto number = (changes[i].gradual ? juce::String (juce::CharPointer_UTF8 ("\xe2\x86\x92 ")) : juce::String())
+                            + juce::String (changes[i].bpm, changes[i].bpm == std::round (changes[i].bpm) ? 0 : 1);
+
+            // Up to the next bar number drawn: "120 BPM", or just "120", or nothing if even that won't fit.
+            auto barStart = std::floor (changes[i].beat / beatsPerBar + 1.0e-6);
+            auto nextNumberX = owner.beatToX ((std::floor (barStart / barStep) + 1.0) * barStep * beatsPerBar);
+            auto room = nextNumberX - textX - 4.0f;
+            auto font = juce::FontOptions (11.0f, juce::Font::bold);
+            auto text = number + " BPM";
+
+            if (juce::GlyphArrangement::getStringWidth (font, text) > room)
+                text = juce::GlyphArrangement::getStringWidth (font, number) <= room ? number : juce::String();
+
+            g.setColour (tempoColour);
+            g.fillRect (juce::Rectangle<float> (x - 1.0f, (float) loopStripHeight, 2.0f, (float) (getHeight() - loopStripHeight)));
+            g.drawText (text, juce::Rectangle<float> (textX, (float) loopStripHeight, juce::jmax (0.0f, room), (float) (getHeight() - loopStripHeight)),
+                        juce::Justification::centredLeft, false);
+        }
+
         g.setColour (juce::Colours::black.withAlpha (0.3f));
         g.drawHorizontalLine (getHeight() - 1, 0.0f, (float) getWidth());
     }
@@ -200,6 +236,12 @@ public:
 
         if (e.x < headerWidth)
             return;
+
+        if (e.mods.isPopupMenu())
+        {
+            showTempoMenu (e.x);
+            return;
+        }
 
         if (e.y >= loopStripHeight)
         {
@@ -226,6 +268,9 @@ public:
 
     void mouseDrag (const juce::MouseEvent& e) override
     {
+        if (e.mods.isPopupMenu())
+            return;
+
         if (! loopDrag)
         {
             if (e.mouseDownPosition.y >= loopStripHeight && e.x >= headerWidth)
@@ -332,6 +377,101 @@ private:
         return LoopPart::none;
     }
 
+    /** Right-click on the ruler: add a tempo change at the bar, or change the one there. */
+    void showTempoMenu (int x)
+    {
+        auto& edit = owner.edit;
+        auto beatsPerBar = (double) edit.tempoSequence.getTimeSig (0)->numerator.get();
+        auto beat = juce::jmax (0.0, owner.xToBeat ((float) x));
+        auto barBeat = std::floor (beat / beatsPerBar + 1.0e-6) * beatsPerBar;
+        auto barName = "Bar " + juce::String ((int) (barBeat / beatsPerBar) + 1);
+        auto changes = tempo::getChanges (edit);
+
+        // The change in this bar, or one drawn just here.
+        int index = -1;
+
+        for (size_t i = 0; i < changes.size(); ++i)
+            if ((changes[i].beat >= barBeat - 1.0e-6 && changes[i].beat < barBeat + beatsPerBar - 1.0e-6)
+                 || std::abs (owner.beatToX (changes[i].beat) - (float) x) < 6.0f)
+                index = (int) i;
+
+        enum { addId = 1, changeId, gradualId, removeId };
+        juce::PopupMenu menu;
+
+        if (index >= 0)
+        {
+            auto& change = changes[(size_t) index];
+            auto where = index == 0 ? juce::String ("Starting tempo")
+                                    : "Tempo change at Bar " + juce::String ((int) (change.beat / beatsPerBar) + 1);
+            menu.addSectionHeader (where + ": " + juce::String (change.bpm, 1) + " BPM");
+            menu.addItem (changeId, "Change Tempo...");
+
+            if (index > 0)
+            {
+                menu.addItem (gradualId, "Gradual (from the tempo before)", true, change.gradual);
+                menu.addItem (removeId, "Remove Tempo Change");
+            }
+        }
+        else
+        {
+            menu.addItem (addId, "Add Tempo Change at " + barName + "...");
+        }
+
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetScreenArea (localAreaToGlobal (juce::Rectangle<int> (x, 0, 1, getHeight()))),
+                            [safe = juce::Component::SafePointer<RulerOverlay> (this), index, barBeat, barName] (int result)
+        {
+            if (safe == nullptr || result == 0)
+                return;
+
+            auto& songEdit = safe->owner.edit;
+
+            switch (result)
+            {
+                case addId:
+                    safe->askForTempo ("Tempo change at " + barName, "The tempo from " + barName + " on, in beats per minute:",
+                                       tempo::getBpmAt (songEdit, barBeat),
+                                       [&songEdit, barBeat] (double bpm) { tempo::add (songEdit, barBeat, bpm); });
+                    break;
+
+                case changeId:
+                    safe->askForTempo (index == 0 ? "Starting tempo" : "Tempo change", "The tempo, in beats per minute:",
+                                       tempo::getChanges (songEdit)[(size_t) index].bpm,
+                                       [&songEdit, index] (double bpm) { tempo::setBpm (songEdit, index, bpm); });
+                    break;
+
+                case gradualId:     tempo::setGradual (songEdit, index, ! tempo::getChanges (songEdit)[(size_t) index].gradual); break;
+                case removeId:      tempo::remove (songEdit, index); break;
+                default:            break;
+            }
+
+            safe->owner.repaint();
+        });
+    }
+
+    void askForTempo (const juce::String& title, const juce::String& message, double bpm, std::function<void (double)> apply)
+    {
+        tempoWindow = std::make_unique<juce::AlertWindow> (title, message, juce::MessageBoxIconType::NoIcon);
+        tempoWindow->addTextEditor ("bpm", juce::String (bpm, 1), "BPM (20-400)");
+        tempoWindow->addButton ("OK", 1, juce::KeyPress (juce::KeyPress::returnKey));
+        tempoWindow->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+
+        tempoWindow->enterModalState (true, juce::ModalCallbackFunction::create (
+            [safe = juce::Component::SafePointer<RulerOverlay> (this), apply = std::move (apply)] (int result)
+            {
+                if (safe == nullptr || safe->tempoWindow == nullptr)
+                    return;
+
+                // Ending the modal state doesn't hide the window: it goes when this does.
+                auto window = std::move (safe->tempoWindow);
+                auto value = window->getTextEditorContents ("bpm").getDoubleValue();
+
+                if (result == 1 && value >= tempo::minBpm && value <= tempo::maxBpm)
+                    apply (value);
+
+                safe->owner.repaint();
+            }), false);
+    }
+
     float getVolume() const
     {
         auto db = (float) masterVolume.getValue();
@@ -344,6 +484,7 @@ private:
     juce::Slider masterVolume;
     float valueBeforeDrag = 0.0f;
     std::optional<LoopDrag> loopDrag;
+    std::unique_ptr<juce::AlertWindow> tempoWindow;
 };
 
 /** Zoom buttons (under the track headers) and the horizontal scrollbar (under the lanes). */
@@ -541,6 +682,11 @@ double ArrangementView::xToBeat (float x) const
 }
 
 //==============================================================================
+juce::Component& ArrangementView::getRuler()
+{
+    return *rulerOverlay;
+}
+
 juce::Component& ArrangementView::getZoomBar()
 {
     return *zoomBar;

@@ -29,8 +29,11 @@ void setKeySignature (tracktion::Edit&, std::optional<KeySignature>, juce::UndoM
 */
 Transposition getTransposition (tracktion::AudioTrack&);
 
-/** The Edit's first time signature. Tempo or time-signature changes aren't notated yet. */
+/** The Edit's first time signature. Time-signature changes aren't notated yet. */
 TimeSignature getTimeSignature (tracktion::Edit&);
+
+/** The Edit's tempo changes after its starting tempo, for the score. */
+std::vector<TempoChange> getTempoChanges (tracktion::Edit&);
 
 /** A one-part score for the track, using the Edit's tempo and time signature. */
 Score buildTrackScore (tracktion::AudioTrack&, const std::string& title, const BuildOptions& = {});
@@ -45,6 +48,7 @@ struct EditScoreInput
     TimeSignature timeSignature;
     BuildOptions options;
     double bpm = 120.0;
+    std::vector<TempoChange> tempoChanges;
 
     /** True if no part has any notes. */
     bool isEmpty() const;

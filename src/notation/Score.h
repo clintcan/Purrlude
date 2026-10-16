@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cmath>
+
 #include <string>
 #include <vector>
 
@@ -137,12 +139,26 @@ struct Part
     std::vector<ChordSymbol> chords;          ///< Written above the part, in its written pitch
 };
 
+/** A tempo change partway through the song. */
+struct TempoChange
+{
+    int tick = 0;            ///< From the start of the song
+    double bpm = 120.0;      ///< Quarter notes per minute
+    bool gradual = false;    ///< Reached gradually from the tempo before (accel. or rit.)
+
+    bool operator== (const TempoChange& other) const
+    {
+        return tick == other.tick && gradual == other.gradual && std::abs (bpm - other.bpm) < 1.0e-9;
+    }
+};
+
 struct Score
 {
     std::string title;
     KeySignature key;
     TimeSignature time;
-    double tempoBpm = 120.0;
+    double tempoBpm = 120.0;                  ///< At the start
+    std::vector<TempoChange> tempoChanges;    ///< Later, in order
     std::vector<Part> parts;
 };
 

@@ -25,11 +25,28 @@ The position display shows the playhead as **bar.beat** and as **minutes:seconds
 
 ## Tempo
 
-The tempo is the number before **BPM**. Click it, type a new value between 20 and 400, and press Return.
-- Notes stay on their beats, so the whole song speeds up or slows down.
+The tempo is the number before **BPM**: the tempo at the playhead. Click it, type a new value between 20 and 400, and press Return.
+- Notes stay on their beats, so the song speeds up or slows down. If the song changes tempo, this changes the tempo the playhead is in.
 - Importing a MIDI file or adding a drum loop to an empty song sets the tempo for you.
 
-A song has one tempo. Tempo changes partway through aren't supported yet.
+### Tempo changes
+
+A song can change tempo partway through: a slower bridge, say, or a big ritardando at the end.
+
+<img src="images/ruler-tempo.png" alt="The ruler with a tempo change at bar 5: a green line and 120 BPM beside the bar number" width="100%">
+
+<img src="images/tempo-menu.png" alt="The ruler's menu for a tempo change: Change Tempo..., Gradual (from the tempo before), Remove Tempo Change" width="458" align="right">
+
+- **Add one:** right-click the ruler in the bar where the new tempo should start, choose **Add Tempo Change at Bar n...**, and type the tempo. It takes effect at the start of that bar.
+- **See them:** each change is a green line on the ruler, with its tempo beside the bar number.
+- **Change or remove one:** right-click it on the ruler.
+- **Gradual:** a change can be **Gradual**: the tempo then speeds up or slows down steadily from the change before (an *accel.* or *rit.*), arriving at the new tempo on its bar. The ruler shows it as **→ 120 BPM**.
+
+**What stays where:** clips, notes, automation and the loop range stay on their bars and beats; only how fast they go by changes. Audio clips aren't stretched: they start on their beat and play at their own speed.
+
+Every change is one undo step, and the score shows the changes as tempo marks.
+
+<br clear="right">
 
 ## Time signature
 

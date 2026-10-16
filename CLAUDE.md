@@ -8,7 +8,7 @@ Purrlude is a cross-platform digital audio workstation (DAW) for composing, reco
 >   - prebuilt releases (signed, notarised macOS app; Windows/Linux installers)
 >   - hosting the Demucs model
 >   - real use on Windows/Linux
->   - tempo/time-signature changes within a song
+>   - time-signature changes within a song
 >   - a frozen project format
 > - **Public:** github.com/clintcan/Purrlude, AGPLv3.
 
@@ -226,6 +226,15 @@ The app talks to `purrlude::BluetoothMidiManager` (`src/devices/BluetoothMidiMan
 
 **Transport:** `TransportBar` stops playback 1 s after the last clip ends (`AudioExport::getSongRange`); recording never stops by itself. Play from at or past the end starts from the beginning.
 
+**Tempo changes** (`src/model/TempoChanges.h`, namespace `tempo`):
+- **Storage:** Tracktion's tempo settings; the first is the starting tempo at beat 0. A setting's curve is about the stretch after it: ±1 holds its tempo (the next one jumps), 0 ramps in a straight line to the next. So a change's "gradual" flag is the curve of the setting before it. `add` makes a change sudden and gives it the previous setting's old curve; `remove` passes the removed one's curve back.
+- **Keeping the song on its beats:** Tracktion's `insertTempo`/`removeTempo` don't move clips (they're placed in seconds), so every edit runs inside an `EditTimecodeRemapperSnapshot` (save before, remap after), which keeps clips, automation and the loop on their beats. Audio clips without auto-tempo keep their length in time. Each edit is one undo step, and calls `sortAllClipsLikeTracktion`.
+- **Time signature:** `changeTimeSignature` rescales tempo changes' beats with the notes, so they stay where they are in time.
+- **UI:** the ruler draws each change (a green line and "120 BPM", "→ 120 BPM" when gradual) and its right-click menu adds, changes, makes gradual and removes them (`RulerOverlay::showTempoMenu`). The transport bar shows and edits the tempo at the playhead.
+- **Score:** `notation::Score::tempoChanges` (in ticks), from `getTempoChanges`; MusicXML gets a metronome mark (or "120 BPM" words on screen, where the mark's note can't be drawn) at each change, and "accel."/"rit." where a gradual one starts. Changes after the music's last bar aren't written.
+- **Not adapted:** a delay's note-value time uses the starting tempo.
+- **Tests:** `[tempo]`.
+
 **Loop playback** (`src/model/LoopRange.h`, namespace `loop_range`; the Loop button or L):
 - **Storage:** the range is kept in quarter notes on the Edit's transport state (`purrludeLoopStart/End`, saved with the song), because Tracktion's loop points are in seconds and would drift off the bars when the tempo changes. Quarter notes also stay put when the time signature changes, like the music.
 - **Syncing:** `sync` writes it to Tracktion's loop points; `TransportBar` calls it 20 times a second. The loop isn't part of undo, like the playhead.
@@ -275,7 +284,7 @@ The app talks to `purrlude::BluetoothMidiManager` (`src/devices/BluetoothMidiMan
 - **Parts:** each track/channel pair with notes becomes an instrument track with one clip. The first Program Change picks the GM instrument, channel 10 is the drum kit, and tracks take the file's track names or the instrument.
 - **Content:** notes, CCs (not bank select), pitch bend, channel pressure and aftertouch come in. Ticks convert straight to beats, so placement doesn't depend on tempo.
 - **Placement:** parts start at the playhead's bar.
-- **Empty song:** it reuses the empty track and takes the file's first tempo, time signature and key signature. Later changes are ignored, and SMPTE-timed files are refused.
+- **Empty song:** it reuses the empty track and takes the file's tempo with its changes (inserted before the clips, each holding until the next), and its first time signature and key signature. Later changes of those are ignored, and SMPTE-timed files are refused.
 - **Song key:** the key is stored on the Edit (`notation::get/setKeySignature`). Scores and the accompaniment's key use it instead of estimating, since jazz ii–V material fools the estimate.
 - **Checking a real file:** `PURRLUDE_MIDI_FILE=/path/song.mid PurrludeTests "[.midi-file]" -s` imports it, prints its tracks and writes the score PDF next to it.
 - **Undo:** the import is one undo step, left open like other arrangement edits.
@@ -441,7 +450,7 @@ A note quantized past the end of the performance moves back onto the last grid s
 - **MusicXML:** `<harmony>` with `<kind text="m7">`, `<bass>`, and `<offset>` from the measure start (Verovio honours it).
 - **Accidentals:** Verovio writes chord-symbol accidentals as SMuFL characters (U+EA63–EA67) in its Leipzig font, which JUCE can't draw. `prepareVerovioSvg` turns them into "b"/"#" in the text's font (its size is on the sibling tspan).
 
-**Not handled yet:** more than two voices per staff, tempo or time-signature changes, and other tuplets (quintuplets, triplets spanning two beats).
+**Not handled yet:** more than two voices per staff, time-signature changes, and other tuplets (quintuplets, triplets spanning two beats).
 
 **On-screen score:** `ScoreView` (`src/ui/`) reads the song's notes twice a second on the message thread (`notation::getEditScoreInput`), skipping while recording. When they or the width change, its render thread builds the score and MusicXML (`buildEditScore (EditScoreInput)`), and, if the MusicXML changed, engraves it with `notation::ScoreRenderer` (Verovio) and builds a `notation::ScoreDrawing`. Verovio has global state, so it is only ever used from that one thread.
 - **ScoreDrawing, not Drawable:** a `juce::Drawable` is a tree of Components, one per shape, and Components may only be used on the message thread (building one elsewhere fires a JUCE assertion per shape: tens of thousands for a song). `ScoreDrawing` (`src/notation/`) reads the prepared SVG into plain paths, fills and strokes in the drawing's units, so it's built on the render thread. It draws only the shapes in the area being painted, and finds and highlights shapes by element id.

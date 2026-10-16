@@ -17,6 +17,7 @@ target_sources(PurrludeTests PRIVATE
     AudioExportTests.cpp
     MidiImportTests.cpp
     TimeSignatureTests.cpp
+    TempoChangesTests.cpp
     TimelineViewTests.cpp
     AudioTrackTests.cpp
     AudioRecordingTests.cpp

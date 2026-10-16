@@ -11,6 +11,7 @@
 #include "ui/PluginWindows.h"
 #include "Splash.h"
 #include "model/SharedReverb.h"
+#include "model/TempoChanges.h"
 #include "model/TrackEffects.h"
 #include "model/TrackInstrument.h"
 
@@ -199,6 +200,32 @@ void DocScreenshots::addSteps()
         auto viewport = boundsInMain (main.arrangementViewport);
         capture ("ruler", viewport.withHeight (36));
         capture ("zoom-bar", boundsInMain (main.arrangement->getZoomBar()).expanded (0, 4));
+    });
+
+    // A tempo change at bar 5, on the ruler and with its menu (then taken away again).
+    then (0, [this]
+    {
+        auto& edit = main.project->getEdit();
+        tempo::add (edit, 4.0 * edit.tempoSequence.getTimeSig (0)->numerator.get(), 120.0);
+    });
+
+    then (300, [this]
+    {
+        auto& ruler = main.arrangement->getRuler();
+        auto& edit = main.project->getEdit();
+        auto x = (int) main.arrangement->beatToX (4.0 * edit.tempoSequence.getTimeSig (0)->numerator.get());
+        capture ("ruler-tempo", boundsInMain (main.arrangementViewport).withHeight (36));
+        rightClick (ruler, { x + 30, 26 });
+    });
+
+    then (800, [this]
+    {
+        auto& ruler = main.arrangement->getRuler();
+        auto& edit = main.project->getEdit();
+        auto x = (int) main.arrangement->beatToX (4.0 * edit.tempoSequence.getTimeSig (0)->numerator.get());
+        capture ("tempo-menu", popupArea().getUnion (boundsInMain (ruler).withX (boundsInMain (ruler).getX() + x - 30).withWidth (60)).expanded (16));
+        closePopups();
+        tempo::remove (edit, 1);
     });
 
     then (0, [this, headerFor]
