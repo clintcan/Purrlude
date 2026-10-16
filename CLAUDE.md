@@ -351,7 +351,7 @@ src/ui/                 UI components (TransportBar, ArrangementView, ScoreView,
 tools/content/          Scripts that generate bundled content (run by hand; output is committed)
 tools/models/           Scripts that make the ML models that are too big to commit (run by hand)
 branding/               The app icon (made from the logo by tools/branding/make_icon.py; ICON_BIG in CMakeLists.txt)
-tests/                  Catch2 test runner (PurrludeTests)
+tests/                  Catch2 test runner (PurrludeTests); tests/projects holds songs saved in each project format version
 docs/user-guide/        End-user guide: README.md index, one page per topic, images/ taken by the app (and the logo, Purrlude-Cat-Logo.png)
 .github/workflows/      CI for Windows, macOS, Linux
 ```
@@ -403,6 +403,9 @@ docs/user-guide/        End-user guide: README.md index, one page per topic, ima
 `purrlude::Project` (`src/model/Project.h`) owns one open song: its `tracktion::Edit`, the `LiveInstrument`, the file and the autosave.
 
 - **File format:** projects are Tracktion Edit XML with a `.purrlude` extension, saved by writing a temp file and swapping it in. The default folder is `~/Documents/Purrlude`.
+- **Format version** (`src/model/ProjectFormat.h`, `docs/project-format.md`): each save writes `purrludeFormat` on `EDIT`; opening runs `project_format::upgrade` (a step per version), and a song from a newer Purrlude opens with a warning (`Project::getOpenWarning`, shown by `MainComponent`). The format is frozen from 1.0: when Purrlude's additions to the file change, bump `currentVersion`, add an upgrade step, and keep every old song working.
+  - **Saved songs:** `tests/projects/format-N` is a song saved in each version, using every feature (`ProjectFormatTests.cpp`, `[project-format]`, opens a copy and checks it all). `PurrludeTests "[.write-format-song]"` writes the current version's. Add new features to the song and its checks when they add to the file.
+  - **Document** every new `purrlude...` property or `PURRLUDE_...` element in `docs/project-format.md`.
 - **Autosave:** autosaves go to `Autosave/` next to the app's settings file, never next to the user's file. `MainComponent` writes one every 30 s (not while recording), and each records which project file it belongs to.
 - **Recovery:** a clean close deletes the autosave. Anything left over at launch is offered for recovery.
 - **Unsaved changes:** these come from `Edit::hasChangedSinceSaved()`. Tracktion starts tracking changes only after the message loop runs, so tests must pump it before editing.

@@ -10,7 +10,8 @@ namespace purrlude
 /** One open song: the tracktion::Edit (the document), its live instrument,
     the file it lives in, and its autosave.
 
-    Projects are saved as Tracktion Edit XML with a ".purrlude" extension.
+    Projects are saved as Tracktion Edit XML with a ".purrlude" extension, with the format's
+    version (see ProjectFormat.h).
 
     Audio (recordings and imported files) lives in the project's audio folder: "<name> Audio"
     next to the project file, or a temporary folder until it's first saved. Saving gathers
@@ -42,6 +43,11 @@ public:
     juce::String getName() const;
 
     bool hasUnsavedChanges() const;
+
+    /** Something the user should know about the song just opened (it's from a newer
+        Purrlude), or empty. See ProjectFormat.h.
+    */
+    juce::String getOpenWarning() const                 { return openWarning; }
 
     /** Where this project's audio goes (created when needed). */
     juce::File getAudioFolder() const;
@@ -93,6 +99,7 @@ private:
     juce::File file, autosaveFile;
     juce::String lastAutosavedChange;
     bool recovered = false;
+    juce::String openWarning;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Project)
 };

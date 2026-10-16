@@ -323,23 +323,33 @@ void TransportBar::timerCallback()
     updateButtons();
 }
 
+std::vector<TransportBar::Slot> TransportBar::getLayout()
+{
+    return { { &startButton, 40, 6 }, { &playButton, 64, 6 }, { &recordButton, 82, 6 }, { &loopButton, 52, 6 },
+             { &punchButton, 58, 6 }, { &automateButton, 82, 6 }, { &positionLabel, 100, 6 },
+             { &tempoLabel, 60, 0 }, { &tempoUnitLabel, 36, 6 }, { &timeSignatureButton, 52, 6 },
+             { &metronomeButton, 102, 0 }, { &countInButton, 90, 0 } };
+}
+
+int TransportBar::getPreferredWidth()
+{
+    int width = 2 * margin;
+
+    for (auto& slot : getLayout())
+        width += slot.width + slot.gapAfter;
+
+    return width;
+}
+
 void TransportBar::resized()
 {
-    auto r = getLocalBounds().reduced (6);
-    auto gap = [&r] { r.removeFromLeft (6); };
+    auto r = getLocalBounds().reduced (margin);
 
-    startButton.setBounds (r.removeFromLeft (40));      gap();
-    playButton.setBounds (r.removeFromLeft (64));       gap();
-    recordButton.setBounds (r.removeFromLeft (82));     gap();
-    loopButton.setBounds (r.removeFromLeft (52));       gap();
-    punchButton.setBounds (r.removeFromLeft (58));      gap();
-    automateButton.setBounds (r.removeFromLeft (82));   gap();
-    positionLabel.setBounds (r.removeFromLeft (100));   gap();
-    tempoLabel.setBounds (r.removeFromLeft (60));
-    tempoUnitLabel.setBounds (r.removeFromLeft (36));   gap();
-    timeSignatureButton.setBounds (r.removeFromLeft (52)); gap();
-    metronomeButton.setBounds (r.removeFromLeft (102));
-    countInButton.setBounds (r.removeFromLeft (90));
+    for (auto& slot : getLayout())
+    {
+        slot.component->setBounds (r.removeFromLeft (slot.width));
+        r.removeFromLeft (slot.gapAfter);
+    }
 }
 
 } // namespace purrlude

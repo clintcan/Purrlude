@@ -25,7 +25,7 @@ The **[user guide](docs/user-guide/README.md)** covers all of it, with screensho
 - **Releases:** a signed, notarised macOS app to download, then Windows and Linux installers.
 - **Instrument separation for everyone:** host the Demucs model so builds can fetch it.
 - **Testing:** real use on Windows and Linux, and beta testers on other machines and devices.
-- **A stable project format** from 1.0 on, so songs saved then keep opening.
+- **A stable project format** from 1.0 on, so songs saved then keep opening. Songs already record their format version, and a saved song using every feature is tested on every build ([format](docs/project-format.md)).
 
 ## Building
 

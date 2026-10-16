@@ -384,3 +384,53 @@ TEST_CASE ("Drum transcription accuracy on rendered loops", "[.drum-accuracy]")
         std::cout << "\n";
     }
 }
+
+TEST_CASE ("A conversion's notes go in at once, and the song still plays", "[analysis][model]")
+{
+    juce::ScopedJuceInitialiser_GUI juceInit;
+    auto engine = purrlude::createEngine ("PurrludeTests");
+    auto edit = tracktion::Edit::createSingleTrackEdit (*engine);
+    purrlude::LiveInstrument live (*edit);
+    pump();
+
+    auto file = writeMelody();
+    auto imported = purrlude::audio_import::importFile (*edit, live, file, 0);
+    REQUIRE (imported.error.isEmpty());
+    auto source = purrlude::audio_to_midi::getSource (*edit, imported.clip);
+    REQUIRE (source.has_value());
+
+    // As many notes as a long polyphonic recording gives.
+    std::vector<purrlude::analysis::TranscribedNote> notes;
+
+    for (int i = 0; i < 5000; ++i)
+        notes.push_back ({ i * 0.0004, 0.1, 48 + i % 36, 80 });
+
+    auto started = juce::Time::getMillisecondCounterHiRes();
+    auto* clip = purrlude::audio_to_midi::insertNotes (*edit, live, *source, notes, purrlude::audio_to_midi::Mode::polyphonic);
+    auto took = juce::Time::getMillisecondCounterHiRes() - started;
+    pump (500);
+
+    REQUIRE (clip != nullptr);
+    CHECK (clip->getSequence().getNotes().size() == 5000);
+    INFO ("Inserting took " << took << " ms");
+    CHECK (took < 1500.0);
+
+    // Playback starts and the playhead moves.
+    auto& transport = edit->getTransport();
+    transport.setPosition (tracktion::TimePosition());
+    transport.play (false);
+    pump (600);
+    auto position = transport.getPosition().inSeconds();
+    transport.stop (false, false);
+
+    if (position <= 0.0)
+        SKIP ("Playback didn't start (no audio device?)");
+
+    CHECK (position > 0.2);
+
+    // One undo step takes the track away.
+    pump (500);
+    edit->getUndoManager().undo();
+    CHECK (tracktion::getAudioTracks (*edit).size() == 2);
+    file.deleteFile();
+}

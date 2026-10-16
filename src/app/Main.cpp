@@ -22,6 +22,7 @@ public:
         content = new MainComponent (engine, bluetooth, deviceSettings, settings);
         setContentOwned (content, true);
         setResizable (true, true);
+        setResizeLimits (920, 560, 10000, 10000);   // room for the transport bar
         centreWithSize (getWidth(), getHeight());
         setVisible (visible);
 

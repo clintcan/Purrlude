@@ -32,7 +32,19 @@ public:
 
     void resized() override;
 
+    /** The width it needs to show everything. */
+    int getPreferredWidth();
+
 private:
+    struct Slot
+    {
+        juce::Component* component;
+        int width, gapAfter;
+    };
+
+    std::vector<Slot> getLayout();   ///< Left to right
+    static constexpr int margin = 6;
+
     void timerCallback() override;
     void updateButtons();
     void setTempo (double bpm);

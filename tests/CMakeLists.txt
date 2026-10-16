@@ -18,6 +18,7 @@ target_sources(PurrludeTests PRIVATE
     MidiImportTests.cpp
     TimeSignatureTests.cpp
     TempoChangesTests.cpp
+    ProjectFormatTests.cpp
     TimelineViewTests.cpp
     AudioTrackTests.cpp
     AudioRecordingTests.cpp
@@ -44,6 +45,9 @@ target_sources(PurrludeTests PRIVATE
     CrashHandler.cpp
     $<$<PLATFORM_ID:Windows>:BleMidiGattProbe_windows.cpp>
 )
+
+# Saved songs and other test files in the source tree (tests/projects).
+target_compile_definitions(PurrludeTests PRIVATE PURRLUDE_TESTS_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 
 target_link_libraries(PurrludeTests PRIVATE
     purrlude_core

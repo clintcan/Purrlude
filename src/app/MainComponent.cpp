@@ -208,6 +208,10 @@ void MainComponent::setProject (std::unique_ptr<Project> newProject)
     resized();
     updateTitle();
     menuItemsChanged();
+
+    // A song from a newer Purrlude.
+    if (auto warning = project->getOpenWarning(); warning.isNotEmpty())
+        showError ("Opened " + project->getName(), warning);
 }
 
 void MainComponent::startUp()
@@ -926,17 +930,27 @@ void MainComponent::paint (juce::Graphics& g)
 void MainComponent::resized()
 {
     auto r = getLocalBounds();
-    auto toolbar = r.removeFromTop (44);
 
-    devicesButton.setBounds (toolbar.removeFromRight (124).reduced (6));
-    loopsButton.setBounds (toolbar.removeFromRight (80).reduced (6));
-    midiLearnButton.setBounds (toolbar.removeFromRight (100).reduced (6));
-    pluginsButton.setBounds (toolbar.removeFromRight (84).reduced (6));
-    audioSettingsButton.setBounds (toolbar.removeFromRight (72).reduced (6));
-    editorsButton.setBounds (toolbar.removeFromRight (90).reduced (6));
+    // The transport, then the panel buttons on the right; on a second row when they don't
+    // fit beside it, rather than squeezing the transport.
+    constexpr int rowHeight = 44;
+    const std::pair<juce::Button*, int> panelButtons[] = { { &editorsButton, 90 }, { &audioSettingsButton, 72 }, { &pluginsButton, 84 },
+                                                           { &midiLearnButton, 100 }, { &loopsButton, 80 }, { &devicesButton, 124 } };
+    int buttonsWidth = 0;
+
+    for (auto& [button, width] : panelButtons)
+        buttonsWidth += width;
+
+    auto transportWidth = transportBar != nullptr ? transportBar->getPreferredWidth() : 0;
+    auto twoRows = getWidth() < transportWidth + buttonsWidth;
+    auto toolbar = r.removeFromTop (rowHeight);
+    auto buttonRow = twoRows ? r.removeFromTop (rowHeight) : toolbar;
+
+    for (auto it = std::rbegin (panelButtons); it != std::rend (panelButtons); ++it)
+        it->first->setBounds (buttonRow.removeFromRight (it->second).reduced (6));
 
     if (transportBar != nullptr)
-        transportBar->setBounds (toolbar);
+        transportBar->setBounds (twoRows ? toolbar : buttonRow);
 
     if (devicesPanel.isVisible())
         devicesPanel.setBounds (r.removeFromRight (MidiDevicesPanel::preferredWidth));

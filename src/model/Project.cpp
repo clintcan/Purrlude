@@ -1,4 +1,5 @@
 #include "Project.h"
+#include "ProjectFormat.h"
 #include "model/SharedReverb.h"
 #include "model/Takes.h"
 
@@ -115,9 +116,12 @@ std::unique_ptr<Project> Project::open (tracktion::Engine& engine, const juce::F
         return nullptr;
 
     state.removeProperty (originalFileProperty, nullptr);
+    auto warning = project_format::upgrade (state);
 
     auto projectFile = std::make_shared<juce::File> (f);
-    return std::unique_ptr<Project> (new Project (loadEdit (engine, state, projectFile), f, autosaveDir, projectFile));
+    std::unique_ptr<Project> project (new Project (loadEdit (engine, state, projectFile), f, autosaveDir, projectFile));
+    project->openWarning = warning;
+    return project;
 }
 
 std::unique_ptr<Project> Project::recover (tracktion::Engine& engine, const Recoverable& r,
@@ -129,9 +133,11 @@ std::unique_ptr<Project> Project::recover (tracktion::Engine& engine, const Reco
         return nullptr;
 
     state.removeProperty (originalFileProperty, nullptr);
+    auto warning = project_format::upgrade (state);
 
     auto projectFile = std::make_shared<juce::File> (r.originalFile);
     std::unique_ptr<Project> project (new Project (loadEdit (engine, state, projectFile), r.originalFile, autosaveDir, projectFile));
+    project->openWarning = warning;
 
     // Keep using the same autosave, so a second crash before saving loses nothing.
     project->autosaveFile = r.autosave;
@@ -241,6 +247,8 @@ bool Project::writeEdit (const juce::File& target, const juce::File& originalFil
 
     if (originalFileToRecord != juce::File())
         state.setProperty (originalFileProperty, originalFileToRecord.getFullPathName(), nullptr);
+
+    project_format::stamp (state);
 
     auto xml = state.createXml();
 

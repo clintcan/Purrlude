@@ -138,6 +138,8 @@ target_sources(purrlude_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/PluginLibrary.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/Project.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/Project.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/ProjectFormat.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/ProjectFormat.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/notation/Score.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/notation/NotationBuilder.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/notation/NotationBuilder.cpp
