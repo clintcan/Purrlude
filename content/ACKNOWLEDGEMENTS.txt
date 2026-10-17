@@ -75,7 +75,7 @@ Basic Pitch
   Developers), pretty-midi (MIT, copyright 2014 Colin Raffel) and resampy (ISC, copyright
   2016 Brian McFee).
 
-ONNX Runtime 1.30
+ONNX Runtime 1.30 (1.24 with DirectML on Windows)
   Copyright Microsoft Corporation. MIT License. Its usage telemetry is switched off.
   https://onnxruntime.ai
 
