@@ -186,3 +186,50 @@ TEST_CASE ("Separation: a real song", "[.separate-file]")
         writer->writeFromFloatArrays (channels, 2, collector.expectedStart);
     }
 }
+
+// PURRLUDE_DEMUCS_MODEL=/path/htdemucs_6s.onnx PURRLUDE_AUDIO_FILE=/path/song.wav PurrludeTests "[.separate-gpu]" -s
+// separates the song's first 30 s on the GPU and on the CPU, and checks the stems match.
+TEST_CASE ("Separation: the GPU gives the CPU's stems", "[.separate-gpu]")
+{
+    juce::File model (juce::SystemStats::getEnvironmentVariable ("PURRLUDE_DEMUCS_MODEL", {}));
+    juce::File file (juce::SystemStats::getEnvironmentVariable ("PURRLUDE_AUDIO_FILE", {}));
+    REQUIRE (model.existsAsFile());
+
+    juce::AudioFormatManager formats;
+    formats.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (file));
+    REQUIRE (reader != nullptr);
+
+    juce::AudioBuffer<float> audio ((int) reader->numChannels, (int) juce::jmin<juce::int64> (reader->lengthInSamples, (juce::int64) (30 * reader->sampleRate)));
+    reader->read (&audio, 0, audio.getNumSamples(), 0, true, true);
+    const auto length = (int) std::ceil (audio.getNumSamples() * separationSampleRate / reader->sampleRate);
+
+    auto run = [&] (bool gpu)
+    {
+        juce::String error;
+        Collector collector (length);
+        auto started = juce::Time::getMillisecondCounterHiRes();
+        REQUIRE (separateStems (audio, reader->sampleRate, model, collector.receiver(), error, {}, gpu));
+        std::cerr << (gpu ? "GPU: " : "CPU: ") << (juce::Time::getMillisecondCounterHiRes() - started) / 1000.0 << " s\n";
+        return collector.stems;
+    };
+
+    auto gpu = run (true);
+    auto cpu = run (false);
+
+    for (int s = 0; s < numStems; ++s)
+    {
+        double signal = 0.0, noise = 0.0;
+
+        for (int ch = 2 * s; ch < 2 * s + 2; ++ch)
+            for (int i = 0; i < length; ++i)
+            {
+                signal += juce::square ((double) cpu.getSample (ch, i));
+                noise += juce::square ((double) gpu.getSample (ch, i) - cpu.getSample (ch, i));
+            }
+
+        auto snr = 10.0 * std::log10 (signal / juce::jmax (noise, 1.0e-30));
+        std::cerr << getStemName ((Stem) s) << ": " << snr << " dB\n";
+        CHECK (snr > 40.0);
+    }
+}

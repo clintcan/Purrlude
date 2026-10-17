@@ -10,6 +10,13 @@
 set(ONNXRUNTIME_VERSION 1.30.0)
 set(ONNXRUNTIME_URL https://github.com/microsoft/onnxruntime/releases/download/v${ONNXRUNTIME_VERSION})
 
+# On Windows x64, ONNX Runtime's DirectML build (MIT, from NuGet; it lags the plain releases)
+# runs the separation model on the GPU. DirectML itself isn't bundled: it's proprietary, and
+# Windows 10 1903 and later have it (System32\DirectML.dll). Where it's missing or too old,
+# separation runs on the CPU.
+option(PURRLUDE_DIRECTML "Use ONNX Runtime's DirectML build on Windows x64 (GPU)" ON)
+set(ONNXRUNTIME_DML_VERSION 1.24.4)
+
 if(CMAKE_OSX_ARCHITECTURES)
     set(purrlude_arch ${CMAKE_OSX_ARCHITECTURES})
 elseif(CMAKE_GENERATOR_PLATFORM)
@@ -25,6 +32,12 @@ if(APPLE AND purrlude_arch STREQUAL "arm64")
     set(ONNXRUNTIME_PACKAGE onnxruntime-osx-arm64-${ONNXRUNTIME_VERSION}.tgz)
     set(ONNXRUNTIME_SHA256 6ebb5062a934537c352937821f9fe9718e7de1a2db1122a93dd363ffd53a7012)
     set(ONNXRUNTIME_LIBRARY_NAME libonnxruntime.1.dylib)   # its install name: @rpath/libonnxruntime.1.dylib
+elseif(WIN32 AND purrlude_arch MATCHES "^(x64|amd64|x86_64)$" AND PURRLUDE_DIRECTML)
+    set(ONNXRUNTIME_PACKAGE microsoft.ml.onnxruntime.directml.${ONNXRUNTIME_DML_VERSION}.zip)
+    set(ONNXRUNTIME_PACKAGE_URL https://api.nuget.org/v3-flatcontainer/microsoft.ml.onnxruntime.directml/${ONNXRUNTIME_DML_VERSION}/microsoft.ml.onnxruntime.directml.${ONNXRUNTIME_DML_VERSION}.nupkg)
+    set(ONNXRUNTIME_SHA256 57e9f11b73437bef7a309496135d4c1f96b1a8e9ddba60013fa27bfc1d788681)
+    set(ONNXRUNTIME_LIBRARY_NAME onnxruntime.dll)
+    set(ONNXRUNTIME_NUGET ON)
 elseif(WIN32 AND purrlude_arch MATCHES "^(x64|amd64|x86_64)$")
     set(ONNXRUNTIME_PACKAGE onnxruntime-win-x64-${ONNXRUNTIME_VERSION}.zip)
     set(ONNXRUNTIME_SHA256 c6ba983baf5681af108599675d2a89c2d145512d02de28aed0bff177cd0ba949)
@@ -53,30 +66,46 @@ add_library(purrlude_onnxruntime INTERFACE)
 
 if(ONNXRUNTIME_PACKAGE)
     set(ONNXRUNTIME_ARCHIVE ${purrlude_ml_cache}/onnxruntime/${ONNXRUNTIME_PACKAGE})
-    purrlude_download(${ONNXRUNTIME_URL}/${ONNXRUNTIME_PACKAGE} ${ONNXRUNTIME_ARCHIVE} ${ONNXRUNTIME_SHA256})
+    if(NOT ONNXRUNTIME_PACKAGE_URL)
+        set(ONNXRUNTIME_PACKAGE_URL ${ONNXRUNTIME_URL}/${ONNXRUNTIME_PACKAGE})
+    endif()
+
+    purrlude_download(${ONNXRUNTIME_PACKAGE_URL} ${ONNXRUNTIME_ARCHIVE} ${ONNXRUNTIME_SHA256})
 
     string(REGEX REPLACE "\\.(tgz|zip)$" "" ONNXRUNTIME_DIR_NAME ${ONNXRUNTIME_PACKAGE})
     set(ONNXRUNTIME_DIR ${purrlude_ml_cache}/onnxruntime/${ONNXRUNTIME_DIR_NAME})
 
-    if(NOT EXISTS ${ONNXRUNTIME_DIR}/include/onnxruntime_cxx_api.h)
-        file(ARCHIVE_EXTRACT INPUT ${ONNXRUNTIME_ARCHIVE} DESTINATION ${purrlude_ml_cache}/onnxruntime)
+    if(ONNXRUNTIME_NUGET)
+        # A NuGet package isn't laid out like a release, and has no top folder.
+        set(ONNXRUNTIME_INCLUDE_DIR ${ONNXRUNTIME_DIR}/build/native/include)
+        set(ONNXRUNTIME_LIB_DIR ${ONNXRUNTIME_DIR}/runtimes/win-x64/native)
+        set(extract_to ${ONNXRUNTIME_DIR})
+    else()
+        set(ONNXRUNTIME_INCLUDE_DIR ${ONNXRUNTIME_DIR}/include)
+        set(ONNXRUNTIME_LIB_DIR ${ONNXRUNTIME_DIR}/lib)
+        set(extract_to ${purrlude_ml_cache}/onnxruntime)
     endif()
 
-    set(ONNXRUNTIME_LIBRARY ${ONNXRUNTIME_DIR}/lib/${ONNXRUNTIME_LIBRARY_NAME})
+    if(NOT EXISTS ${ONNXRUNTIME_INCLUDE_DIR}/onnxruntime_cxx_api.h)
+        file(ARCHIVE_EXTRACT INPUT ${ONNXRUNTIME_ARCHIVE} DESTINATION ${extract_to})
+    endif()
+
+    set(ONNXRUNTIME_LIBRARY ${ONNXRUNTIME_LIB_DIR}/${ONNXRUNTIME_LIBRARY_NAME})
 
     add_library(purrlude_onnxruntime_shared SHARED IMPORTED GLOBAL)
     set_target_properties(purrlude_onnxruntime_shared PROPERTIES
         IMPORTED_LOCATION ${ONNXRUNTIME_LIBRARY}
-        INTERFACE_INCLUDE_DIRECTORIES ${ONNXRUNTIME_DIR}/include)
+        INTERFACE_INCLUDE_DIRECTORIES ${ONNXRUNTIME_INCLUDE_DIR})
 
     if(WIN32)
-        set_target_properties(purrlude_onnxruntime_shared PROPERTIES IMPORTED_IMPLIB ${ONNXRUNTIME_DIR}/lib/onnxruntime.lib)
+        set_target_properties(purrlude_onnxruntime_shared PROPERTIES IMPORTED_IMPLIB ${ONNXRUNTIME_LIB_DIR}/onnxruntime.lib)
     elseif(NOT APPLE)
         set_target_properties(purrlude_onnxruntime_shared PROPERTIES IMPORTED_SONAME libonnxruntime.so.1)
     endif()
 
     target_link_libraries(purrlude_onnxruntime INTERFACE purrlude_onnxruntime_shared)
-    target_compile_definitions(purrlude_onnxruntime INTERFACE PURRLUDE_HAS_ONNXRUNTIME=1)
+    target_compile_definitions(purrlude_onnxruntime INTERFACE PURRLUDE_HAS_ONNXRUNTIME=1
+                               PURRLUDE_HAS_DIRECTML=$<BOOL:${ONNXRUNTIME_NUGET}>)
 else()
     message(WARNING "No prebuilt ONNX Runtime for ${CMAKE_SYSTEM_NAME} ${purrlude_arch}: "
                     "building without polyphonic audio-to-MIDI conversion.")

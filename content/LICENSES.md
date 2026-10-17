@@ -13,7 +13,7 @@ Only content whose license permits redistribution inside the app may be added.
 | Verovio fonts and glyph data (`data/`) | Score engraving | [github.com/rism-digital/verovio](https://github.com/rism-digital/verovio) 6.3.0 | RISM Digital Center and contributors; SMuFL fonts by their respective authors | LGPLv3 (Verovio); fonts under SIL OFL 1.1 |
 | basic-pitch model ("nmp", ICASSP 2022, `nmp.onnx`) | Converting notes and chords in audio to MIDI | [github.com/spotify/basic-pitch](https://github.com/spotify/basic-pitch) v0.4.0 (`9991303`) | Spotify AB | Apache 2.0 (`LICENSE-basic-pitch.txt` and `NOTICE-basic-pitch.txt` in the app's licenses folder) |
 | Demucs v4 six-instrument model ("htdemucs_6s", `htdemucs_6s.onnx`) | Separating songs into instruments | Weights from [github.com/facebookresearch/demucs](https://github.com/facebookresearch/demucs) (`5c90dfd2-34c22ccb.th`), exported to ONNX by `tools/models/export_demucs.py` with [sevagh/demucs.onnx](https://github.com/sevagh/demucs.onnx) at `81fa192` | Alexandre Défossez, Simon Rouard (Meta AI); ONNX adaptation by Sevag Hanssian | MIT (code and weights) |
-| ONNX Runtime 1.30.0 (shared library) | Running the basic-pitch model | [github.com/microsoft/onnxruntime](https://github.com/microsoft/onnxruntime) release binaries | Microsoft Corporation | MIT (`LICENSE-onnxruntime.txt` and `ThirdPartyNotices-onnxruntime.txt` in the app's licenses folder) |
+| ONNX Runtime 1.30.0 (shared library); 1.24.4 with DirectML on Windows x64 | Running the basic-pitch and Demucs models | [github.com/microsoft/onnxruntime](https://github.com/microsoft/onnxruntime) release binaries; on Windows x64 the `Microsoft.ML.OnnxRuntime.DirectML` NuGet package | Microsoft Corporation | MIT (`LICENSE-onnxruntime.txt` and `ThirdPartyNotices-onnxruntime.txt` in the app's licenses folder) |
 
 ## Notes
 
@@ -35,6 +35,7 @@ Only content whose license permits redistribution inside the app may be added.
 - **basic-pitch and ONNX Runtime:**
   - The model is downloaded at a pinned commit, checked by SHA-256 and compiled into the app. Apache 2.0 requires its license and NOTICE to ship with it; both are copied into the app's licenses folder.
   - ONNX Runtime's release binaries are downloaded at a pinned version and checked by SHA-256.
+  - **DirectML (Windows):** the DirectML build of ONNX Runtime (MIT) runs Demucs on the GPU through DirectML, which is proprietary (Microsoft's DirectML license) and isn't bundled. Purrlude uses the copy that comes with Windows (`System32\DirectML.dll`, part of the operating system since Windows 10 1903), so it's a system library; where it's missing or too old, separation runs on the CPU.
   - **Telemetry:** official ONNX Runtime builds send usage telemetry to Microsoft by default. Purrlude turns it off before the runtime starts (`ORT_DISABLE_TELEMETRY=1`, then `DisableTelemetryEvents`). No audio or data leaves the machine.
 
 - **Demucs:**

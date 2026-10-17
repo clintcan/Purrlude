@@ -2,6 +2,8 @@
 
 #include <juce_dsp/juce_dsp.h>
 
+#include <future>
+
 #if PURRLUDE_HAS_ONNXRUNTIME
  #include "OnnxRuntime.h"
 #endif
@@ -69,6 +71,20 @@ namespace
 
         return out;
     }
+}
+
+/** Runs task (0 ... count - 1) on threads of their own, and waits for them all. */
+static void inParallel (int count, const std::function<void (int)>& task)
+{
+    std::vector<std::future<void>> running;
+
+    for (int i = 1; i < count; ++i)
+        running.push_back (std::async (std::launch::async, task, i));
+
+    task (0);
+
+    for (auto& r : running)
+        r.get();
 }
 
 Segment::Segment()
@@ -221,7 +237,10 @@ bool separate (const juce::AudioBuffer<float>& stereo, const demucs::Network& ne
             for (int i = 0; i < segmentLength; ++i)
                 segment.mix[(size_t) (c * segmentLength + i)] = juce::isPositiveAndBelow (start + i, length) ? normalised (c, start + i) : 0.0f;
 
-        for (int c = 0; c < 2; ++c)
+        // The spectrograms (2 forward, 12 inverse a segment) took as long as the network on a GPU
+        // with JUCE's own FFT (Windows, Linux), so each runs on a thread of its own. Each writes
+        // only its own part of the buffers.
+        inParallel (2, [&] (int c)
         {
             auto z = spectrogram (segment.mix.data() + (size_t) c * segmentLength);
 
@@ -230,31 +249,30 @@ bool separate (const juce::AudioBuffer<float>& stereo, const demucs::Network& ne
                 segment.spectrum[(size_t) (2 * c) * z.size() + i] = z[i].real();
                 segment.spectrum[(size_t) (2 * c + 1) * z.size() + i] = z[i].imag();
             }
-        }
+        });
 
         if (! network (segment, error))
             return false;
 
         // Each stem: the frequency branch's spectrogram back to audio, plus the time branch's audio.
-        const size_t spectrumSize = (size_t) bins * frames;
-        std::vector<std::complex<float>> z (spectrumSize);
+        inParallel (2 * numStems, [&] (int ch)
+        {
+            const auto s = ch / 2, c = ch % 2;
+            const size_t spectrumSize = (size_t) bins * frames;
+            std::vector<std::complex<float>> z (spectrumSize);
+            auto* re = segment.outSpectra.data() + ((size_t) (s * 4 + 2 * c)) * spectrumSize;
+            auto* im = re + spectrumSize;
 
-        for (int s = 0; s < numStems; ++s)
-            for (int c = 0; c < 2; ++c)
-            {
-                auto* re = segment.outSpectra.data() + ((size_t) (s * 4 + 2 * c)) * spectrumSize;
-                auto* im = re + spectrumSize;
+            for (size_t i = 0; i < spectrumSize; ++i)
+                z[i] = { re[i], im[i] };
 
-                for (size_t i = 0; i < spectrumSize; ++i)
-                    z[i] = { re[i], im[i] };
+            auto audio = inverseSpectrogram (z.data());
+            auto* timeBranch = segment.outAudio.data() + (size_t) ch * segmentLength;
+            auto* out = sum.getWritePointer (ch);
 
-                auto audio = inverseSpectrogram (z.data());
-                auto* timeBranch = segment.outAudio.data() + (size_t) (s * 2 + c) * segmentLength;
-                auto* out = sum.getWritePointer (s * 2 + c);
-
-                for (int i = 0; i < segmentSamples; ++i)
-                    out[i] += weight[(size_t) i] * (audio[(size_t) (padding + i)] + timeBranch[padding + i]);
-            }
+            for (int i = 0; i < segmentSamples; ++i)
+                out[i] += weight[(size_t) i] * (audio[(size_t) (padding + i)] + timeBranch[padding + i]);
+        });
 
         for (int i = 0; i < segmentSamples; ++i)
             weights[(size_t) i] += weight[(size_t) i];
@@ -297,7 +315,7 @@ bool separate (const juce::AudioBuffer<float>& stereo, const demucs::Network& ne
 
 bool isSeparationAvailable()    { return true; }
 
-demucs::Network loadDemucs (const juce::File& model, juce::String& error)
+demucs::Network loadDemucs (const juce::File& model, juce::String& error, bool useGpu)
 {
     using namespace demucs;
 
@@ -307,40 +325,72 @@ demucs::Network loadDemucs (const juce::File& model, juce::String& error)
         return {};
     }
 
-    try
+    struct Loaded
     {
+        std::unique_ptr<Ort::Session> session;
+        std::array<std::string, 4> names;   // mix, spectrum, spectra, audio
+        bool onGpu = false;
+    };
+
+    auto open = [model] (bool gpu)
+    {
+        auto loaded = std::make_shared<Loaded>();
+        loaded->onGpu = gpu;
        #if JUCE_WINDOWS
-        auto session = std::make_shared<Ort::Session> (getOnnxRuntime(), model.getFullPathName().toWideCharPointer(), makeSessionOptions());
+        loaded->session = std::make_unique<Ort::Session> (getOnnxRuntime(), model.getFullPathName().toWideCharPointer(), makeSessionOptions (gpu));
        #else
-        auto session = std::make_shared<Ort::Session> (getOnnxRuntime(), model.getFullPathName().toRawUTF8(), makeSessionOptions());
+        loaded->session = std::make_unique<Ort::Session> (getOnnxRuntime(), model.getFullPathName().toRawUTF8(), makeSessionOptions (gpu));
        #endif
 
         // The inputs are the audio (3 dimensions) and its spectrogram (4); the outputs the
         // stems' spectrograms (5) and their audio (4). Names depend on the export.
+        auto& session = *loaded->session;
         Ort::AllocatorWithDefaultOptions allocator;
-        auto names = std::make_shared<std::array<std::string, 4>>();   // mix, spectrum, spectra, audio
-
         auto rank = [] (const Ort::TypeInfo& info) { return info.GetTensorTypeAndShapeInfo().GetDimensionsCount(); };
 
-        if (session->GetInputCount() != 2 || session->GetOutputCount() != 2)
+        if (session.GetInputCount() != 2 || session.GetOutputCount() != 2)
             throw Ort::Exception ("unexpected model inputs or outputs", ORT_INVALID_GRAPH);
 
         for (size_t i = 0; i < 2; ++i)
         {
-            (*names)[rank (session->GetInputTypeInfo (i)) == 3 ? 0 : 1] = session->GetInputNameAllocated (i, allocator).get();
-            (*names)[rank (session->GetOutputTypeInfo (i)) == 5 ? 2 : 3] = session->GetOutputNameAllocated (i, allocator).get();
+            loaded->names[rank (session.GetInputTypeInfo (i)) == 3 ? 0 : 1] = session.GetInputNameAllocated (i, allocator).get();
+            loaded->names[rank (session.GetOutputTypeInfo (i)) == 5 ? 2 : 3] = session.GetOutputNameAllocated (i, allocator).get();
         }
 
-        return [session, names] (Segment& segment, juce::String& runError)
+        return loaded;
+    };
+
+    std::shared_ptr<Loaded> loaded;
+
+    try
+    {
+        if (useGpu)
+        {
+            try                             { loaded = open (true); }
+            catch (const Ort::Exception&)   {}
+        }
+
+        if (loaded == nullptr)
+            loaded = open (false);
+    }
+    catch (const Ort::Exception& e)
+    {
+        error = "The instrument separation model couldn't be loaded: " + juce::String (e.what());
+        return {};
+    }
+
+    return [loaded, open] (Segment& segment, juce::String& runError) mutable
+    {
+        auto memory = Ort::MemoryInfo::CreateCpu (OrtArenaAllocator, OrtMemTypeDefault);
+        const std::array<int64_t, 3> mixShape { 1, 2, segmentLength };
+        const std::array<int64_t, 4> spectrumShape { 1, 4, bins, frames };
+        const std::array<int64_t, 5> spectraShape { 1, numStems, 4, bins, frames };
+        const std::array<int64_t, 4> audioShape { 1, numStems, 2, segmentLength };
+
+        for (;;)
         {
             try
             {
-                auto memory = Ort::MemoryInfo::CreateCpu (OrtArenaAllocator, OrtMemTypeDefault);
-                const std::array<int64_t, 3> mixShape { 1, 2, segmentLength };
-                const std::array<int64_t, 4> spectrumShape { 1, 4, bins, frames };
-                const std::array<int64_t, 5> spectraShape { 1, numStems, 4, bins, frames };
-                const std::array<int64_t, 4> audioShape { 1, numStems, 2, segmentLength };
-
                 Ort::Value inputs[] = {
                     Ort::Value::CreateTensor<float> (memory, segment.mix.data(), segment.mix.size(), mixShape.data(), mixShape.size()),
                     Ort::Value::CreateTensor<float> (memory, segment.spectrum.data(), segment.spectrum.size(), spectrumShape.data(), spectrumShape.size())
@@ -351,30 +401,40 @@ demucs::Network loadDemucs (const juce::File& model, juce::String& error)
                     Ort::Value::CreateTensor<float> (memory, segment.outAudio.data(), segment.outAudio.size(), audioShape.data(), audioShape.size())
                 };
 
-                const char* inputNames[] = { (*names)[0].c_str(), (*names)[1].c_str() };
-                const char* outputNames[] = { (*names)[2].c_str(), (*names)[3].c_str() };
-                session->Run (Ort::RunOptions { nullptr }, inputNames, inputs, 2, outputNames, outputs, 2);
+                auto& names = loaded->names;
+                const char* inputNames[] = { names[0].c_str(), names[1].c_str() };
+                const char* outputNames[] = { names[2].c_str(), names[3].c_str() };
+                loaded->session->Run (Ort::RunOptions { nullptr }, inputNames, inputs, 2, outputNames, outputs, 2);
                 return true;
+            }
+            catch (const Ort::Exception& e)
+            {
+                if (! loaded->onGpu)
+                {
+                    runError = "Separating the instruments failed: " + juce::String (e.what());
+                    return false;
+                }
+            }
+
+            // The GPU failed: carry on with the CPU, from this segment.
+            try
+            {
+                loaded = open (false);
             }
             catch (const Ort::Exception& e)
             {
                 runError = "Separating the instruments failed: " + juce::String (e.what());
                 return false;
             }
-        };
-    }
-    catch (const Ort::Exception& e)
-    {
-        error = "The instrument separation model couldn't be loaded: " + juce::String (e.what());
-        return {};
-    }
+        }
+    };
 }
 
 #else
 
 bool isSeparationAvailable()    { return false; }
 
-demucs::Network loadDemucs (const juce::File&, juce::String& error)
+demucs::Network loadDemucs (const juce::File&, juce::String& error, bool)
 {
     error = "Separating instruments isn't available in this build of Purrlude.";
     return {};
@@ -383,12 +443,13 @@ demucs::Network loadDemucs (const juce::File&, juce::String& error)
 #endif
 
 bool separateStems (const juce::AudioBuffer<float>& audio, double sampleRate, const juce::File& model,
-                    const StemReceiver& receiver, juce::String& error, const std::function<bool (float)>& keepGoing)
+                    const StemReceiver& receiver, juce::String& error, const std::function<bool (float)>& keepGoing,
+                    bool useGpu)
 {
     if (audio.getNumSamples() == 0 || audio.getNumChannels() == 0 || sampleRate <= 0.0)
         return true;
 
-    auto network = loadDemucs (model, error);
+    auto network = loadDemucs (model, error, useGpu);
 
     if (network == nullptr)
         return false;

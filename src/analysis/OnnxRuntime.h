@@ -14,8 +14,13 @@ namespace purrlude::analysis
 */
 Ort::Env& getOnnxRuntime();
 
-/** Session options for running a model on the CPU, with a few threads. */
-Ort::SessionOptions makeSessionOptions();
+/** Session options for running a model on the CPU, with a few threads.
+
+    With preferGpu, in a build with DirectML (Windows x64), they run it on the GPU when
+    Windows has one DirectML can use; otherwise they're the CPU's. A session can still fail
+    to start or run on the GPU, so callers should be ready to fall back to the CPU's options.
+*/
+Ort::SessionOptions makeSessionOptions (bool preferGpu = false);
 
 } // namespace purrlude::analysis
 #endif
