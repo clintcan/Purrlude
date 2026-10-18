@@ -23,7 +23,6 @@ The **[user guide](docs/user-guide/README.md)** covers all of it, with screensho
 ## What's next
 
 - **Releases:** a signed, notarised macOS app to download, then Windows and Linux installers.
-- **Instrument separation for everyone:** host the Demucs model so builds can fetch it.
 - **Testing:** real use on Linux, and testers on other machines and devices.
 
 **The project format is stable:** songs record their format version, and a saved song using every feature is tested on every build, so songs saved by 1.0 keep opening ([format](docs/project-format.md)).
@@ -52,7 +51,7 @@ sudo apt-get install ninja-build libasound2-dev libjack-jackd2-dev ladspa-sdk li
   libxinerama-dev libxrandr-dev libxrender-dev libwebkit2gtk-4.1-dev libglu1-mesa-dev mesa-common-dev
 ```
 
-**Separating instruments** needs the Demucs model (`htdemucs_6s.onnx`, 115 MB), which isn't downloaded automatically yet. `tools/models/export_demucs.py` makes it from Meta's published weights; see the script for details. Everything else works without it.
+**Separating instruments** needs the Demucs model (`htdemucs_6s.onnx`, 115 MB). The first time you separate, Purrlude offers to download it from this repository's `models-1` release (checked against its SHA-256). `tools/models/export_demucs.py` makes the same file from Meta's published weights. Everything else works without it.
 
 ## Licence
 

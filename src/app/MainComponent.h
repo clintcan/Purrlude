@@ -97,6 +97,11 @@ private:
 
     void convertToMidi (tracktion::EditItemID audioClip, audio_to_midi::Mode);
     void separateInstruments (tracktion::EditItemID audioClip, separation::Output);
+
+    /** Asks whether to download the separation model, and downloads it if the user agrees,
+        then separates the clip.
+    */
+    void downloadModelThenSeparate (tracktion::EditItemID audioClip, separation::Output);
     /** The progress window for a conversion or separation; Cancel stops it. */
     void showConversionWindow (const juce::String& title, const juce::String& message);
     void stopMidiConversion();
@@ -148,15 +153,18 @@ private:
 
     int ticksSinceAutosave = 0;
 
-    // A conversion to MIDI or a separation (only one at a time), with its progress window.
+    // A conversion to MIDI, a separation or the model's download (only one at a time), with its
+    // progress window.
     std::unique_ptr<audio_to_midi::Conversion> midiConversion;
     std::unique_ptr<separation::Job> separationJob;
+    std::unique_ptr<FileDownload> modelDownload;   ///< The separation model, before a separation
     std::unique_ptr<juce::AlertWindow> conversionWindow;
     double conversionProgress = 0.0;   ///< Read by the progress bar
     juce::TimedCallback conversionProgressTimer { [this]
     {
         if (midiConversion != nullptr)      conversionProgress = midiConversion->getProgress();
         else if (separationJob != nullptr)  conversionProgress = separationJob->getProgress();
+        else if (modelDownload != nullptr)  conversionProgress = modelDownload->getProgress();
     } };
 
     std::unique_ptr<AudioExport> audioExport;

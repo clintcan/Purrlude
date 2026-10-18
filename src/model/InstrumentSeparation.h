@@ -1,6 +1,7 @@
 #pragma once
 
 #include "AudioToMidi.h"
+#include "FileDownload.h"
 #include "analysis/SourceSeparator.h"
 
 namespace purrlude
@@ -19,6 +20,13 @@ namespace separation
         builds) where CMake found it. Empty if it isn't anywhere.
     */
     juce::File findModel (const juce::File& userModelsFolder);
+
+    /** Where Purrlude downloads the model from (only when the user agrees): a release asset of
+        Purrlude's GitHub repository, with its size and SHA-256. The model is Meta's Demucs
+        (MIT), exported by tools/models/export_demucs.py; the export is reproducible, so the
+        checksum is the same as a local export's.
+    */
+    FileDownload::Source getModelDownload();
 
     /** True if the model is there and this build can run it. */
     bool isAvailable (const juce::File& userModelsFolder);

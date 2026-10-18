@@ -72,7 +72,9 @@ It uses Meta's Demucs model.
 - Pitched instruments can end up in the wrong part, especially synthesised or General MIDI sounds. For example, a saxophone may land in "piano", or a bass in "guitar".
 - Separation only knows these six parts.
 
-**The model** is a 115 MB file (`htdemucs_6s.onnx`) that isn't included with Purrlude yet. Without it, the commands say where to put it:
+**The model** is a 115 MB file (`htdemucs_6s.onnx`) that isn't included with Purrlude. The first time you separate instruments, Purrlude asks whether to download it from its GitHub page. Nothing else is sent or received, and your audio stays on your computer. If the download is cancelled or interrupted, the next one carries on from where it stopped, and the file is checked before it's used.
+
+It's kept in your models folder, where you can also put a copy yourself:
 - macOS: `~/Library/Application Support/Purrlude/Models/`
 - Windows: `%APPDATA%\Purrlude\Models\`
 - Linux: `~/.config/Purrlude/Models/`

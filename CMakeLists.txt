@@ -134,6 +134,8 @@ target_sources(purrlude_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/BluetoothMidiPorts.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/InstrumentSeparation.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/InstrumentSeparation.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/FileDownload.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/FileDownload.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/NoteEditing.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/NoteEditing.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/PluginLibrary.h
@@ -197,7 +199,9 @@ target_compile_definitions(purrlude_core INTERFACE
     JUCE_PLUGINHOST_AU=1
     JUCE_PLUGINHOST_VST3=1
     JUCE_PLUGINHOST_LV2=1
-    JUCE_USE_CURL=0
+    # Downloads (the separation model, when the user asks): curl on Linux (NEEDS_CURL on the
+    # targets links it); macOS and Windows use their own networking.
+    JUCE_USE_CURL=$<IF:$<PLATFORM_ID:Linux>,1,0>
     JUCE_WEB_BROWSER=0
     JUCE_MODAL_LOOPS_PERMITTED=1
     JUCE_STRICT_REFCOUNTEDPOINTER=1
@@ -218,6 +222,7 @@ target_link_libraries(purrlude_core INTERFACE
     juce::juce_audio_devices
     juce::juce_audio_processors
     juce::juce_audio_utils
+    juce::juce_cryptography
     purrlude_verovio
     purrlude_tinysoundfont
     purrlude_content
@@ -255,6 +260,7 @@ juce_add_gui_app(Purrlude
     BLUETOOTH_PERMISSION_ENABLED TRUE
     BLUETOOTH_PERMISSION_TEXT "Purrlude uses Bluetooth to connect to wireless MIDI devices."
     PLUGINHOST_AU TRUE
+    NEEDS_CURL TRUE
 )
 
 # The logo (made by tools/branding/make_icon.py) and acknowledgements, for the splash screen and

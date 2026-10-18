@@ -1,6 +1,6 @@
 CPMAddPackage("gh:catchorg/Catch2@3.7.1")
 
-juce_add_console_app(PurrludeTests PRODUCT_NAME "PurrludeTests")
+juce_add_console_app(PurrludeTests PRODUCT_NAME "PurrludeTests" NEEDS_CURL TRUE)
 
 target_sources(PurrludeTests PRIVATE
     EngineSmokeTests.cpp
@@ -35,6 +35,7 @@ target_sources(PurrludeTests PRIVATE
     PolyphonicTranscriptionTests.cpp
     SourceSeparationTests.cpp
     InstrumentSeparationTests.cpp
+    FileDownloadTests.cpp
     TrackEffectsTests.cpp
     LoopRangeTests.cpp
     SharedReverbTests.cpp

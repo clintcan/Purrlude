@@ -56,6 +56,12 @@ juce::File findModel (const juce::File& userModelsFolder)
     return {};
 }
 
+FileDownload::Source getModelDownload()
+{
+    return { juce::URL ("https://github.com/clintcan/Purrlude/releases/download/models-1/htdemucs_6s.onnx"),
+             114559139, "7924dfb5d8e940cfb16100b634dfafb370e8036a71f968ec9193f4b482ed5b71" };
+}
+
 bool isAvailable (const juce::File& userModelsFolder)
 {
     return analysis::isSeparationAvailable() && findModel (userModelsFolder).existsAsFile();

@@ -523,7 +523,7 @@ void MainComponent::exportScore (ExportFormat format)
 //==============================================================================
 void MainComponent::convertToMidi (tracktion::EditItemID audioClip, audio_to_midi::Mode mode)
 {
-    if (midiConversion != nullptr || separationJob != nullptr)
+    if (midiConversion != nullptr || separationJob != nullptr || modelDownload != nullptr)
         return;
 
     auto source = audio_to_midi::getSource (project->getEdit(), audioClip);
@@ -569,7 +569,7 @@ juce::File MainComponent::getModelsFolder() const
 
 void MainComponent::separateInstruments (tracktion::EditItemID audioClip, separation::Output output)
 {
-    if (midiConversion != nullptr || separationJob != nullptr)
+    if (midiConversion != nullptr || separationJob != nullptr || modelDownload != nullptr)
         return;
 
     const juce::String title ("Couldn't separate the instruments");
@@ -583,8 +583,7 @@ void MainComponent::separateInstruments (tracktion::EditItemID audioClip, separa
 
     if (! model.existsAsFile())
     {
-        showError (title, "The instrument separation model (" + juce::String (separation::modelFileName) + ", 115 MB) "
-                          "isn't installed. Put it in " + getModelsFolder().getFullPathName() + ".");
+        downloadModelThenSeparate (audioClip, output);
         return;
     }
 
@@ -631,6 +630,55 @@ void MainComponent::separateInstruments (tracktion::EditItemID audioClip, separa
     conversionProgressTimer.startTimerHz (10);
 }
 
+void MainComponent::downloadModelThenSeparate (tracktion::EditItemID audioClip, separation::Output output)
+{
+    auto source = separation::getModelDownload();
+    auto target = getModelsFolder().getChildFile (separation::modelFileName);
+    const auto megabytes = juce::String (juce::roundToInt ((double) source.size / 1.0e6));
+
+    auto options = juce::MessageBoxOptions()
+                       .withIconType (juce::MessageBoxIconType::QuestionIcon)
+                       .withTitle ("Download the separation model?")
+                       .withMessage ("Separating instruments needs a model that isn't installed yet: Demucs, by Meta "
+                                     "(MIT licence), " + megabytes + " MB.\n\n"
+                                     "Purrlude can download it from its GitHub page (github.com/clintcan/Purrlude) "
+                                     "into " + getModelsFolder().getFullPathName() + ". Nothing else is sent or "
+                                     "received, and your audio stays on this computer.")
+                       .withButton ("Download")
+                       .withButton ("Cancel")
+                       .withAssociatedComponent (this);
+
+    juce::AlertWindow::showAsync (options, [safe = juce::WeakReference<MainComponent> (this), source, target, audioClip, output, megabytes] (int result)
+    {
+        if (safe == nullptr || result != 1 || safe->modelDownload != nullptr)
+            return;
+
+        safe->showConversionWindow ("Downloading the separation model",
+                                    "Downloading Demucs (" + megabytes + " MB). If it stops, it carries on from there next time.");
+
+        safe->modelDownload = std::make_unique<FileDownload> (source, target, [safe, audioClip, output] (const juce::String& error)
+        {
+            if (safe == nullptr)
+                return;
+
+            juce::MessageManager::callAsync ([safe, error, audioClip, output]
+            {
+                if (safe == nullptr)
+                    return;
+
+                safe->stopMidiConversion();
+
+                if (error.isNotEmpty())
+                    safe->showError ("Couldn't download the separation model", error);
+                else
+                    safe->separateInstruments (audioClip, output);
+            });
+        });
+
+        safe->conversionProgressTimer.startTimerHz (10);
+    });
+}
+
 void MainComponent::showConversionWindow (const juce::String& title, const juce::String& message)
 {
     conversionProgress = 0.0;
@@ -651,6 +699,7 @@ void MainComponent::stopMidiConversion()
     conversionProgressTimer.stopTimer();
     midiConversion = nullptr;   // cancels them if they're still running
     separationJob = nullptr;
+    modelDownload = nullptr;    // keeps what's downloaded, to carry on next time
 
     if (conversionWindow != nullptr && conversionWindow->isCurrentlyModal())
         conversionWindow->exitModalState (1);
