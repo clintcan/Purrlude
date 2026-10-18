@@ -29,10 +29,12 @@ CPMAddPackage(
     URL https://github.com/juce-framework/JUCE/archive/19edd538429c93d277bf95b55aaa7e3eb545f951.tar.gz
 )
 
+# Patched so its bundled crill builds with GCC on 64-bit ARM Linux (cmake/patches).
 CPMAddPackage(
     NAME tracktion_engine
     URL https://github.com/Tracktion/tracktion_engine/archive/refs/tags/v3.2.0.tar.gz
     DOWNLOAD_ONLY YES
+    PATCHES ${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/tracktion-crill-gcc-wfe.patch
 )
 add_subdirectory(${tracktion_engine_SOURCE_DIR}/modules ${CMAKE_BINARY_DIR}/tracktion_engine)
 
