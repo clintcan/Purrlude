@@ -450,7 +450,10 @@ namespace
 // out long (the release stays over the threshold, and notes under 0.128 s were dropped);
 // endBelowPeak 0.6 with notes from 0.09 s took "with ends" from 0.128 to 0.139 (0.7 and 0.8 cut
 // notes short). Merging a track's same-pitch notes with small gaps lost 20%: they're mostly
-// real repeats. Tried and dropped (first 4
+// real repeats. Transcribing the whole mix instead, each note given to the part where it's
+// loudest, scored lower (0.349 against 0.369). With PURRLUDE_STEMS_FOLDER pointing at each
+// instrument's own audio summed into the six parts (a perfect separation), the same pipeline
+// scored 0.601 (0.270 with ends): separation is where most notes are lost. Tried and dropped (first 4
 // BabySlakh songs, the bass part's own score): the bass with the melody converter (0.06 against
 // 0.24), and moving its notes 20-50 ms earlier, though it's detected about 35 ms late (no gain).
 TEST_CASE ("Separating a song into MIDI tracks: scored against its MIDI file", "[.separate-score]")
@@ -465,14 +468,29 @@ TEST_CASE ("Separating a song into MIDI tracks: scored against its MIDI file", "
     auto source = song.addClip (file);
     REQUIRE (source.has_value());
 
-    // Separated once, to audio, so conversions can be tried on the same parts.
+    // Separated once, to audio, so conversions can be tried on the same parts. With
+    // PURRLUDE_STEMS_FOLDER, the parts are read from "<folder>/<Stem>.wav" (e.g. "Bass.wav")
+    // instead: a perfect separation, to see how much separation costs.
     std::optional<std::vector<separation::Part>> separated;
     juce::String error;
-    separation::Job job (*song.engine, *source, separation::Output::audio, model, song.folder,
-                         [&] (auto parts, const juce::String& e) { separated = std::move (parts); error = e; });
+    std::unique_ptr<separation::Job> job;
 
-    for (auto end = juce::Time::getMillisecondCounter() + 600000; ! separated && juce::Time::getMillisecondCounter() < end;)
-        pump (50);
+    if (juce::File stems (juce::SystemStats::getEnvironmentVariable ("PURRLUDE_STEMS_FOLDER", {})); stems.isDirectory())
+    {
+        separated.emplace();
+
+        for (int s = 0; s < purrlude::analysis::numStems; ++s)
+            if (auto f = stems.getChildFile (juce::String (purrlude::analysis::getStemName ((Stem) s)) + ".wav"); f.existsAsFile())
+                separated->push_back ({ (Stem) s, f, {}, {} });
+    }
+    else
+    {
+        job = std::make_unique<separation::Job> (*song.engine, *source, separation::Output::audio, model, song.folder,
+                                                 [&] (auto parts, const juce::String& e) { separated = std::move (parts); error = e; });
+
+        for (auto end = juce::Time::getMillisecondCounter() + 600000; ! separated && juce::Time::getMillisecondCounter() < end;)
+            pump (50);
+    }
 
     REQUIRE (separated.has_value());
     INFO (error);
@@ -550,6 +568,89 @@ TEST_CASE ("Separating a song into MIDI tracks: scored against its MIDI file", "
         separation::CleanUpOptions options;
         options.bleedDb = db;
         std::cerr << "bleed " << db << " dB: " << score (reference, cleaned (raw, options), false) << "\n";
+    }
+
+    // The whole mix transcribed instead, each note given to the separated part where its pitch
+    // is loudest (drums still from the drum part): does the mix find notes separation loses?
+    if (purrlude::analysis::isPolyphonicAvailable())
+    {
+        // Every pitched note found, whatever its track.
+        auto anyTrack = [&] (const std::vector<separation::Part>& parts)
+        {
+            std::vector<ReferenceNote> all;
+            std::vector<purrlude::analysis::TranscribedNote> found;
+
+            for (auto& r : reference)
+                if (! r.drums)
+                    all.insert (all.end(), r.notes.begin(), r.notes.end());
+
+            for (auto& p : parts)
+                if (p.stem != Stem::drums)
+                    found.insert (found.end(), p.notes.begin(), p.notes.end());
+
+            return all.size() + found.size() > 0 ? 2.0 * countMatches (all, found, true) / (double) (all.size() + found.size()) : 0.0;
+        };
+
+        std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (file));
+        REQUIRE (reader != nullptr);
+        juce::AudioBuffer<float> mix ((int) reader->numChannels, (int) reader->lengthInSamples);
+        reader->read (&mix, 0, mix.getNumSamples(), 0, true, true);
+        auto mono = purrlude::analysis::toAnalysisRate (mix, reader->sampleRate, juce::jmin (10500.0, reader->sampleRate * 0.45));
+        mix.setSize (1, 0);
+        juce::String modelError;
+        auto mixActivations = purrlude::analysis::runBasicPitch (mono.data(), (int) mono.size(), modelError);
+        REQUIRE (modelError.isEmpty());
+
+        std::cerr << "separated: any track " << anyTrack (cleaned (raw)) << "\n";
+
+        for (bool tuned : { false, true })
+        {
+            purrlude::analysis::PolyphonicOptions options;
+
+            if (tuned)   // as convertPart's for separated parts
+            {
+                options.onsetThreshold = 0.6f;
+                options.endBelowPeak = 0.6f;
+                options.minNoteSeconds = 0.09;
+            }
+
+            auto notes = purrlude::analysis::notesFromActivations (mixActivations, options);
+            std::map<Stem, separation::Part> byStem;
+
+            for (auto& note : notes)
+            {
+                // The loudest pitched part; the mix's time is the parts' (both from the clip's start).
+                std::optional<Stem> loudest;
+                float level = -1000.0f;
+
+                for (auto& [stem, partAudio] : audio)
+                    if (stem != Stem::drums)
+                        if (auto l = purrlude::analysis::noteLevelDb (partAudio.first, partAudio.second, note.start, note.length, note.pitch); l > level)
+                        {
+                            level = l;
+                            loudest = stem;
+                        }
+
+                if (loudest)
+                {
+                    auto& part = byStem.try_emplace (*loudest, separation::Part { *loudest, {}, {}, {} }).first->second;
+                    part.notes.push_back (note);
+                    part.levels.push_back (level);
+                }
+            }
+
+            std::vector<separation::Part> parts;
+
+            for (auto& [stem, part] : byStem)
+                parts.push_back (std::move (part));
+
+            for (auto& part : raw)
+                if (part.stem == Stem::drums)
+                    parts.push_back (part);
+
+            std::cerr << "mix " << (tuned ? "tuned" : "default") << ": " << notes.size() << " notes, any track " << anyTrack (parts)
+                      << ", right track " << score (reference, parts, false) << " (with ends " << score (reference, parts, false, true) << ")\n";
+        }
     }
 
     // The notes-and-chords converter's thresholds, for each part converted with it (the model
