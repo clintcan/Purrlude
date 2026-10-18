@@ -6,7 +6,7 @@ Purrlude is a cross-platform digital audio workstation (DAW) for composing, reco
 > - **Works:** the signature features (score, audio to MIDI, separation, loops and accompaniment, devices) and recording, editing, mixing and export, in real use on macOS (Apple Silicon) and Windows.
 > - **The project format is frozen** (format 1, `docs/project-format.md`): every later change needs an upgrade step.
 > - **Still to do:**
->   - prebuilt releases (signed, notarised macOS app; Windows/Linux installers)
+>   - prebuilt releases for macOS (signed, notarised) and Windows (an installer); Linux has an x86-64 AppImage since 1.0.1 (`appimage` workflow)
 >   - everyday use on Linux, and its Bluetooth MIDI backend (BlueZ)
 > - **Public:** github.com/clintcan/Purrlude, AGPLv3.
 
