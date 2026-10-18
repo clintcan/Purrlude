@@ -1,3 +1,4 @@
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include "model/AudioImport.h"
@@ -191,4 +192,318 @@ TEST_CASE ("Separating a real song into MIDI tracks", "[.separate-clip]")
     }
 
     REQUIRE (separation::insertParts (*song.edit, song.live, *source, *result, separation::Output::midi) == (int) result->size());
+}
+
+TEST_CASE ("A note's level is its pitch's, in the audio", "[separation][model]")
+{
+    juce::AudioBuffer<float> audio (1, 44100);
+
+    for (int i = 0; i < audio.getNumSamples(); ++i)
+        audio.setSample (0, i, 0.5f * std::sin ((float) i * 440.0f * juce::MathConstants<float>::twoPi / 44100.0f));
+
+    auto a4 = purrlude::analysis::noteLevelDb (audio, 44100.0, 0.1, 0.5, 69);
+    CHECK (a4 == Catch::Approx (20.0f * std::log10 (0.5f)).margin (0.5f));    // the sine's level
+    CHECK (purrlude::analysis::noteLevelDb (audio, 44100.0, 0.1, 0.5, 70) < a4 - 20.0f);
+    CHECK (purrlude::analysis::noteLevelDb (audio, 44100.0, 2.0, 0.5, 69) < -100.0f);   // past the end
+}
+
+TEST_CASE ("Cleaning up keeps each note where it's loudest", "[separation][model]")
+{
+    using Note = purrlude::analysis::TranscribedNote;
+    auto part = [] (Stem stem, std::vector<Note> notes, std::vector<float> levels)
+    {
+        return separation::Part { stem, {}, std::move (notes), std::move (levels) };
+    };
+
+    std::vector<separation::Part> parts {
+        part (Stem::piano,  { { 1.0, 0.5, 60, 90 }, { 2.0, 0.5, 64, 90 }, { 3.0, 0.5, 67, 90 } }, { -10.0f, -10.0f, -40.0f }),
+        part (Stem::guitar, { { 1.02, 0.5, 60, 80 }, { 2.01, 0.5, 64, 80 }, { 3.0, 0.5, 67, 80 }, { 3.0, 0.5, 72, 80 } }, { -30.0f, -13.0f, -12.0f, -50.0f }),
+        part (Stem::other,  { { 1.0, 0.5, 62, 80 }, { 1.2, 0.5, 60, 80 } }, { -45.0f, -45.0f }),
+        part (Stem::drums,  { { 1.0, 0.1, 36, 100 } }, { -60.0f })
+    };
+
+    separation::cleanUp (parts);
+
+    auto pitches = [&] (Stem stem)
+    {
+        std::vector<int> found;
+
+        for (auto& p : parts)
+            if (p.stem == stem)
+                for (auto& n : p.notes)
+                    found.push_back (n.pitch);
+
+        return found;
+    };
+
+    CHECK (pitches (Stem::piano) == std::vector<int> { 60, 64 });         // its 67 was the guitar leaking in
+    CHECK (pitches (Stem::guitar) == std::vector<int> { 64, 67, 72 });    // its 60 was the piano; 64 is a doubling
+    CHECK (pitches (Stem::other) == std::vector<int> { 62, 60 });         // nothing else plays them then
+    CHECK (pitches (Stem::drums) == std::vector<int> { 36 });             // drums aren't compared
+
+    // Parts left without notes go.
+    std::vector<separation::Part> echo { part (Stem::piano, { { 1.0, 0.5, 60, 90 } }, { -10.0f }),
+                                         part (Stem::vocals, { { 1.0, 0.5, 60, 90 } }, { -40.0f }) };
+    separation::cleanUp (echo);
+    REQUIRE (echo.size() == 1);
+    CHECK (echo[0].stem == Stem::piano);
+}
+
+//==============================================================================
+namespace
+{
+    /** A part of a MIDI file: its note starts (seconds) and pitches. */
+    struct ReferencePart
+    {
+        juce::String name;
+        bool drums = false;
+        std::vector<std::pair<double, int>> notes;
+    };
+
+    /** Each track and channel with notes; channel 10 is drums. */
+    std::vector<ReferencePart> readMidiParts (const juce::File& file)
+    {
+        juce::MidiFile midi;
+        juce::FileInputStream stream (file);
+        REQUIRE (midi.readFrom (stream));
+        midi.convertTimestampTicksToSeconds();
+        std::vector<ReferencePart> parts;
+
+        for (int t = 0; t < midi.getNumTracks(); ++t)
+        {
+            auto& track = *midi.getTrack (t);
+            juce::String name ("Track " + juce::String (t + 1));
+            std::map<int, ReferencePart> byChannel;
+
+            for (auto* event : track)
+            {
+                auto& m = event->message;
+
+                if (m.isTrackNameEvent())
+                    name = m.getTextFromTextMetaEvent();
+                else if (m.isNoteOn())
+                    byChannel[m.getChannel()].notes.push_back ({ m.getTimeStamp(), m.getNoteNumber() });
+            }
+
+            for (auto& [channel, part] : byChannel)
+            {
+                part.name = name + (byChannel.size() > 1 ? " (channel " + juce::String (channel) + ")" : juce::String());
+                part.drums = channel == 10;
+                parts.push_back (std::move (part));
+            }
+        }
+
+        return parts;
+    }
+
+    /** How many notes match one to one: starts within 50 ms, and the same pitch (unless only timing counts). */
+    int countMatches (const std::vector<std::pair<double, int>>& reference, const std::vector<purrlude::analysis::TranscribedNote>& found, bool pitch)
+    {
+        std::vector<bool> used (found.size(), false);
+        int matched = 0;
+
+        for (auto& [start, note] : reference)
+        {
+            int best = -1;
+
+            for (size_t i = 0; i < found.size(); ++i)
+                if (! used[i] && std::abs (found[i].start - start) <= 0.05 && (! pitch || found[i].pitch == note)
+                     && (best < 0 || std::abs (found[i].start - start) < std::abs (found[(size_t) best].start - start)))
+                    best = (int) i;
+
+            if (best >= 0)
+            {
+                used[(size_t) best] = true;
+                ++matched;
+            }
+        }
+
+        return matched;
+    }
+
+    juce::String fScore (int matched, size_t reference, size_t found)
+    {
+        return juce::String (reference + found > 0 ? 2.0 * matched / (double) (reference + found) : 0.0, 2);
+    }
+
+    /** Prints how well the parts' notes match the MIDI file's parts, and returns the pitched
+        score: notes on the right track, each original part counting on its best track.
+    */
+    double score (const std::vector<ReferencePart>& reference, const std::vector<separation::Part>& parts, bool verbose)
+    {
+        std::vector<const ReferencePart*> pitched;
+        std::vector<const separation::Part*> tracks;
+        size_t referenceNotes = 0, foundNotes = 0;
+
+        for (auto& r : reference)
+            if (! r.drums) { pitched.push_back (&r); referenceNotes += r.notes.size(); }
+
+        for (auto& p : parts)
+            if (p.stem != Stem::drums) { tracks.push_back (&p); foundNotes += p.notes.size(); }
+
+        // Matches between every original part and every track.
+        std::vector<std::vector<int>> matches (pitched.size(), std::vector<int> (tracks.size()));
+
+        for (size_t r = 0; r < pitched.size(); ++r)
+            for (size_t t = 0; t < tracks.size(); ++t)
+                matches[r][t] = countMatches (pitched[r]->notes, tracks[t]->notes, true);
+
+        // Each original part counts on its best track. Parts may share a track (separation has
+        // one piano part, however many pianos play), but a part spread over several tracks
+        // counts only once.
+        int rightTrack = 0;
+
+        for (auto& row : matches)
+            rightTrack += row.empty() ? 0 : *std::max_element (row.begin(), row.end());
+
+        const auto result = referenceNotes + foundNotes > 0 ? 2.0 * rightTrack / (double) (referenceNotes + foundNotes) : 0.0;
+
+        if (verbose)
+        {
+            juce::String header ("               ");
+
+            for (auto* t : tracks)
+                header << juce::String (purrlude::analysis::getStemName (t->stem)).paddedRight (' ', 8) << " ";
+
+            std::cerr << header << "(F, same pitch and start)\n";
+
+            for (size_t r = 0; r < pitched.size(); ++r)
+            {
+                juce::String row = (pitched[r]->name + " (" + juce::String (pitched[r]->notes.size()) + ")").substring (0, 14).paddedRight (' ', 15);
+
+                for (size_t t = 0; t < tracks.size(); ++t)
+                    row << fScore (matches[r][t], pitched[r]->notes.size(), tracks[t]->notes.size()).paddedRight (' ', 8) << " ";
+
+                std::cerr << row << "\n";
+            }
+
+            juce::String counts ("notes          ");
+
+            for (auto* t : tracks)
+                counts << juce::String ((int) t->notes.size()).paddedRight (' ', 8) << " ";
+
+            std::cerr << counts << "\n";
+
+            // Every pitched note, whatever its track.
+            std::vector<std::pair<double, int>> allReference;
+            std::vector<purrlude::analysis::TranscribedNote> allFound;
+
+            for (auto* r : pitched)
+                allReference.insert (allReference.end(), r->notes.begin(), r->notes.end());
+
+            for (auto* t : tracks)
+                allFound.insert (allFound.end(), t->notes.begin(), t->notes.end());
+
+            std::cerr << "Any track: F " << fScore (countMatches (allReference, allFound, true), allReference.size(), allFound.size())
+                      << " (" << allFound.size() << " notes found for " << allReference.size() << ")\n";
+
+            for (auto& r : reference)
+                if (r.drums)
+                    for (auto& p : parts)
+                        if (p.stem == Stem::drums)
+                            std::cerr << "Drums (timing only): F " << fScore (countMatches (r.notes, p.notes, false), r.notes.size(), p.notes.size()) << "\n";
+        }
+
+        return result;
+    }
+}
+
+// PURRLUDE_AUDIO_FILE=/path/song.wav PURRLUDE_MIDI_FILE=/path/song.mid PurrludeTests "[.separate-score]" -s
+// separates a song rendered from a MIDI file, converts the parts to notes, and scores them
+// against the file's parts (a note counts when its pitch matches and it starts within 50 ms):
+// before cleaning up, then with the conversion's and cleanUp's settings varied. The file must be
+// what the audio was rendered from. Results (right-track F): a General MIDI render (piano
+// melody, piano, bass, drums) 0.43 raw, 0.45 cleaned up (bleed 10 dB); the 20 BabySlakh songs
+// (Slakh2100's first 20, CC BY 4.0) 0.334 raw, 0.341 cleaned up. Tried and dropped (first 4
+// BabySlakh songs, the bass part's own score): the bass with the melody converter (0.06 against
+// 0.24), and moving its notes 20-50 ms earlier, though it's detected about 35 ms late (no gain).
+TEST_CASE ("Separating a song into MIDI tracks: scored against its MIDI file", "[.separate-score]")
+{
+    Song song;
+    juce::File file (juce::SystemStats::getEnvironmentVariable ("PURRLUDE_AUDIO_FILE", {}));
+    auto reference = readMidiParts (juce::File (juce::SystemStats::getEnvironmentVariable ("PURRLUDE_MIDI_FILE", {})));
+    auto model = separation::findModel ({});
+    REQUIRE (model.existsAsFile());
+    purrlude::analysis::setGpuCacheFolder (juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("Purrlude Test GPU Cache"));
+
+    auto source = song.addClip (file);
+    REQUIRE (source.has_value());
+
+    // Separated once, to audio, so conversions can be tried on the same parts.
+    std::optional<std::vector<separation::Part>> separated;
+    juce::String error;
+    separation::Job job (*song.engine, *source, separation::Output::audio, model, song.folder,
+                         [&] (auto parts, const juce::String& e) { separated = std::move (parts); error = e; });
+
+    for (auto end = juce::Time::getMillisecondCounter() + 600000; ! separated && juce::Time::getMillisecondCounter() < end;)
+        pump (50);
+
+    REQUIRE (separated.has_value());
+    INFO (error);
+    REQUIRE (error.isEmpty());
+
+    std::map<Stem, std::pair<juce::AudioBuffer<float>, double>> audio;
+    juce::AudioFormatManager formats;
+    formats.registerBasicFormats();
+
+    for (auto& part : *separated)
+    {
+        std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (part.audio));
+        REQUIRE (reader != nullptr);
+        juce::AudioBuffer<float> buffer ((int) reader->numChannels, (int) reader->lengthInSamples);
+        reader->read (&buffer, 0, buffer.getNumSamples(), 0, true, true);
+        audio[part.stem] = { std::move (buffer), reader->sampleRate };
+    }
+
+    auto convert = [&] (Stem stem)
+    {
+        juce::String partError;
+        auto part = separation::convertPart (stem, audio[stem].first, audio[stem].second, partError);
+        REQUIRE (partError.isEmpty());
+        return part;
+    };
+
+    std::vector<separation::Part> raw;
+
+    for (auto& [stem, buffer] : audio)
+        if (auto part = convert (stem); ! part.notes.empty())
+            raw.push_back (std::move (part));
+
+    // PURRLUDE_NOTES_OUT=/path/notes.txt also writes the raw notes: "Part start end pitch velocity level".
+    if (auto out = juce::SystemStats::getEnvironmentVariable ("PURRLUDE_NOTES_OUT", {}); out.isNotEmpty())
+    {
+        juce::String text;
+
+        for (auto& part : raw)
+            for (size_t n = 0; n < part.notes.size(); ++n)
+            {
+                auto& note = part.notes[n];
+                auto level = n < part.levels.size() ? part.levels[n] : 0.0f;
+                text << purrlude::analysis::getStemName (part.stem) << " " << juce::String (note.start, 4) << " " << juce::String (note.start + note.length, 4)
+                     << " " << note.pitch << " " << note.velocity << " " << juce::String (level, 1) << "\n";
+            }
+
+        juce::File (out).replaceWithText (text);
+    }
+
+    auto cleaned = [] (std::vector<separation::Part> parts, separation::CleanUpOptions options = {})
+    {
+        separation::cleanUp (parts, options);
+        return parts;
+    };
+
+    std::cerr << "\n== Before cleaning up\n";
+    auto before = score (reference, raw, true);
+
+    std::cerr << "\n== Cleaned up (the defaults)\n";
+    auto after = score (reference, cleaned (raw), true);
+
+    std::cerr << "\n== Settings (right-track F)\n" << "before " << before << ", defaults " << after << "\n";
+
+    for (float db : { 0.0f, 3.0f, 6.0f, 10.0f, 15.0f, 20.0f, 30.0f, 200.0f })
+    {
+        separation::CleanUpOptions options;
+        options.bleedDb = db;
+        std::cerr << "bleed " << db << " dB: " << score (reference, cleaned (raw, options), false) << "\n";
+    }
 }

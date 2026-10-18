@@ -31,7 +31,29 @@ namespace separation
         analysis::Stem stem = analysis::Stem::other;
         juce::File audio;                                 ///< Output::audio: its separated audio (a WAV)
         std::vector<analysis::TranscribedNote> notes;     ///< Output::midi: its notes
+        std::vector<float> levels;                        ///< Output::midi: how loud each note's pitch is in the part (dB)
     };
+
+    /** A separated part's notes, converted the way that suits it: drums with the drum
+        converter, vocals with the melody one, the rest with notes and chords (bass kept to its
+        range). Fills levels for cleanUp. keepGoing gets progress (0-1) and can cancel; error is
+        set if the conversion fails.
+    */
+    Part convertPart (analysis::Stem, const juce::AudioBuffer<float>&, double sampleRate, juce::String& error,
+                      const std::function<bool (float)>& keepGoing = {});
+
+    /** How cleanUp tidies the parts' notes. */
+    struct CleanUpOptions
+    {
+        double sameOnsetSeconds = 0.05;   ///< Copies of a note in several parts start this close together
+        float bleedDb = 10.0f;            ///< A copy this much quieter than the loudest is that part leaking in
+    };
+
+    /** Separated parts leak into each other, so the same note is often found in several.
+        This keeps each note where it's loudest, and in parts nearly as loud (instruments
+        doubling it). Parts left without notes are removed.
+    */
+    void cleanUp (std::vector<Part>&, const CleanUpOptions& = {});
 
     /** Parts much quieter than the whole (by this many dB) aren't really there. */
     constexpr float quietPartDb = -30.0f;
@@ -49,7 +71,8 @@ namespace separation
         /** For Output::audio, the parts' WAVs are written to audioFolder; for MIDI they're
             temporary.
         */
-        Job (tracktion::Engine&, audio_to_midi::Source, Output, juce::File model, juce::File audioFolder, Callback);
+        Job (tracktion::Engine&, audio_to_midi::Source, Output, juce::File model, juce::File audioFolder, Callback,
+             bool cleanUpNotes = true);
         ~Job() override;
 
         float getProgress() const noexcept      { return progress.load(); }
@@ -62,6 +85,7 @@ namespace separation
         tracktion::Engine& engine;
         audio_to_midi::Source source;
         Output output;
+        bool cleanUpNotes;
         juce::File model, audioFolder, tempFolder;
         Callback callback;
         std::atomic<float> progress { 0.0f };

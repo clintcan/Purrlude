@@ -2,6 +2,7 @@
 
 #include <juce_audio_basics/juce_audio_basics.h>
 
+#include <cmath>
 #include <vector>
 
 namespace purrlude::analysis
@@ -40,6 +41,45 @@ inline std::vector<float> toAnalysisRate (const juce::AudioBuffer<float>& audio,
     juce::LagrangeInterpolator interpolator;
     interpolator.process (ratio, mono.data(), resampled.data(), (int) resampled.size());
     return resampled;
+}
+
+/** How loud a note's pitch is in some audio, in dB: its first three harmonics' power over
+    the note's first quarter second (Goertzel), on the channels' average. For comparing the same
+    note across separated parts, where the part it really belongs to is the loudest.
+*/
+inline float noteLevelDb (const juce::AudioBuffer<float>& audio, double sampleRate, double start, double length, int pitch)
+{
+    const auto first = juce::jlimit (0, audio.getNumSamples(), (int) (start * sampleRate));
+    const auto count = juce::jlimit (0, audio.getNumSamples() - first, (int) (juce::jlimit (0.03, 0.25, length) * sampleRate));
+
+    if (count <= 0 || audio.getNumChannels() == 0)
+        return -200.0f;
+
+    const auto f0 = 440.0 * std::pow (2.0, (pitch - 69) / 12.0);
+    double power = 0.0;
+
+    for (int harmonic = 1; harmonic <= 3 && f0 * harmonic < sampleRate * 0.45; ++harmonic)
+    {
+        const auto coefficient = 2.0 * std::cos (juce::MathConstants<double>::twoPi * f0 * harmonic / sampleRate);
+        double s1 = 0.0, s2 = 0.0;
+
+        for (int i = 0; i < count; ++i)
+        {
+            double x = 0.0;
+
+            for (int c = 0; c < audio.getNumChannels(); ++c)
+                x += audio.getSample (c, first + i);
+
+            const auto s0 = x / audio.getNumChannels() + coefficient * s1 - s2;
+            s2 = s1;
+            s1 = s0;
+        }
+
+        // |X|^2, scaled to the sinusoid's amplitude squared.
+        power += (s1 * s1 + s2 * s2 - coefficient * s1 * s2) * 4.0 / ((double) count * count);
+    }
+
+    return (float) (10.0 * std::log10 (power + 1.0e-20));
 }
 
 } // namespace purrlude::analysis

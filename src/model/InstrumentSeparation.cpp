@@ -62,8 +62,124 @@ bool isAvailable (const juce::File& userModelsFolder)
 }
 
 //==============================================================================
-Job::Job (tracktion::Engine& e, audio_to_midi::Source s, Output o, juce::File m, juce::File folder, Callback c)
-    : juce::Thread ("Instrument separation"), engine (e), source (std::move (s)), output (o),
+Part convertPart (Stem stem, const juce::AudioBuffer<float>& audio, double sampleRate, juce::String& error,
+                  const std::function<bool (float)>& keepGoing)
+{
+    Part part { stem, {}, {}, {} };
+
+    if (stem == Stem::drums)
+    {
+        part.notes = audio_to_midi::toNotes (analysis::transcribeDrums (audio, sampleRate, {}, keepGoing));
+    }
+    else if (stem == Stem::vocals)
+    {
+        part.notes = analysis::transcribeMelody (audio, sampleRate, keepGoing);
+    }
+    else
+    {
+        analysis::PolyphonicOptions polyphonic;
+
+        if (stem == Stem::bass)
+            polyphonic.highestPitch = 57;   // A3: higher is mostly the bass's overtones
+
+        part.notes = analysis::transcribePolyphonic (audio, sampleRate, error, keepGoing, polyphonic);
+    }
+
+    for (auto& note : part.notes)
+        part.levels.push_back (analysis::noteLevelDb (audio, sampleRate, note.start, note.length, note.pitch));
+
+    return part;
+}
+
+void cleanUp (std::vector<Part>& parts, const CleanUpOptions& options)
+{
+    // The same pitch starting at about the same time in several parts: keep the loudest copy,
+    // and others nearly as loud.
+    struct Copy { size_t part, note; };
+    std::vector<Copy> copies;
+
+    for (size_t p = 0; p < parts.size(); ++p)
+        if (parts[p].stem != Stem::drums)
+            for (size_t n = 0; n < parts[p].notes.size(); ++n)
+                copies.push_back ({ p, n });
+
+    auto noteOf = [&] (const Copy& c) -> const analysis::TranscribedNote& { return parts[c.part].notes[c.note]; };
+    auto levelOf = [&] (const Copy& c) { return c.note < parts[c.part].levels.size() ? parts[c.part].levels[c.note] : 0.0f; };
+
+    std::sort (copies.begin(), copies.end(), [&] (const Copy& a, const Copy& b)
+    {
+        auto& x = noteOf (a);
+        auto& y = noteOf (b);
+        return x.pitch != y.pitch ? x.pitch < y.pitch : x.start < y.start;
+    });
+
+    std::vector<std::vector<bool>> removed;
+
+    for (auto& part : parts)
+        removed.emplace_back (part.notes.size(), false);
+
+    for (size_t i = 0; i < copies.size();)
+    {
+        auto j = i + 1;
+
+        while (j < copies.size() && noteOf (copies[j]).pitch == noteOf (copies[i]).pitch
+                && noteOf (copies[j]).start - noteOf (copies[i]).start <= options.sameOnsetSeconds)
+            ++j;
+
+        if (j - i > 1)
+        {
+            auto loudest = i;
+
+            for (auto k = i + 1; k < j; ++k)
+                if (levelOf (copies[k]) > levelOf (copies[loudest]))
+                    loudest = k;
+
+            for (auto k = i; k < j; ++k)
+            {
+                if (k == loudest)
+                    continue;
+
+                const bool samePart = copies[k].part == copies[loudest].part;
+                const bool bleed = levelOf (copies[k]) < levelOf (copies[loudest]) - options.bleedDb;
+
+                if (samePart || bleed)
+                    removed[copies[k].part][copies[k].note] = true;
+            }
+        }
+
+        i = j;
+    }
+
+    for (size_t p = 0; p < parts.size(); ++p)
+    {
+        auto& part = parts[p];
+        std::vector<size_t> order;
+
+        for (size_t n = 0; n < part.notes.size(); ++n)
+            if (! removed[p][n])
+                order.push_back (n);
+
+        std::stable_sort (order.begin(), order.end(), [&] (size_t a, size_t b) { return part.notes[a].start < part.notes[b].start; });
+
+        Part kept { part.stem, part.audio, {}, {} };
+
+        for (auto n : order)
+        {
+            kept.notes.push_back (part.notes[n]);
+
+            if (n < part.levels.size())
+                kept.levels.push_back (part.levels[n]);
+        }
+
+        part = std::move (kept);
+    }
+
+    parts.erase (std::remove_if (parts.begin(), parts.end(), [] (auto& p) { return p.audio == juce::File() && p.notes.empty(); }), parts.end());
+}
+
+//==============================================================================
+Job::Job (tracktion::Engine& e, audio_to_midi::Source s, Output o, juce::File m, juce::File folder, Callback c, bool clean)
+    : juce::Thread ("Instrument separation"), engine (e), source (std::move (s)), output (o), cleanUpNotes (clean),
       model (std::move (m)), audioFolder (std::move (folder)), callback (std::move (c))
 {
     tempFolder = juce::File::getSpecialLocation (juce::File::tempDirectory)
@@ -228,39 +344,17 @@ bool Job::runJob (std::vector<Part>& parts, juce::String& error)
             return ! threadShouldExit();
         };
 
-        std::vector<analysis::TranscribedNote> notes;
-        juce::String partError;
+        auto converted = convertPart (stem, part, reader->sampleRate, error, partProgress);
 
-        if (stem == Stem::drums)
-        {
-            notes = audio_to_midi::toNotes (analysis::transcribeDrums (part, reader->sampleRate, {}, partProgress));
-        }
-        else if (stem == Stem::vocals)
-        {
-            notes = analysis::transcribeMelody (part, reader->sampleRate, partProgress);
-        }
-        else
-        {
-            analysis::PolyphonicOptions options;
-
-            if (stem == Stem::bass)
-                options.highestPitch = 57;   // A3: higher is mostly the bass's overtones
-
-            notes = analysis::transcribePolyphonic (part, reader->sampleRate, partError, partProgress, options);
-        }
-
-        if (threadShouldExit())
+        if (threadShouldExit() || error.isNotEmpty())
             return false;
 
-        if (partError.isNotEmpty())
-        {
-            error = partError;
-            return false;
-        }
-
-        if (! notes.empty())
-            parts.push_back ({ stem, {}, std::move (notes) });
+        if (! converted.notes.empty())
+            parts.push_back (std::move (converted));
     }
+
+    if (cleanUpNotes)
+        cleanUp (parts);
 
     if (parts.empty())
     {
