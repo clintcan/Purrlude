@@ -5,9 +5,10 @@
 #
 # The build folder holds the app and what it finds next to itself (libonnxruntime, verovio/,
 # soundfonts/, licenses/); it all goes into usr/bin. linuxdeploy adds the shared libraries the
-# app needs to usr/lib (not the system's own: glibc, ALSA, X11, fonts...), and appimagetool
-# packs it with the static type-2 runtime, so users don't need FUSE 2. The separation model
-# isn't included (the app downloads it when asked). Build on the oldest Linux it should run on:
+# app needs to usr/lib (not the system's own: glibc, ALSA, X11, fonts, libcurl...), and
+# appimagetool packs it with the static type-2 runtime, so users don't need FUSE 2. The model
+# for separating instruments isn't included (the app downloads it when asked). Build on the
+# oldest Linux it should run on:
 # the AppImage needs a glibc at least as new as the build machine's.
 #
 # The tools are pinned releases, checked against their SHA-256s.
@@ -44,8 +45,13 @@ cp -a "$build/." "$appdir/usr/bin/"
 rm -rf "$appdir/usr/bin/models"   # never ship the model: it's downloaded on first use
 cp "$root/branding/purrlude-icon-256.png" "$work/purrlude.png"
 
+# libcurl (for downloading the separation model) comes from the system, not the AppImage: a
+# bundled one looks for TLS certificates where Debian keeps them (Fedora and openSUSE keep them
+# elsewhere), and would bring its own OpenSSL and GnuTLS, missing the system's security updates.
+# Every desktop distribution has libcurl.so.4.
 LD_LIBRARY_PATH="$appdir/usr/bin" "$work/linuxdeploy" \
     --appdir "$appdir" \
+    --exclude-library "libcurl.so*" \
     --executable "$appdir/usr/bin/Purrlude" \
     --desktop-file "$root/tools/packaging/purrlude.desktop" \
     --icon-file "$work/purrlude.png"
