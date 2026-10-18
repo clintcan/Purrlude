@@ -599,9 +599,15 @@ void MainComponent::separateInstruments (tracktion::EditItemID audioClip, separa
     showConversionWindow ("Separating the instruments in " + source->name,
                           output == separation::Output::midi
                               ? "Listening for drums, bass, vocals, guitar, piano and the rest, then for their notes. "
-                                "This takes about a third of the song's length."
+                                "This takes up to a third of the song's length."
                               : "Listening for drums, bass, vocals, guitar, piano and the rest. "
-                                "This takes about a third of the song's length.");
+                                "This takes up to a third of the song's length.");
+
+   #if JUCE_MAC
+    // Core ML's compiled model: a cache, rebuilt if it's deleted.
+    analysis::setGpuCacheFolder (juce::File::getSpecialLocation (juce::File::userHomeDirectory)
+                                     .getChildFile ("Library/Caches/Purrlude/GPU Cache"));
+   #endif
 
     auto safe = juce::WeakReference<MainComponent> (this);
     separationJob = std::make_unique<separation::Job> (engine, *source, output, model, project->getAudioFolder(),

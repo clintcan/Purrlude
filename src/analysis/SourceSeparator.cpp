@@ -332,14 +332,14 @@ demucs::Network loadDemucs (const juce::File& model, juce::String& error, bool u
         bool onGpu = false;
     };
 
-    auto open = [model] (bool gpu)
+    auto open = [model, fingerprint = getModelFingerprint (model)] (bool gpu)
     {
         auto loaded = std::make_shared<Loaded>();
         loaded->onGpu = gpu;
        #if JUCE_WINDOWS
-        loaded->session = std::make_unique<Ort::Session> (getOnnxRuntime(), model.getFullPathName().toWideCharPointer(), makeSessionOptions (gpu));
+        loaded->session = std::make_unique<Ort::Session> (getOnnxRuntime(), model.getFullPathName().toWideCharPointer(), makeSessionOptions (gpu, fingerprint));
        #else
-        loaded->session = std::make_unique<Ort::Session> (getOnnxRuntime(), model.getFullPathName().toRawUTF8(), makeSessionOptions (gpu));
+        loaded->session = std::make_unique<Ort::Session> (getOnnxRuntime(), model.getFullPathName().toRawUTF8(), makeSessionOptions (gpu, fingerprint));
        #endif
 
         // The inputs are the audio (3 dimensions) and its spectrogram (4); the outputs the
@@ -433,6 +433,8 @@ demucs::Network loadDemucs (const juce::File& model, juce::String& error, bool u
 #else
 
 bool isSeparationAvailable()    { return false; }
+
+void setGpuCacheFolder (const juce::File&) {}
 
 demucs::Network loadDemucs (const juce::File&, juce::String& error, bool)
 {

@@ -4,6 +4,7 @@
  #include <juce_core/juce_core.h>
 
  #include <cstdlib>
+ #include <mutex>
 
  #if PURRLUDE_HAS_DIRECTML
   #include <dml_provider_factory.h>
@@ -30,7 +31,28 @@ Ort::Env& getOnnxRuntime()
     return env;
 }
 
-Ort::SessionOptions makeSessionOptions (bool preferGpu)
+static std::mutex gpuCacheLock;
+static juce::File gpuCacheFolder;
+
+void setGpuCacheFolder (const juce::File& folder)
+{
+    std::lock_guard lock (gpuCacheLock);
+    gpuCacheFolder = folder;
+}
+
+juce::File getGpuCacheFolder()
+{
+    std::lock_guard lock (gpuCacheLock);
+    return gpuCacheFolder;
+}
+
+juce::String getModelFingerprint (const juce::File& model)
+{
+    auto id = model.getFileName() + "|" + juce::String (model.getSize()) + "|" + juce::String (model.getLastModificationTime().toMilliseconds());
+    return juce::String::toHexString (id.hashCode64()).paddedLeft ('0', 16);
+}
+
+Ort::SessionOptions makeSessionOptions (bool preferGpu, const juce::String& cacheKey)
 {
     Ort::SessionOptions options;
     options.SetIntraOpNumThreads (juce::jlimit (1, 4, juce::SystemStats::getNumPhysicalCpus()));
@@ -67,9 +89,49 @@ Ort::SessionOptions makeSessionOptions (bool preferGpu)
         return options;
     }
 
+    juce::ignoreUnused (cacheKey);
+    return gpu;
+   #elif JUCE_MAC
+    // Core ML compiles the model for the GPU each time a session opens: about 15 s for Demucs,
+    // as long as separating a 2-minute song on the CPU. So it's used only with a cache, where
+    // the compiled model is kept (about 430 MB for Demucs) and later sessions start at once.
+    auto cacheRoot = getGpuCacheFolder();
+
+    if (! preferGpu || cacheKey.isEmpty() || cacheRoot == juce::File()
+         || juce::SystemStats::getEnvironmentVariable ("PURRLUDE_ONNX_DEVICE", {}) == "cpu")
+        return options;
+
+    // One folder per model file, so a replaced model is never run from an old cache. Older
+    // folders are deleted: they'd only take up space.
+    auto cache = cacheRoot.getChildFile (cacheKey);
+
+    for (auto& old : cacheRoot.findChildFiles (juce::File::findDirectories, false))
+        if (old != cache)
+            old.deleteRecursively();
+
+    if (! cache.createDirectory())
+        return options;
+
+    Ort::SessionOptions gpu = options.Clone();
+
+    try
+    {
+        // The GPU alone was fastest on an M-series Mac: letting Core ML choose (and use the
+        // Neural Engine) was a little slower, the Neural Engine alone much slower.
+        gpu.AppendExecutionProvider ("CoreML", {
+            { "ModelFormat", "MLProgram" },
+            { "MLComputeUnits", "CPUAndGPU" },
+            { "ModelCacheDirectory", cache.getFullPathName().toStdString() }
+        });
+    }
+    catch (const Ort::Exception&)
+    {
+        return options;
+    }
+
     return gpu;
    #else
-    juce::ignoreUnused (preferGpu);
+    juce::ignoreUnused (preferGpu, cacheKey);
     return options;
    #endif
 }

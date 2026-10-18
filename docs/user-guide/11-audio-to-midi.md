@@ -65,7 +65,7 @@ It uses Meta's Demucs model.
 - New tracks are named after the clip and the part, e.g. *Song Drums*.
 - The whole separation is one undo step.
 
-**Speed:** on a Mac, separating takes about a third of the song's length, e.g. a 3-minute song takes about a minute. On Windows it runs on the graphics card (any DirectX 12 one, built-in graphics included) when it can: a 2-minute song took about 45 seconds on a laptop with AMD Radeon graphics, and about as long as the song itself without it.
+**Speed:** on a Mac, separating runs on the graphics chip and takes about an eighth of the song's length, e.g. a 3-minute song takes about 25 seconds. The first time is slower (about a quarter of the song's length), while the Mac prepares the model for its graphics chip; it keeps the result (about 430 MB) in `~/Library/Caches/Purrlude` so later separations start at once. If that folder is cleared, the next separation prepares it again. On Windows it runs on the graphics card (any DirectX 12 one, built-in graphics included) when it can: a 2-minute song took about 45 seconds on a laptop with AMD Radeon graphics, and about as long as the song itself without it.
 
 **Limits:**
 - Drums usually separate cleanly.

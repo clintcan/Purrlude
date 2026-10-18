@@ -69,9 +69,16 @@ bool separate (const juce::AudioBuffer<float>& stereo, const demucs::Network&, c
 /** True if this build can run Demucs (it needs ONNX Runtime). */
 bool isSeparationAvailable();
 
+/** Where models compiled for the GPU are kept (Core ML on macOS: about 430 MB for Demucs),
+    a folder per model file. Without one, macOS runs everything on the CPU, since compiling
+    Demucs for the GPU each time takes about as long as separating a song on the CPU.
+*/
+void setGpuCacheFolder (const juce::File& folder);
+
 /** Demucs from its ONNX file; an empty function (and an error) if it can't be loaded.
 
-    With useGpu, it runs on the GPU where it can (DirectML on Windows), and moves to the CPU
+    With useGpu, it runs on the GPU where it can (DirectML on Windows, Core ML on macOS
+    with a GPU cache folder: setGpuCacheFolder), and moves to the CPU
     if the GPU can't start it or fails mid-song (e.g. Windows resets a busy GPU).
 */
 demucs::Network loadDemucs (const juce::File& model, juce::String& error, bool useGpu = true);

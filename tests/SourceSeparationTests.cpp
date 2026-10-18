@@ -2,6 +2,10 @@
 
 #include "analysis/SourceSeparator.h"
 
+#if PURRLUDE_HAS_ONNXRUNTIME
+ #include "analysis/OnnxRuntime.h"
+#endif
+
 #include <juce_audio_formats/juce_audio_formats.h>
 
 #include <iostream>
@@ -151,6 +155,22 @@ TEST_CASE ("Separation: cancelling and failing", "[separation]")
     CHECK (error.isNotEmpty());
 }
 
+#if PURRLUDE_HAS_ONNXRUNTIME
+TEST_CASE ("Separation: a model's GPU cache is named after the model file", "[separation]")
+{
+    juce::TemporaryFile temp (".onnx");
+    auto model = temp.getFile();
+    REQUIRE (model.replaceWithText ("model"));
+    auto first = getModelFingerprint (model);
+
+    CHECK (first.length() == 16);
+    CHECK (getModelFingerprint (model) == first);
+
+    REQUIRE (model.replaceWithText ("a different model"));   // a replaced model gets a new cache
+    CHECK (getModelFingerprint (model) != first);
+}
+#endif
+
 // PURRLUDE_DEMUCS_MODEL=/path/htdemucs_6s.onnx PURRLUDE_AUDIO_FILE=/path/song.wav PurrludeTests "[.separate-file]"
 // writes each stem next to the song ("song - Drums.wav", ...).
 TEST_CASE ("Separation: a real song", "[.separate-file]")
@@ -189,8 +209,11 @@ TEST_CASE ("Separation: a real song", "[.separate-file]")
 
 // PURRLUDE_DEMUCS_MODEL=/path/htdemucs_6s.onnx PURRLUDE_AUDIO_FILE=/path/song.wav PurrludeTests "[.separate-gpu]" -s
 // separates the song's first 30 s on the GPU and on the CPU, and checks the stems match.
+// On macOS the compiled model is kept in ~/Library/Caches/PurrludeTests/Purrlude Test GPU Cache.
 TEST_CASE ("Separation: the GPU gives the CPU's stems", "[.separate-gpu]")
 {
+    setGpuCacheFolder (juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("Purrlude Test GPU Cache"));
+
     juce::File model (juce::SystemStats::getEnvironmentVariable ("PURRLUDE_DEMUCS_MODEL", {}));
     juce::File file (juce::SystemStats::getEnvironmentVariable ("PURRLUDE_AUDIO_FILE", {}));
     REQUIRE (model.existsAsFile());
