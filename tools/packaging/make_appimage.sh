@@ -48,10 +48,18 @@ cp "$root/branding/purrlude-icon-256.png" "$work/purrlude.png"
 # libcurl (for downloading the separation model) comes from the system, not the AppImage: a
 # bundled one looks for TLS certificates where Debian keeps them (Fedora and openSUSE keep them
 # elsewhere), and would bring its own OpenSSL and GnuTLS, missing the system's security updates.
-# Every desktop distribution has libcurl.so.4.
+# Every desktop distribution has libcurl.so.4. The libraries only it needs (TLS, Kerberos, LDAP,
+# SSH...) stay out too: linuxdeploy would otherwise collect them through it, and the system's
+# libcurl could load those old copies instead of its own.
+curl_only=(libcurl libssl libcrypto libgnutls libnettle libhogweed libtasn1 libp11-kit
+           libgssapi_krb5 libkrb5 libkrb5support libk5crypto libkeyutils libldap liblber libsasl2
+           libssh librtmp libnghttp2 libpsl libidn2 libunistring)
+excludes=()
+for name in "${curl_only[@]}"; do excludes+=(--exclude-library "$name.so*" --exclude-library "$name-*.so*"); done
+
 LD_LIBRARY_PATH="$appdir/usr/bin" "$work/linuxdeploy" \
     --appdir "$appdir" \
-    --exclude-library "libcurl.so*" \
+    "${excludes[@]}" \
     --executable "$appdir/usr/bin/Purrlude" \
     --desktop-file "$root/tools/packaging/purrlude.desktop" \
     --icon-file "$work/purrlude.png"
