@@ -39,12 +39,24 @@ namespace
         }
 
         /** Plays from the start; false if the playhead doesn't move (no audio device). */
+        /** Plays from the start until the playhead is about a quarter of a second in. Starting
+            can take longer on a busy machine (a CI runner, with automation recording on), so
+            this waits for the playhead (up to 3 s) rather than for a set time.
+        */
         bool play()
         {
             transport().setPosition (tracktion::TimePosition());
             transport().play (false);
-            pump (300);
-            return transport().getPosition() > tracktion::TimePosition();
+
+            for (int waited = 0; waited < 3000; waited += 50)
+            {
+                pump (50);
+
+                if (transport().getPosition() >= tracktion::TimePosition::fromSeconds (0.25))
+                    return true;
+            }
+
+            return false;
         }
 
         void stop()
