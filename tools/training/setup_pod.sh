@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# Sets up a rented GPU machine (a RunPod pod from its PyTorch image, Ubuntu, run as root) for
+# fine-tuning, with the data on a network volume so a pod can be swapped without downloading it
+# again:
+#
+#     git clone https://github.com/clintcan/Purrlude.git && cd Purrlude
+#     tools/training/setup_pod.sh /workspace/data
+#
+# Then, on the GPU pod (see train.py for the options):
+#
+#     cd tools/training && python train.py /workspace/data/checkpoints \
+#         /workspace/data/slakh2100_flac_redux/train /workspace/data/gm-renders --workers 12
+#
+# It installs FluidSynth and FluidR3_GM (MIT), Demucs (MIT) without letting pip replace the
+# image's PyTorch, downloads Slakh2100 (CC BY 4.0, 104 GB, checked against Zenodo's MD5) and
+# GeneralUser GS (Purrlude's own General MIDI sounds, the pinned file and SHA-256 the build uses),
+# and renders GM_SONGS (default 600) of Slakh's training songs through both sound sets.
+# Slakh's validation and test songs are kept out of training. Each step is skipped when done,
+# so it can be run again after an interruption. The downloads and renders need no GPU: a cheap
+# CPU pod with the same volume can do them.
+set -euo pipefail
+
+data=${1:?usage: setup_pod.sh <data folder>}
+gm_songs=${GM_SONGS:-600}
+here=$(cd "$(dirname "$0")" && pwd)
+mkdir -p "$data"
+
+echo "== Packages"
+apt-get update -qq
+DEBIAN_FRONTEND=noninteractive apt-get install -y -qq fluidsynth fluid-soundfont-gm > /dev/null
+
+# Keep the image's CUDA build of PyTorch: pip may not change torch or torchaudio.
+python - > "$data/constraints.txt" <<'EOF'
+import importlib.metadata as m
+for name in ("torch", "torchaudio"):
+    try:
+        print(f"{name}=={m.version(name)}")
+    except m.PackageNotFoundError:
+        pass
+EOF
+grep -q torchaudio "$data/constraints.txt" || { echo "This image has no torchaudio; use RunPod's PyTorch image" >&2; exit 1; }
+pip install -q -c "$data/constraints.txt" demucs==4.0.1 soundfile pyyaml mido
+python -c "import torch; print('PyTorch', torch.__version__, 'CUDA', torch.cuda.is_available())"
+
+echo "== Slakh2100"
+if [[ ! -d "$data/slakh2100_flac_redux/train" ]]; then
+    archive="$data/slakh2100_flac_redux.tar.gz"
+    curl -fL --retry 5 -C - -o "$archive" "https://zenodo.org/records/4599666/files/slakh2100_flac_redux.tar.gz?download=1"
+    echo "f4b71b6c45ac9b506f59788456b3f0c4  $archive" | md5sum --check --quiet
+    tar -xzf "$archive" -C "$data"
+    rm "$archive"
+fi
+
+echo "== Sound sets"
+generaluser="$data/GeneralUser-GS.sf2"
+if [[ ! -f "$generaluser" ]]; then
+    curl -fL --retry 5 -o "$generaluser" \
+        https://raw.githubusercontent.com/mrbumpy409/GeneralUser-GS/684543d5e5efaef08d02be50dcda8d552478fa60/GeneralUser-GS.sf2
+fi
+echo "9575028c7a1f589f5770fccc8cff2734566af40cd26ed836944e9a5152688cfe  $generaluser" | sha256sum --check --quiet
+fluidr3=/usr/share/sounds/sf2/FluidR3_GM.sf2
+[[ -f "$fluidr3" ]] || { echo "No $fluidr3" >&2; exit 1; }
+
+echo "== General MIDI renders ($gm_songs songs)"
+python "$here/render_gm.py" "$data/slakh2100_flac_redux/train" "$data/gm-renders" "$generaluser" "$fluidr3" --limit "$gm_songs"
+
+echo "Ready: $(du -sh "$data" | cut -f1) in $data"

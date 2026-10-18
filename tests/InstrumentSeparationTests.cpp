@@ -461,7 +461,9 @@ TEST_CASE ("Separating a song into MIDI tracks: scored against its MIDI file", "
     Song song;
     juce::File file (juce::SystemStats::getEnvironmentVariable ("PURRLUDE_AUDIO_FILE", {}));
     auto reference = readMidiParts (juce::File (juce::SystemStats::getEnvironmentVariable ("PURRLUDE_MIDI_FILE", {})));
-    auto model = separation::findModel ({});
+    // PURRLUDE_SEPARATION_MODEL=/path/model.onnx scores that model instead (e.g. a fine-tuned one,
+    // from tools/training).
+    juce::File model (juce::SystemStats::getEnvironmentVariable ("PURRLUDE_SEPARATION_MODEL", separation::findModel ({}).getFullPathName()));
     REQUIRE (model.existsAsFile());
     purrlude::analysis::setGpuCacheFolder (juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("Purrlude Test GPU Cache"));
 

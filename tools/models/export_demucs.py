@@ -13,6 +13,9 @@ graph):
                          onnx dora-search openunmix diffq
     venv/bin/python tools/models/export_demucs.py .cpm-cache/demucs/htdemucs_6s.onnx
 
+With --weights checkpoints/weights.th it exports fine-tuned weights instead (from
+tools/training/train.py, a state dict of the same model).
+
 It downloads demucs.onnx at a pinned commit and Demucs's pretrained weights (checked by
 SHA-256), then writes the model (115 MB). The export is reproducible: with PyTorch 2.5.1 on
 macOS arm64 it came out with SHA-256
@@ -41,10 +44,17 @@ def sha256(path):
 
 
 def main():
-    if len(sys.argv) != 2:
+    args = sys.argv[1:]
+    weights_file = None
+
+    if len(args) == 3 and args[0] == "--weights":
+        weights_file = Path(args[1]).resolve()
+        args = args[2:]
+
+    if len(args) != 1:
         sys.exit(__doc__)
 
-    destination = Path(sys.argv[1]).resolve()
+    destination = Path(args[0]).resolve()
     destination.parent.mkdir(parents=True, exist_ok=True)
 
     with tempfile.TemporaryDirectory() as work:
@@ -71,6 +81,12 @@ def main():
 
         model = bag.models[0] if hasattr(bag, "models") else bag
         assert isinstance(model, HTDemucs)
+
+        if weights_file is not None:
+            # Fine-tuned weights: the same network's state dict (upstream Demucs's names).
+            model.load_state_dict(torch.load(weights_file, map_location="cpu"))
+            print(f"Using the fine-tuned weights in {weights_file} (SHA-256 {sha256(weights_file)})")
+
         assert model.sources == ["drums", "bass", "other", "vocals", "guitar", "piano"]
 
         # As sevagh/demucs.onnx's scripts/convert-pth-to-onnx.py: a segment's audio and its
