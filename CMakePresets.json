@@ -6,7 +6,8 @@
       "displayName": "Default (multi-config)",
       "binaryDir": "${sourceDir}/build",
       "cacheVariables": {
-        "CPM_SOURCE_CACHE": "${sourceDir}/.cpm-cache"
+        "CPM_SOURCE_CACHE": "${sourceDir}/.cpm-cache",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
       }
     },
     {

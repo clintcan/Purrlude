@@ -1,0 +1,4 @@
+# For clangd (VS Code and other editors): the compile commands CMake writes with Ninja
+# (CMAKE_EXPORT_COMPILE_COMMANDS, set in CMakePresets.json).
+CompileFlags:
+  CompilationDatabase: build
