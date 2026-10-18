@@ -77,16 +77,11 @@ Part convertPart (Stem stem, const juce::AudioBuffer<float>& audio, double sampl
     }
     else
     {
-        // Tuned on separated parts ([.separate-score], BabySlakh's 20 songs): a surer onset (0.6)
-        // finds fewer false notes, and the bass's long notes last better with a lower frame
-        // threshold (0.2). Right-track F 0.368 against 0.341 with basic-pitch's 0.5 and 0.3, and
-        // 0.128 against 0.113 counting note ends too. Ending notes at 0.6 of their peak (not in
-        // the release) and keeping notes from 0.09 s raised that to 0.139, with F 0.369.
-        analysis::PolyphonicOptions polyphonic;
-        polyphonic.onsetThreshold = 0.6f;
-        polyphonic.frameThreshold = 0.3f;
-        polyphonic.endBelowPeak = 0.6f;
-        polyphonic.minNoteSeconds = 0.09;
+        // The bass's long notes last better with a lower frame threshold (tuned with
+        // [.separate-score] on BabySlakh's 20 songs: with the rest at getPolyphonicOptions,
+        // right-track F 0.369 against 0.341 with basic-pitch's defaults everywhere, and 0.139
+        // against 0.113 counting note ends).
+        auto polyphonic = audio_to_midi::getPolyphonicOptions();
 
         if (stem == Stem::bass)
         {

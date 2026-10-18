@@ -57,6 +57,16 @@ bool readAudio (tracktion::Engine& engine, const Source& source, juce::AudioBuff
     return reader->read (&audio, 0, count, first, true, audio.getNumChannels() > 1);
 }
 
+analysis::PolyphonicOptions getPolyphonicOptions()
+{
+    analysis::PolyphonicOptions options;
+    options.onsetThreshold = 0.6f;
+    options.frameThreshold = 0.3f;
+    options.endBelowPeak = 0.6f;
+    options.minNoteSeconds = 0.09;
+    return options;
+}
+
 std::vector<analysis::TranscribedNote> toNotes (const std::vector<analysis::DrumHit>& hits)
 {
     // Drums only need to start; a sixteenth at 120 BPM reads as a plain hit in the score.
@@ -170,7 +180,7 @@ void Conversion::run()
         if (mode == Mode::drums)
             notes = toNotes (analysis::transcribeDrums (audio, sampleRate, {}, keepGoing));
         else if (mode == Mode::polyphonic)
-            notes = analysis::transcribePolyphonic (audio, sampleRate, error, keepGoing);
+            notes = analysis::transcribePolyphonic (audio, sampleRate, error, keepGoing, getPolyphonicOptions());
         else
             notes = analysis::transcribeMelody (audio, sampleRate, keepGoing);
 

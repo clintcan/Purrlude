@@ -651,6 +651,46 @@ TEST_CASE ("Separating a song into MIDI tracks: scored against its MIDI file", "
             std::cerr << "mix " << (tuned ? "tuned" : "default") << ": " << notes.size() << " notes, any track " << anyTrack (parts)
                       << ", right track " << score (reference, parts, false) << " (with ends " << score (reference, parts, false, true) << ")\n";
         }
+
+        // PURRLUDE_PLAIN_SWEEP=1: settings for plain Notes and Chords (one recording, one track,
+        // no cleaning up), on each separated part as a recording of its own (with
+        // PURRLUDE_STEMS_FOLDER, one clean instrument group each) and on the whole mix.
+        if (juce::SystemStats::getEnvironmentVariable ("PURRLUDE_PLAIN_SWEEP", "0") == "1")
+        {
+            std::map<Stem, purrlude::analysis::KeyActivations> partActivations;
+
+            for (auto& [stem, partAudio] : audio)
+                if (stem != Stem::drums && stem != Stem::vocals)
+                {
+                    auto partMono = purrlude::analysis::toAnalysisRate (partAudio.first, partAudio.second, juce::jmin (10500.0, partAudio.second * 0.45));
+                    partActivations[stem] = purrlude::analysis::runBasicPitch (partMono.data(), (int) partMono.size(), modelError);
+                    REQUIRE (modelError.isEmpty());
+                }
+
+            // Basic-pitch's defaults, separated parts' settings, and a lower frame threshold.
+            struct Setting { float onset, frame, peak; double minNote; };
+
+            for (auto [onset, frame, peak, minNote] : { Setting { 0.5f, 0.3f, 0.0f, 0.1277 }, Setting { 0.6f, 0.3f, 0.6f, 0.09 },
+                                                        Setting { 0.6f, 0.2f, 0.6f, 0.1277 }, Setting { 0.6f, 0.2f, 0.6f, 0.09 } })
+                        {
+                            purrlude::analysis::PolyphonicOptions options;
+                            options.onsetThreshold = onset;
+                            options.frameThreshold = frame;
+                            options.endBelowPeak = peak;
+                            options.minNoteSeconds = minNote;
+
+                            std::vector<separation::Part> parts;
+
+                            for (auto& [stem, a] : partActivations)
+                                parts.push_back ({ stem, {}, purrlude::analysis::notesFromActivations (a, options), {} });
+
+                            std::vector<separation::Part> whole { { Stem::other, {}, purrlude::analysis::notesFromActivations (mixActivations, options), {} } };
+
+                            std::cerr << "plain onset " << onset << " frame " << frame << " peak " << peak << " min " << minNote
+                                      << ": parts " << score (reference, parts, false) << " (with ends " << score (reference, parts, false, true) << ")"
+                                      << ", mix " << score (reference, whole, false) << " (with ends " << score (reference, whole, false, true) << ")\n";
+                        }
+        }
     }
 
     // The notes-and-chords converter's thresholds, for each part converted with it (the model

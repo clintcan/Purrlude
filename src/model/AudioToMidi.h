@@ -53,6 +53,15 @@ namespace audio_to_midi
                                        const std::vector<analysis::TranscribedNote>&,
                                        const juce::String& name, int program, tracktion::Track* after);
 
+    /** The notes-and-chords converter's settings, for a recording and for separated parts
+        (InstrumentSeparation adjusts the bass's): a surer onset than basic-pitch's (0.6, fewer
+        false notes), and notes ending at 0.6 of their peak rather than in the instrument's
+        release, kept from 0.09 s. Tuned with [.separate-score] over BabySlakh's 20 songs: on
+        single instruments F 0.597 against 0.554 with basic-pitch's defaults (0.262 against
+        0.222 counting note ends), on whole mixes 0.531 against 0.495.
+    */
+    analysis::PolyphonicOptions getPolyphonicOptions();
+
     /** Drum hits as notes: GM drum notes, short. */
     std::vector<analysis::TranscribedNote> toNotes (const std::vector<analysis::DrumHit>&);
 
