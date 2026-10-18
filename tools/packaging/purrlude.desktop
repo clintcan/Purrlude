@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Purrlude
+GenericName=Digital Audio Workstation
+Comment=Compose, record, arrange and mix music, and see it as sheet music
+Exec=Purrlude %F
+Icon=purrlude
+Categories=AudioVideo;Audio;Midi;Music;Sequencer;
+Terminal=false
+StartupWMClass=Purrlude

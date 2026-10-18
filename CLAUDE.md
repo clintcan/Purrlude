@@ -2,12 +2,12 @@
 
 Purrlude is a cross-platform digital audio workstation (DAW) for composing, recording, arranging and mixing music. It aims to be **easy for beginners and deep enough for power users**: a clean default UI that hides complexity until it's needed, with full control (automation, routing, keyboard-driven workflows) available underneath.
 
-> **Status: 1.0 on macOS and Windows; Linux CI-only** (the README says the same; keep them in step). Version 1.0.0 (`project()` in `CMakeLists.txt`).
+> **Status: 1.0 on macOS and Windows; Linux tried, not in everyday use** (the README says the same; keep them in step). Linux: CI, and a first real run on an Ubuntu 24.04 ARM VM (import, score, the model download, separation and playback work; no Bluetooth MIDI backend yet). Version 1.0.0 (`project()` in `CMakeLists.txt`).
 > - **Works:** the signature features (score, audio to MIDI, separation, loops and accompaniment, devices) and recording, editing, mixing and export, in real use on macOS (Apple Silicon) and Windows.
 > - **The project format is frozen** (format 1, `docs/project-format.md`): every later change needs an upgrade step.
 > - **Still to do:**
 >   - prebuilt releases (signed, notarised macOS app; Windows/Linux installers)
->   - real use on Linux
+>   - everyday use on Linux, and its Bluetooth MIDI backend (BlueZ)
 > - **Public:** github.com/clintcan/Purrlude, AGPLv3.
 
 ## Target Platforms
@@ -557,6 +557,8 @@ cmake --preset xcode && cmake --build --preset xcode-debug && ctest --preset xco
 # Linux / any platform with Ninja
 cmake --preset ninja && cmake --build --preset ninja-debug && ctest --preset ninja-debug
 ```
+
+**Linux AppImage:** `gh workflow run appimage` builds a Release on Ubuntu 22.04 (the oldest glibc it runs on) and runs `tools/packaging/make_appimage.sh`, which packs the build folder (the app and what it finds next to itself) with linuxdeploy and appimagetool (pinned releases, SHA-256 checked; the static type-2 runtime, so users don't need FUSE 2), and fails if a library would be missing. The AppImage is kept as the run's artifact for 14 days; attaching it to a release is a separate step. The separation model isn't included (downloaded on first use). The icon is `branding/purrlude-icon-256.png` (made by `tools/branding/make_icon.py`).
 
 Dependencies download into `.cpm-cache/` on first configure (slow the first time). MSVC builds compile with `/MP` (parallel files within a target). Linux needs the JUCE system packages listed in `.github/workflows/build.yml`.
 
