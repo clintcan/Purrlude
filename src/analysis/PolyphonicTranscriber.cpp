@@ -133,7 +133,20 @@ std::vector<TranscribedNote> notesFromActivations (KeyActivations a, const Polyp
             for (int i = f; i < end; ++i)
                 clear (i, k);
 
-            notes.push_back (makeNote (a, f, end, k));
+            auto noteEnd = end;
+
+            if (options.endBelowPeak > 0.0f)
+            {
+                float peak = 0.0f;
+
+                for (int i = f; i < end; ++i)
+                    peak = std::max (peak, a.note (i, k));
+
+                while (noteEnd > f + 1 && a.note (noteEnd - 1, k) < options.endBelowPeak * peak)
+                    --noteEnd;
+            }
+
+            notes.push_back (makeNote (a, f, noteEnd, k));
         }
 
     // The melodia trick: the strongest activity left, in turn, grows into a note both ways

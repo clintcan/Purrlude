@@ -55,6 +55,20 @@ inline float noteLevelDb (const juce::AudioBuffer<float>& audio, double sampleRa
     if (count <= 0 || audio.getNumChannels() == 0)
         return -200.0f;
 
+    // The channels' average, read once (through pointers: getSample checks every index).
+    std::vector<double> mono ((size_t) count, 0.0);
+
+    for (int c = 0; c < audio.getNumChannels(); ++c)
+    {
+        auto* data = audio.getReadPointer (c, first);
+
+        for (int i = 0; i < count; ++i)
+            mono[(size_t) i] += data[i];
+    }
+
+    for (auto& x : mono)
+        x /= audio.getNumChannels();
+
     const auto f0 = 440.0 * std::pow (2.0, (pitch - 69) / 12.0);
     double power = 0.0;
 
@@ -63,14 +77,9 @@ inline float noteLevelDb (const juce::AudioBuffer<float>& audio, double sampleRa
         const auto coefficient = 2.0 * std::cos (juce::MathConstants<double>::twoPi * f0 * harmonic / sampleRate);
         double s1 = 0.0, s2 = 0.0;
 
-        for (int i = 0; i < count; ++i)
+        for (auto x : mono)
         {
-            double x = 0.0;
-
-            for (int c = 0; c < audio.getNumChannels(); ++c)
-                x += audio.getSample (c, first + i);
-
-            const auto s0 = x / audio.getNumChannels() + coefficient * s1 - s2;
+            const auto s0 = x + coefficient * s1 - s2;
             s2 = s1;
             s1 = s0;
         }

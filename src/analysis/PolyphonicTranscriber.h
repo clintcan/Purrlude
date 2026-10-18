@@ -46,6 +46,12 @@ struct PolyphonicOptions
     bool inferOnsets = true;            ///< Sharp rises in a key's activity count as onsets too
     bool melodiaTrick = true;           ///< Leftover strong activity becomes notes too
     int lowestPitch = 21, highestPitch = 108;
+
+    /** If above 0, a note found from an onset ends at its last frame at least this fraction of
+        its loudest frame, not at the threshold. An instrument's release and reverb stay over
+        the threshold, so short notes otherwise come out long.
+    */
+    float endBelowPeak = 0.0f;
 };
 
 /** basic-pitch's note creation (output_to_notes_polyphonic), without pitch bends. Notes are

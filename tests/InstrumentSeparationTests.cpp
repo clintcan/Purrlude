@@ -5,9 +5,12 @@
 #include "model/EngineSetup.h"
 #include "model/InstrumentSeparation.h"
 #include "model/TrackInstrument.h"
+#include "analysis/PolyphonicTranscriber.h"
 #include "notation/TrackNotation.h"
 
 #include <iostream>
+#include <numeric>
+#include <tuple>
 
 namespace separation = purrlude::separation;
 using purrlude::analysis::Stem;
@@ -252,12 +255,14 @@ TEST_CASE ("Cleaning up keeps each note where it's loudest", "[separation][model
 //==============================================================================
 namespace
 {
-    /** A part of a MIDI file: its note starts (seconds) and pitches. */
+    struct ReferenceNote { double start = 0.0, end = 0.0; int pitch = 0; };
+
+    /** A part of a MIDI file: its notes, in seconds. */
     struct ReferencePart
     {
         juce::String name;
         bool drums = false;
-        std::vector<std::pair<double, int>> notes;
+        std::vector<ReferenceNote> notes;
     };
 
     /** Each track and channel with notes; channel 10 is drums. */
@@ -271,7 +276,8 @@ namespace
 
         for (int t = 0; t < midi.getNumTracks(); ++t)
         {
-            auto& track = *midi.getTrack (t);
+            juce::MidiMessageSequence track (*midi.getTrack (t));
+            track.updateMatchedPairs();
             juce::String name ("Track " + juce::String (t + 1));
             std::map<int, ReferencePart> byChannel;
 
@@ -282,7 +288,9 @@ namespace
                 if (m.isTrackNameEvent())
                     name = m.getTextFromTextMetaEvent();
                 else if (m.isNoteOn())
-                    byChannel[m.getChannel()].notes.push_back ({ m.getTimeStamp(), m.getNoteNumber() });
+                    byChannel[m.getChannel()].notes.push_back ({ m.getTimeStamp(),
+                                                                 event->noteOffObject != nullptr ? event->noteOffObject->message.getTimeStamp() : m.getTimeStamp(),
+                                                                 m.getNoteNumber() });
             }
 
             for (auto& [channel, part] : byChannel)
@@ -296,20 +304,40 @@ namespace
         return parts;
     }
 
-    /** How many notes match one to one: starts within 50 ms, and the same pitch (unless only timing counts). */
-    int countMatches (const std::vector<std::pair<double, int>>& reference, const std::vector<purrlude::analysis::TranscribedNote>& found, bool pitch)
+    /** How many notes match one to one: starts within 50 ms, and the same pitch (unless only
+        timing counts). With ends, also ends within 50 ms or a fifth of the note's length
+        (mir_eval's rule), so notes too long or too short don't count.
+    */
+    int countMatches (const std::vector<ReferenceNote>& reference, const std::vector<purrlude::analysis::TranscribedNote>& found,
+                      bool pitch, bool ends = false)
     {
+        // The found notes by start, so each reference note looks only at those near it.
+        std::vector<size_t> order (found.size());
+        std::iota (order.begin(), order.end(), size_t (0));
+        std::sort (order.begin(), order.end(), [&] (size_t a, size_t b) { return found[a].start < found[b].start; });
+        std::vector<double> starts;
+
+        for (auto i : order)
+            starts.push_back (found[i].start);
+
         std::vector<bool> used (found.size(), false);
         int matched = 0;
 
-        for (auto& [start, note] : reference)
+        for (auto& [start, end, note] : reference)
         {
             int best = -1;
+            const auto endTolerance = std::max (0.05, 0.2 * (end - start));
 
-            for (size_t i = 0; i < found.size(); ++i)
-                if (! used[i] && std::abs (found[i].start - start) <= 0.05 && (! pitch || found[i].pitch == note)
+            for (auto k = (size_t) (std::lower_bound (starts.begin(), starts.end(), start - 0.05) - starts.begin());
+                 k < starts.size() && starts[k] <= start + 0.05; ++k)
+            {
+                auto i = order[k];
+
+                if (! used[i] && (! pitch || found[i].pitch == note)
+                     && (! ends || std::abs (found[i].start + found[i].length - end) <= endTolerance)
                      && (best < 0 || std::abs (found[i].start - start) < std::abs (found[(size_t) best].start - start)))
                     best = (int) i;
+            }
 
             if (best >= 0)
             {
@@ -329,7 +357,7 @@ namespace
     /** Prints how well the parts' notes match the MIDI file's parts, and returns the pitched
         score: notes on the right track, each original part counting on its best track.
     */
-    double score (const std::vector<ReferencePart>& reference, const std::vector<separation::Part>& parts, bool verbose)
+    double score (const std::vector<ReferencePart>& reference, const std::vector<separation::Part>& parts, bool verbose, bool ends = false)
     {
         std::vector<const ReferencePart*> pitched;
         std::vector<const separation::Part*> tracks;
@@ -346,7 +374,7 @@ namespace
 
         for (size_t r = 0; r < pitched.size(); ++r)
             for (size_t t = 0; t < tracks.size(); ++t)
-                matches[r][t] = countMatches (pitched[r]->notes, tracks[t]->notes, true);
+                matches[r][t] = countMatches (pitched[r]->notes, tracks[t]->notes, true, ends);
 
         // Each original part counts on its best track. Parts may share a track (separation has
         // one piano part, however many pianos play), but a part spread over several tracks
@@ -385,7 +413,7 @@ namespace
             std::cerr << counts << "\n";
 
             // Every pitched note, whatever its track.
-            std::vector<std::pair<double, int>> allReference;
+            std::vector<ReferenceNote> allReference;
             std::vector<purrlude::analysis::TranscribedNote> allFound;
 
             for (auto* r : pitched)
@@ -412,9 +440,17 @@ namespace
 // separates a song rendered from a MIDI file, converts the parts to notes, and scores them
 // against the file's parts (a note counts when its pitch matches and it starts within 50 ms):
 // before cleaning up, then with the conversion's and cleanUp's settings varied. The file must be
-// what the audio was rendered from. Results (right-track F): a General MIDI render (piano
-// melody, piano, bass, drums) 0.43 raw, 0.45 cleaned up (bleed 10 dB); the 20 BabySlakh songs
-// (Slakh2100's first 20, CC BY 4.0) 0.334 raw, 0.341 cleaned up. Tried and dropped (first 4
+// what the audio was rendered from. PURRLUDE_SWEEP=0 skips the threshold sweep. Results
+// (right-track F, cleaned up; "with ends" also needs each note's end within 50 ms or a fifth of
+// its length): the 20 BabySlakh songs (Slakh2100's first 20, CC BY 4.0) 0.341 (0.113 with ends)
+// with basic-pitch's thresholds and 0.368 (0.128) with convertPart's; a General MIDI render
+// (piano melody, piano, bass, drums) 0.454 and 0.460. Cleaning up added about 0.01. In the sweep,
+// frame 0.2 on every part found the most note starts (0.366) but not their ends (0.114), and
+// frame 0.1 broke notes up. Ends: half the real notes are under 0.25 s, and 70% of those came
+// out long (the release stays over the threshold, and notes under 0.128 s were dropped);
+// endBelowPeak 0.6 with notes from 0.09 s took "with ends" from 0.128 to 0.139 (0.7 and 0.8 cut
+// notes short). Merging a track's same-pitch notes with small gaps lost 20%: they're mostly
+// real repeats. Tried and dropped (first 4
 // BabySlakh songs, the bass part's own score): the bass with the melody converter (0.06 against
 // 0.24), and moving its notes 20-50 ms earlier, though it's detected about 35 ms late (no gain).
 TEST_CASE ("Separating a song into MIDI tracks: scored against its MIDI file", "[.separate-score]")
@@ -452,7 +488,15 @@ TEST_CASE ("Separating a song into MIDI tracks: scored against its MIDI file", "
         REQUIRE (reader != nullptr);
         juce::AudioBuffer<float> buffer ((int) reader->numChannels, (int) reader->lengthInSamples);
         reader->read (&buffer, 0, buffer.getNumSamples(), 0, true, true);
-        audio[part.stem] = { std::move (buffer), reader->sampleRate };
+
+        // Kept in mono, to save memory: the converters and noteLevelDb mix to mono anyway.
+        juce::AudioBuffer<float> mono (1, buffer.getNumSamples());
+        mono.clear();
+
+        for (int c = 0; c < buffer.getNumChannels(); ++c)
+            mono.addFrom (0, 0, buffer, c, 0, buffer.getNumSamples(), 1.0f / (float) buffer.getNumChannels());
+
+        audio[part.stem] = { std::move (mono), reader->sampleRate };
     }
 
     auto convert = [&] (Stem stem)
@@ -498,12 +542,127 @@ TEST_CASE ("Separating a song into MIDI tracks: scored against its MIDI file", "
     std::cerr << "\n== Cleaned up (the defaults)\n";
     auto after = score (reference, cleaned (raw), true);
 
-    std::cerr << "\n== Settings (right-track F)\n" << "before " << before << ", defaults " << after << "\n";
+    std::cerr << "\n== Settings (right-track F)\n" << "before " << before << ", defaults " << after << "\n"
+              << "with ends: before " << score (reference, raw, false, true) << ", defaults " << score (reference, cleaned (raw), false, true) << "\n";
 
     for (float db : { 0.0f, 3.0f, 6.0f, 10.0f, 15.0f, 20.0f, 30.0f, 200.0f })
     {
         separation::CleanUpOptions options;
         options.bleedDb = db;
         std::cerr << "bleed " << db << " dB: " << score (reference, cleaned (raw, options), false) << "\n";
+    }
+
+    // The notes-and-chords converter's thresholds, for each part converted with it (the model
+    // runs once per part; finding the notes again is quick), and for all of them together.
+    if (purrlude::analysis::isPolyphonicAvailable())
+    {
+        std::map<Stem, purrlude::analysis::KeyActivations> activations;
+
+        for (auto& part : raw)
+            if (part.stem != Stem::drums && part.stem != Stem::vocals)
+            {
+                auto& [buffer, rate] = audio[part.stem];
+                auto mono = purrlude::analysis::toAnalysisRate (buffer, rate, juce::jmin (10500.0, rate * 0.45));
+                juce::String modelError;
+                activations[part.stem] = purrlude::analysis::runBasicPitch (mono.data(), (int) mono.size(), modelError);
+                REQUIRE (modelError.isEmpty());
+            }
+
+        std::map<std::tuple<Stem, double, double, int>, float> levelCache;
+
+        auto withThresholds = [&] (std::optional<Stem> only, float onset, float frame)
+        {
+            auto parts = raw;
+
+            for (auto& part : parts)
+            {
+                if (activations.count (part.stem) == 0 || (only && part.stem != *only))
+                    continue;
+
+                purrlude::analysis::PolyphonicOptions options;   // as convertPart's
+                options.onsetThreshold = onset;
+                options.frameThreshold = frame;
+
+                if (part.stem == Stem::bass)
+                    options.highestPitch = 57;
+
+                auto& [buffer, rate] = audio[part.stem];
+                part.notes = purrlude::analysis::notesFromActivations (activations[part.stem], options);
+                part.levels.clear();
+
+                // Most notes come out the same at every setting, so each is measured once.
+                for (auto& note : part.notes)
+                {
+                    auto key = std::make_tuple (part.stem, note.start, note.length, note.pitch);
+                    auto known = levelCache.find (key);
+
+                    if (known == levelCache.end())
+                        known = levelCache.emplace (key, purrlude::analysis::noteLevelDb (buffer, rate, note.start, note.length, note.pitch)).first;
+
+                    part.levels.push_back (known->second);
+                }
+            }
+
+            auto clean = cleaned (parts);
+            return juce::String (score (reference, clean, false), 4) + " (with ends " + juce::String (score (reference, clean, false, true), 4) + ")";
+        };
+
+        // How notes end, at convertPart's thresholds: endBelowPeak and the shortest note kept.
+        auto withEnds = [&] (float endBelowPeak, double minNoteSeconds)
+        {
+            auto parts = raw;
+
+            for (auto& part : parts)
+            {
+                if (activations.count (part.stem) == 0)
+                    continue;
+
+                purrlude::analysis::PolyphonicOptions options;   // as convertPart's
+                options.onsetThreshold = 0.6f;
+                options.frameThreshold = part.stem == Stem::bass ? 0.2f : 0.3f;
+                options.endBelowPeak = endBelowPeak;
+                options.minNoteSeconds = minNoteSeconds;
+
+                if (part.stem == Stem::bass)
+                    options.highestPitch = 57;
+
+                auto& [buffer, rate] = audio[part.stem];
+                part.notes = purrlude::analysis::notesFromActivations (activations[part.stem], options);
+                part.levels.clear();
+
+                for (auto& note : part.notes)
+                {
+                    auto key = std::make_tuple (part.stem, note.start, note.length, note.pitch);
+                    auto known = levelCache.find (key);
+
+                    if (known == levelCache.end())
+                        known = levelCache.emplace (key, purrlude::analysis::noteLevelDb (buffer, rate, note.start, note.length, note.pitch)).first;
+
+                    part.levels.push_back (known->second);
+                }
+            }
+
+            auto clean = cleaned (parts);
+            return juce::String (score (reference, clean, false), 4) + " (with ends " + juce::String (score (reference, clean, false, true), 4) + ")";
+        };
+
+        for (double minNote : { 0.1277, 0.09 })
+            for (float endBelowPeak : { 0.0f, 0.5f, 0.6f, 0.7f, 0.8f })
+                std::cerr << "ends minNote " << minNote << " peak " << endBelowPeak << ": " << withEnds (endBelowPeak, minNote) << "\n";
+
+        // PURRLUDE_SWEEP=0 skips the sweep (each setting for each part, and for all together).
+        if (juce::SystemStats::getEnvironmentVariable ("PURRLUDE_SWEEP", "1") == "0")
+            return;
+
+        std::vector<std::optional<Stem>> which { std::nullopt };
+
+        for (auto& [stem, a] : activations)
+            which.push_back (stem);
+
+        for (auto only : which)
+            for (float onset : { 0.4f, 0.5f, 0.6f, 0.7f })
+                for (float frame : { 0.1f, 0.15f, 0.2f, 0.3f })
+                    std::cerr << "thresholds " << (only ? juce::String (purrlude::analysis::getStemName (*only)) : juce::String ("All"))
+                              << " onset " << onset << " frame " << frame << ": " << withThresholds (only, onset, frame) << "\n";
     }
 }
