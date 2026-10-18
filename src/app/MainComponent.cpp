@@ -679,11 +679,29 @@ void MainComponent::downloadModelThenSeparate (tracktion::EditItemID audioClip, 
     });
 }
 
+namespace
+{
+    /** The default dark colours draw a progress bar's fill dark and its track in the window's
+        own colour, so it looked like a short dark pill with the percentage beside it. These
+        give the fill the accent colour and the track a visible one.
+    */
+    void colourProgressBars (juce::Component& window)
+    {
+        for (auto* child : window.getChildren())
+            if (auto* bar = dynamic_cast<juce::ProgressBar*> (child))
+            {
+                bar->setColour (juce::ProgressBar::foregroundColourId, window.findColour (juce::TextButton::buttonOnColourId));
+                bar->setColour (juce::ProgressBar::backgroundColourId, window.findColour (juce::AlertWindow::backgroundColourId).brighter (0.25f));
+            }
+    }
+}
+
 void MainComponent::showConversionWindow (const juce::String& title, const juce::String& message)
 {
     conversionProgress = 0.0;
     conversionWindow = std::make_unique<juce::AlertWindow> (title, message, juce::MessageBoxIconType::NoIcon);
     conversionWindow->addProgressBarComponent (conversionProgress);
+    colourProgressBars (*conversionWindow);
     conversionWindow->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
 
     // Cancel closes the window with 0; a finished job closes it with 1.
@@ -861,6 +879,7 @@ void MainComponent::startAudioExport (AudioExportOptions options, const juce::Fi
                                                         options.stems ? "Rendering each track..." : "Rendering the song...",
                                                         juce::MessageBoxIconType::NoIcon);
     exportWindow->addProgressBarComponent (exportProgress);
+    colourProgressBars (*exportWindow);
     exportWindow->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
 
     // Cancel closes the window with 0; a finished export closes it with 1.
