@@ -29,13 +29,36 @@ CPMAddPackage(
     URL https://github.com/juce-framework/JUCE/archive/19edd538429c93d277bf95b55aaa7e3eb545f951.tar.gz
 )
 
-# Patched so its bundled crill builds with GCC on 64-bit ARM Linux (cmake/patches).
 CPMAddPackage(
     NAME tracktion_engine
     URL https://github.com/Tracktion/tracktion_engine/archive/refs/tags/v3.2.0.tar.gz
     DOWNLOAD_ONLY YES
-    PATCHES ${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/tracktion-crill-gcc-wfe.patch
 )
+
+# Tracktion's bundled crill calls __wfe, which GCC's arm_acle.h doesn't declare (Clang's and
+# MSVC's do), so it didn't build with GCC on 64-bit ARM Linux. With GCC it now issues the wfe
+# instruction itself. Changed here rather than with a patch file: the patch program on Windows
+# CI runners failed on one ("Assertation failed!").
+set(crill_wait ${tracktion_engine_SOURCE_DIR}/modules/3rd_party/crill/impl/progressive_backoff_wait_impl.h)
+file(READ ${crill_wait} crill_source)
+
+if(NOT crill_source MATCHES "Purrlude:")
+    string(REPLACE [=[                __wfe();
+]=] [=[                // Purrlude: GCC's arm_acle.h has no __wfe (Clang's and MSVC's do), so it's
+                // the instruction itself there.
+               #if defined (_MSC_VER) || defined (__clang__)
+                __wfe();
+               #else
+                __asm__ __volatile__ ("wfe");
+               #endif
+]=] crill_patched "${crill_source}")
+
+    if(crill_patched STREQUAL crill_source)
+        message(FATAL_ERROR "Couldn't find crill's __wfe call in ${crill_wait}: check it after a Tracktion upgrade")
+    endif()
+
+    file(WRITE ${crill_wait} "${crill_patched}")
+endif()
 add_subdirectory(${tracktion_engine_SOURCE_DIR}/modules ${CMAKE_BINARY_DIR}/tracktion_engine)
 
 include(cmake/Verovio.cmake)
