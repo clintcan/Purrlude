@@ -6,9 +6,9 @@
 #     git clone https://github.com/clintcan/Purrlude.git && cd Purrlude
 #     tools/training/setup_pod.sh /workspace/data
 #
-# Then, on the GPU pod (see train.py for the options):
+# Then, on the GPU pod (see train.py for the options), with the environment it made:
 #
-#     cd tools/training && python train.py /workspace/data/checkpoints \
+#     cd tools/training && /workspace/data/venv/bin/python train.py /workspace/data/checkpoints \
 #         /workspace/data/slakh2100_flac_redux/train /workspace/data/gm-renders --workers 12
 #
 # It installs FluidSynth and FluidR3_GM (MIT), Demucs (MIT) without letting pip replace the
@@ -29,8 +29,11 @@ echo "== Packages"
 apt-get update -qq
 DEBIAN_FRONTEND=noninteractive apt-get install -y -qq fluidsynth fluid-soundfont-gm > /dev/null
 
-# Keep the image's CUDA build of PyTorch: pip may not change torch or torchaudio.
-python - > "$data/constraints.txt" <<'EOF'
+# A virtual environment on the volume that still sees the image's CUDA build of PyTorch (the
+# image's own Python is externally managed, PEP 668), and pip may not change torch or torchaudio.
+[[ -x "$data/venv/bin/python" ]] || python -m venv --system-site-packages "$data/venv"
+python="$data/venv/bin/python"
+"$python" - > "$data/constraints.txt" <<'EOF'
 import importlib.metadata as m
 for name in ("torch", "torchaudio"):
     try:
@@ -39,8 +42,8 @@ for name in ("torch", "torchaudio"):
         pass
 EOF
 grep -q torchaudio "$data/constraints.txt" || { echo "This image has no torchaudio; use RunPod's PyTorch image" >&2; exit 1; }
-pip install -q -c "$data/constraints.txt" demucs==4.0.1 soundfile pyyaml mido
-python -c "import torch; print('PyTorch', torch.__version__, 'CUDA', torch.cuda.is_available())"
+"$python" -m pip install -q -c "$data/constraints.txt" demucs==4.0.1 soundfile pyyaml mido
+"$python" -c "import torch; print('PyTorch', torch.__version__, 'CUDA', torch.cuda.is_available())"
 
 echo "== Slakh2100"
 if [[ ! -d "$data/slakh2100_flac_redux/train" ]]; then
@@ -62,6 +65,6 @@ fluidr3=/usr/share/sounds/sf2/FluidR3_GM.sf2
 [[ -f "$fluidr3" ]] || { echo "No $fluidr3" >&2; exit 1; }
 
 echo "== General MIDI renders ($gm_songs songs)"
-python "$here/render_gm.py" "$data/slakh2100_flac_redux/train" "$data/gm-renders" "$generaluser" "$fluidr3" --limit "$gm_songs"
+"$python" "$here/render_gm.py" "$data/slakh2100_flac_redux/train" "$data/gm-renders" "$generaluser" "$fluidr3" --limit "$gm_songs"
 
 echo "Ready: $(du -sh "$data" | cut -f1) in $data"
