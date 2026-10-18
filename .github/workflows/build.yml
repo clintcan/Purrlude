@@ -10,8 +10,14 @@ on:
         options: [all, windows, macos, ubuntu]
         default: all
 
+# Building and testing only read the repository.
+permissions:
+  contents: read
+
 jobs:
   build:
+    # A hung test otherwise runs to GitHub's 6-hour limit. A full run takes up to an hour (more with an empty cache).
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
@@ -19,7 +25,10 @@ jobs:
         os: ${{ fromJSON(inputs.os == 'all' && '["windows-latest", "macos-latest", "ubuntu-latest"]' || format('["{0}-latest"]', inputs.os)) }}
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      # Actions are pinned to commits (tags can be moved), with the release in the comment.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # v4.4.0
+        with:
+          persist-credentials: false   # nothing later needs the token
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
@@ -38,14 +47,14 @@ jobs:
       # unlike the "Visual Studio 17 2022" generator.
       - name: Set up MSVC (Windows)
         if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@v1
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756   # v1.13.0
 
       - name: Install Ninja (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: if (-not (Get-Command ninja -ErrorAction SilentlyContinue)) { choco install ninja -y }
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830   # v4.3.0
         with:
           path: .cpm-cache
           key: cpm-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt', 'cmake/*.cmake') }}
