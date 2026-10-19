@@ -1,6 +1,6 @@
 #pragma once
 
-#include <juce_core/juce_core.h>
+#include <juce_audio_basics/juce_audio_basics.h>
 
 #include <functional>
 #include <memory>
@@ -24,10 +24,10 @@ struct BleMidiDevice
 
     Each platform provides its own backend (CoreMIDI on macOS/iOS, WinRT on
     Windows, BlueZ over D-Bus on Linux, MidiManager on Android). Once connected,
-    a device appears as a normal MIDI input/output port, so the rest of the app
-    never talks to Bluetooth directly.
+    a device appears as a normal MIDI input/output port. On Windows its MIDI is read and
+    written by the backend instead (readsMidiDirectly, sendMidi).
 
-    All callbacks are delivered on the message thread.
+    All callbacks except onMidiMessage are delivered on the message thread.
 */
 class BleMidiService
 {
@@ -61,6 +61,26 @@ public:
 
     /** Called when an operation fails. deviceId is empty for errors not tied to a device. */
     std::function<void (const juce::String& deviceId, const juce::String& message)> onError;
+
+    /** Backends that read a connected device's MIDI themselves (readsMidiDirectly()) call
+        this for each message, on a Bluetooth thread, with the device's name. Set it before
+        connecting anything, and don't change it afterwards.
+    */
+    std::function<void (const juce::String& deviceId, const juce::String& deviceName,
+                        const juce::MidiMessage&)> onMidiMessage;
+
+    /** True if this backend reads connected devices' MIDI itself and sends it to
+        onMidiMessage, instead of leaving it to the OS's MIDI ports. Windows does: its
+        Bluetooth MIDI driver stops delivering a device's messages after a while
+        (seconds to minutes with a Roland GO:KEYS), until the device is reconnected.
+    */
+    virtual bool readsMidiDirectly() const              { return false; }
+
+    /** Where readsMidiDirectly(), sends a message to a connected device over Purrlude's own
+        connection (Windows' driver stops passing messages to a device too). Any thread; in the
+        order sent; dropped if the device isn't connected.
+    */
+    virtual void sendMidi (const juce::String& deviceId, const juce::MidiMessage&)   { juce::ignoreUnused (deviceId); }
 
     /** Creates the backend for the current platform. */
     static std::unique_ptr<BleMidiService> createForPlatform();

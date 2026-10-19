@@ -225,6 +225,12 @@ void MidiDevicesPanel::refresh()
         if (device->getDeviceType() == tracktion::InputDevice::physicalMidiDevice && device->isEnabled())
             inputs.add (device->getName());
 
+    // Bluetooth devices whose input Purrlude reads itself (Windows); their ports stay closed.
+    if (bluetooth.readsMidiDirectly())
+        for (const auto& device : bluetooth.getDevices())
+            if (device.info.connected)
+                inputs.addIfNotAlreadyThere (device.info.name + " (Bluetooth)");
+
     inputsLabel.setText (inputs.isEmpty() ? juce::String ("No MIDI keyboards connected.")
                                           : inputs.joinIntoString ("\n"),
                          juce::dontSendNotification);

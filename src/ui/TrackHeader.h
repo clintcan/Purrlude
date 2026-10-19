@@ -45,6 +45,7 @@ private:
     void instrumentChosen();
     void renameCurrentTone();
     int getSelectedInstrumentId() const;
+    void showSelectedInstrument();
     void showMenu();
 
     /** The automation choices in a menu: Purrlude's own controls, then a submenu per
@@ -95,6 +96,7 @@ private:
     juce::StringArray soundIDs, soundNames;   ///< Parallel to soundBox items; ID "" is the built-in instrument
     std::vector<DeviceTone> toneChoices;      ///< Instrument menu items when playing through a device
     int firstLearnedToneId = 0;               ///< Items from here on are learned (renamable) tones
+    int shownInstrumentId = 0;                ///< The instrument menu item last shown or chosen
     std::vector<juce::PluginDescription> pluginChoices;   ///< Instrument plugins in the menu
     juce::String instrumentMenuSource;        ///< Sound source the instrument menu was built for
     juce::String instrumentMenuPlugins;       ///< Plugin instrument and plugin list it was built for (getPluginsKey)

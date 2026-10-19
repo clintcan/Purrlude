@@ -4,6 +4,7 @@ juce_add_console_app(PurrludeTests PRODUCT_NAME "PurrludeTests" NEEDS_CURL TRUE)
 
 target_sources(PurrludeTests PRIVATE
     EngineSmokeTests.cpp
+    BleMidiPacketTests.cpp
     BleMidiServiceTests.cpp
     BluetoothMidiManagerTests.cpp
     LiveInstrumentTests.cpp

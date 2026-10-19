@@ -232,11 +232,25 @@ bool LiveInstrument::isEchoingLiveInput() const
     if (sourceName.isEmpty())
         return true;
 
-    // A device shows up as an input and an output with the same name.
+    // A device shows up as an input and an output with the same name, except a Bluetooth one on
+    // Windows: "<name> (Bluetooth MIDI IN)" and "... OUT". Purrlude reads that input itself
+    // (BluetoothMidiInput), with its port closed, so it counts though it isn't enabled.
+    const juce::String bluetoothIn (" (Bluetooth MIDI IN)"), bluetoothOut (" (Bluetooth MIDI OUT)");
+    auto sourceDevice = sourceName.endsWith (bluetoothOut) ? sourceName.dropLastCharacters (bluetoothOut.length()) : sourceName;
+
     for (auto& input : edit.engine.getDeviceManager().getMidiInDevices())
-        if (input->getDeviceType() == tracktion::InputDevice::physicalMidiDevice
-             && input->isEnabled() && input->getName() == sourceName)
+    {
+        if (input->getDeviceType() != tracktion::InputDevice::physicalMidiDevice)
+            continue;
+
+        auto name = input->getName();
+
+        if (input->isEnabled() && name == sourceName)
             return false;
+
+        if (name.endsWith (bluetoothIn) && name.dropLastCharacters (bluetoothIn.length()) == sourceDevice)
+            return false;
+    }
 
     return true;
 }

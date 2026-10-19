@@ -1,4 +1,5 @@
 #include "BleMidiService.h"
+#include "BleMidiPacket.h"
 
 #include <juce_events/juce_events.h>
 
@@ -8,8 +9,10 @@
 #include <winrt/Windows.Devices.Bluetooth.Advertisement.h>
 #include <winrt/Windows.Devices.Bluetooth.GenericAttributeProfile.h>
 #include <winrt/Windows.Devices.Enumeration.h>
+#include <winrt/Windows.Storage.Streams.h>
 
 #include <map>
+#include <mutex>
 
 /*  Windows Bluetooth LE MIDI backend.
 
@@ -22,8 +25,12 @@
     it (or has one of its MIDI ports open), so a device is held only while it's
     connecting or connected, and disconnect() lets go of it.
 
-    MIDI I/O is not done here: with JUCE_USE_WINRT_MIDI=1, JUCE exposes
-    connected BLE MIDI devices as ordinary juce::MidiInput / MidiOutput ports.
+    MIDI is read and written here (readsMidiDirectly), not through Windows' MIDI ports: its
+    Bluetooth MIDI driver stops passing a device's messages after a while (seconds to minutes
+    with a Roland GO:KEYS, even with nothing else running), until it's reconnected; read
+    directly, the same device's input never stopped. Once connected, the MIDI I/O
+    characteristic is subscribed to, its packets decoded (BleMidiPacketDecoder) and passed to
+    onMidiMessage; sendMidi writes packets to it (encodeBleMidi) without response.
 
     Threading: WinRT callbacks and coroutines run on the thread pool. They
     never touch the service directly; they copy plain data and post it to the
@@ -40,10 +47,15 @@ namespace
     namespace adv  = winrt::Windows::Devices::Bluetooth::Advertisement;
     namespace gatt = winrt::Windows::Devices::Bluetooth::GenericAttributeProfile;
     namespace enm  = winrt::Windows::Devices::Enumeration;
+    namespace ss   = winrt::Windows::Storage::Streams;
 
     // BLE MIDI service UUID: 03B80E5A-EDE8-4B33-A751-6CE34EC4C700
     constexpr winrt::guid midiServiceUuid { 0x03B80E5A, 0xEDE8, 0x4B33,
                                             { 0xA7, 0x51, 0x6C, 0xE3, 0x4E, 0xC4, 0xC7, 0x00 } };
+
+    // BLE MIDI I/O characteristic UUID: 7772E5DB-3868-4112-A1A9-F2669D106BF3
+    constexpr winrt::guid midiIoUuid { 0x7772E5DB, 0x3868, 0x4112,
+                                       { 0xA1, 0xA9, 0xF2, 0x66, 0x9D, 0x10, 0x6B, 0xF3 } };
 
     constexpr int staleDeviceTimeoutMs = 10000;
 
@@ -133,6 +145,57 @@ namespace
         PendingCount count;
     };
 
+    /** Decodes one subscription's packets and passes the messages on. Shared with the WinRT
+        callback, which runs on the thread pool; Windows delivers one characteristic's
+        notifications one at a time.
+    */
+    struct MidiReader
+    {
+        juce::String deviceId, deviceName;
+        std::function<void (const juce::String&, const juce::String&, const juce::MidiMessage&)> sink;
+        BleMidiPacketDecoder decoder;
+
+        void handle (const ss::IBuffer& buffer)
+        {
+            auto reader = ss::DataReader::FromBuffer (buffer);
+            std::vector<uint8_t> bytes (reader.UnconsumedBufferLength());
+            reader.ReadBytes (bytes);
+
+            decoder.decode (bytes.data(), bytes.size(), [this] (const juce::MidiMessage& m)
+            {
+                auto message = m;
+                message.setTimeStamp (juce::Time::getMillisecondCounterHiRes() * 0.001);
+                sink (deviceId, deviceName, message);
+            });
+        }
+    };
+
+    /** A subscription to a device's MIDI I/O characteristic; letting go of it unsubscribes. */
+    struct MidiSubscription
+    {
+        gatt::GattDeviceService service { nullptr };
+        gatt::GattCharacteristic characteristic { nullptr };
+        gatt::GattCharacteristic::ValueChanged_revoker revoker;
+
+        ~MidiSubscription()
+        {
+            revoker.revoke();
+
+            if (service != nullptr)
+                try { service.Close(); } catch (const winrt::hresult_error&) {}
+        }
+    };
+
+    /** Messages waiting to go to a device. One write task at a time drains it, so they go in order. */
+    struct MidiWriter
+    {
+        std::mutex lock;
+        std::vector<juce::MidiMessage> queue;
+        bool writing = false, closed = false;
+        gatt::GattCharacteristic characteristic { nullptr };
+        size_t maxPacket = 20;   // ATT MTU less 3
+    };
+
     struct PairedDeviceInfo
     {
         uint64_t address = 0;
@@ -162,6 +225,37 @@ namespace
         }
 
         bool isAvailable() const override       { return available; }
+        bool readsMidiDirectly() const override { return true; }
+
+        void sendMidi (const juce::String& deviceId, const juce::MidiMessage& message) override
+        {
+            std::shared_ptr<MidiWriter> writer;
+
+            {
+                const std::scoped_lock sl (writersLock);
+
+                if (auto it = writers.find (deviceId); it != writers.end())
+                    writer = it->second;
+            }
+
+            if (writer == nullptr)
+                return;
+
+            {
+                const std::scoped_lock sl (writer->lock);
+
+                if (writer->closed)
+                    return;
+
+                writer->queue.push_back (message);
+
+                if (std::exchange (writer->writing, true))
+                    return;   // the running task will send it
+            }
+
+            writeMidi (writer, pending);
+        }
+
         bool isScanning() const override        { return scanning; }
 
         void startScan() override
@@ -310,6 +404,9 @@ namespace
             bt::BluetoothLEDevice device { nullptr };
             bt::BluetoothLEDevice::ConnectionStatusChanged_revoker statusRevoker;
             gatt::GattSession session { nullptr };
+            std::shared_ptr<MidiReader> midiReader;               ///< The current subscription's
+            std::shared_ptr<MidiSubscription> midiSubscription;
+            std::shared_ptr<MidiWriter> midiWriter;
         };
 
         //==============================================================================
@@ -385,6 +482,10 @@ namespace
 
         static void closeSession (DeviceEntry& entry)
         {
+            entry.midiReader = nullptr;
+            entry.midiSubscription = nullptr;
+            closeWriter (entry);
+
             if (entry.session != nullptr)
             {
                 try
@@ -501,10 +602,15 @@ namespace
         {
             if (auto it = devices.find (id); it != devices.end())
             {
+                bool cameBack = connected && ! it->second.info.connected && it->second.session != nullptr;
                 it->second.info.connected = connected;
 
                 if (connected)
                     it->second.info.connecting = false;
+
+                // MaintainConnection brought a dropped link back: subscribe afresh.
+                if (cameBack)
+                    startReadingMidi (it->second);
 
                 notifyChanged();
             }
@@ -524,7 +630,63 @@ namespace
             closeSession (entry);
             entry.session = session;
             watchConnection (entry, device);
+            startReadingMidi (entry);
             notifyChanged();
+        }
+
+        /** Subscribes to the device's MIDI (again, after the link came back). */
+        void startReadingMidi (DeviceEntry& entry)
+        {
+            entry.midiSubscription = nullptr;
+            entry.midiReader = nullptr;
+
+            if (entry.device == nullptr || onMidiMessage == nullptr)
+                return;
+
+            auto reader = std::make_shared<MidiReader>();
+            reader->deviceId = entry.info.id;
+            reader->deviceName = entry.info.name;
+            reader->sink = onMidiMessage;
+            entry.midiReader = reader;
+
+            subscribeToMidi (selfRef, pending, entry.address, entry.device, reader);
+        }
+
+        void handleMidiSubscribed (uint64_t address, std::shared_ptr<MidiReader> reader,
+                                   std::shared_ptr<MidiSubscription> subscription)
+        {
+            auto& entry = getOrCreateEntry (address);
+
+            // Kept only if it's still the one wanted (not disconnected or resubscribed since).
+            if (entry.midiReader != reader || entry.session == nullptr)
+                return;
+
+            closeWriter (entry);
+
+            auto writer = std::make_shared<MidiWriter>();
+            writer->characteristic = subscription->characteristic;
+
+            try { writer->maxPacket = (size_t) juce::jmax (5, (int) entry.session.MaxPduSize() - 3); }
+            catch (const winrt::hresult_error&) {}
+
+            entry.midiSubscription = std::move (subscription);
+            entry.midiWriter = writer;
+
+            const std::scoped_lock sl (writersLock);
+            writers[entry.info.id] = writer;
+        }
+
+        /** Stops sending to the device; anything queued is dropped. */
+        static void closeWriter (DeviceEntry& entry)
+        {
+            if (entry.midiWriter != nullptr)
+            {
+                const std::scoped_lock sl (entry.midiWriter->lock);
+                entry.midiWriter->closed = true;
+                entry.midiWriter->queue.clear();
+            }
+
+            entry.midiWriter = nullptr;
         }
 
         void handleConnectFailed (uint64_t address, const juce::String& message)
@@ -559,6 +721,118 @@ namespace
 
         //==============================================================================
         // Thread-pool coroutines. Parameters are taken by value; never touch `this`.
+
+        static winrt::fire_and_forget writeMidi (std::shared_ptr<MidiWriter> writer, PendingCount pending)
+        {
+            PendingGuard guard { pending };
+            co_await winrt::resume_background();
+
+            for (;;)
+            {
+                std::vector<juce::MidiMessage> batch;
+                gatt::GattCharacteristic characteristic { nullptr };
+                size_t maxPacket = 20;
+
+                {
+                    const std::scoped_lock sl (writer->lock);
+
+                    if (writer->closed || writer->queue.empty())
+                    {
+                        writer->writing = false;
+                        break;
+                    }
+
+                    batch.swap (writer->queue);
+                    characteristic = writer->characteristic;
+                    maxPacket = writer->maxPacket;
+                }
+
+                // A Bank Select is sent with the Program Change that follows it, in one packet (see
+                // encodeBleMidi): they're sent one by one, so wait briefly for the rest.
+                for (int waited = 0; isBankSelect (batch.back()) && waited < 10; waited += 2)
+                {
+                    co_await winrt::resume_after (std::chrono::milliseconds (2));
+
+                    const std::scoped_lock sl (writer->lock);
+                    batch.insert (batch.end(), writer->queue.begin(), writer->queue.end());
+                    writer->queue.clear();
+                }
+
+                for (const auto& packet : encodeBleMidi (batch, maxPacket, juce::Time::getMillisecondCounter()))
+                {
+                    try
+                    {
+                        ss::DataWriter data;
+                        data.WriteBytes (packet);
+                        co_await characteristic.WriteValueWithResultAsync (data.DetachBuffer(),
+                                                                           gatt::GattWriteOption::WriteWithoutResponse);
+                    }
+                    catch (const winrt::hresult_error&)
+                    {
+                        // Disconnected meanwhile: the rest goes the same way.
+                    }
+                }
+            }
+        }
+
+        static winrt::fire_and_forget subscribeToMidi (juce::WeakReference<WindowsBleMidiService> weak,
+                                                       PendingCount pending, uint64_t address,
+                                                       bt::BluetoothLEDevice device, std::shared_ptr<MidiReader> reader)
+        {
+            PendingGuard guard { pending };
+            co_await winrt::resume_background();
+
+            try
+            {
+                auto subscription = std::make_shared<MidiSubscription>();
+
+                // Just connected (and asked uncached), so Windows' cache has the services.
+                auto services = co_await device.GetGattServicesForUuidAsync (midiServiceUuid, bt::BluetoothCacheMode::Cached);
+
+                if (services.Status() != gatt::GattCommunicationStatus::Success || services.Services().Size() == 0)
+                    throw std::runtime_error (describeGattFailure (services.Status()).toStdString());
+
+                subscription->service = services.Services().GetAt (0);
+                co_await subscription->service.OpenAsync (gatt::GattSharingMode::SharedReadAndWrite);
+
+                auto characteristics = co_await subscription->service.GetCharacteristicsForUuidAsync (midiIoUuid, bt::BluetoothCacheMode::Cached);
+
+                if (characteristics.Status() != gatt::GattCommunicationStatus::Success || characteristics.Characteristics().Size() == 0)
+                    throw std::runtime_error ("The device has no Bluetooth MIDI characteristic.");
+
+                subscription->characteristic = characteristics.Characteristics().GetAt (0);
+                subscription->revoker = subscription->characteristic.ValueChanged (winrt::auto_revoke,
+                    [reader] (const gatt::GattCharacteristic&, const gatt::GattValueChangedEventArgs& args)
+                    {
+                        reader->handle (args.CharacteristicValue());
+                    });
+
+                auto status = co_await subscription->characteristic.WriteClientCharacteristicConfigurationDescriptorAsync (
+                                  gatt::GattClientCharacteristicConfigurationDescriptorValue::Notify);
+
+                if (status != gatt::GattCommunicationStatus::Success)
+                    throw std::runtime_error (describeGattFailure (status).toStdString());
+
+                post (weak, [address, reader, subscription] (WindowsBleMidiService& s) mutable
+                {
+                    s.handleMidiSubscribed (address, reader, std::move (subscription));
+                });
+            }
+            catch (const winrt::hresult_error& e)
+            {
+                post (weak, [address, message = describeError (e)] (WindowsBleMidiService& s)
+                {
+                    s.reportError (addressToId (address), "Could not read the device's MIDI: " + message);
+                });
+            }
+            catch (const std::exception& e)
+            {
+                post (weak, [address, message = juce::String (e.what())] (WindowsBleMidiService& s)
+                {
+                    s.reportError (addressToId (address), "Could not read the device's MIDI: " + message);
+                });
+            }
+        }
 
         static winrt::fire_and_forget refreshPairedDevices (juce::WeakReference<WindowsBleMidiService> weak,
                                                             PendingCount pending)
@@ -807,6 +1081,10 @@ namespace
         adv::BluetoothLEAdvertisementWatcher::Stopped_revoker stoppedRevoker;
 
         PendingCount pending = std::make_shared<std::atomic<int>> (0);
+
+        // Read by sendMidi on any thread.
+        std::mutex writersLock;
+        std::map<juce::String, std::shared_ptr<MidiWriter>> writers;
 
         JUCE_DECLARE_WEAK_REFERENCEABLE (WindowsBleMidiService)
 

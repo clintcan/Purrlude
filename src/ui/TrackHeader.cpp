@@ -362,8 +362,8 @@ void TrackHeader::refresh()
         if (instrumentMenuSource != getInstrument().getSoundSourceID() || channel != shownChannel
              || instrumentMenuPlugins != getPluginsKey())
             updateChoices();
-        else if (instrumentBox.getSelectedId() != getSelectedInstrumentId())
-            instrumentBox.setSelectedId (getSelectedInstrumentId(), juce::dontSendNotification);
+        else if (instrumentBox.getSelectedId() == shownInstrumentId && shownInstrumentId != getSelectedInstrumentId())
+            showSelectedInstrument();
     }
 
     repaint();
@@ -721,6 +721,14 @@ int TrackHeader::getSelectedInstrumentId() const
     return currentToneId;
 }
 
+// The box tells instrumentChosen about a choice asynchronously: until then it shows the new item and
+// the track still has the old instrument, so refresh() leaves an item that isn't the one shown here.
+void TrackHeader::showSelectedInstrument()
+{
+    shownInstrumentId = getSelectedInstrumentId();
+    instrumentBox.setSelectedId (shownInstrumentId, juce::dontSendNotification);
+}
+
 void TrackHeader::updateInstrumentChoices()
 {
     auto instrument = getInstrument();
@@ -845,19 +853,20 @@ void TrackHeader::updateInstrumentChoices()
         }
     }
 
-    instrumentBox.setSelectedId (getSelectedInstrumentId(), juce::dontSendNotification);
+    showSelectedInstrument();
 }
 
 void TrackHeader::instrumentChosen()
 {
     auto id = instrumentBox.getSelectedId();
     auto instrument = getInstrument();
+    shownInstrumentId = id;
 
     if (instrument.getSoundSourceID().isEmpty())
     {
         if (id == showPluginId || id == findPluginsId || id == pluginInstrumentId)
         {
-            instrumentBox.setSelectedId (getSelectedInstrumentId(), juce::dontSendNotification);
+            showSelectedInstrument();
 
             if (id == findPluginsId)
                 plugin_windows::showPluginList (edit.engine);
@@ -886,7 +895,7 @@ void TrackHeader::instrumentChosen()
 
     if (id == renameToneId)
     {
-        instrumentBox.setSelectedId (getSelectedInstrumentId(), juce::dontSendNotification);
+        showSelectedInstrument();
 
         // Only learned tones can be renamed; built-in tone lists have the real names.
         if (getSelectedInstrumentId() >= firstLearnedToneId)

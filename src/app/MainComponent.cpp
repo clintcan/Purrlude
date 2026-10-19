@@ -26,7 +26,9 @@ namespace
 MainComponent::MainComponent (tracktion::Engine& e, BluetoothMidiManager& bluetooth, MidiDeviceSettings& d,
                               juce::PropertiesFile& s)
     : engine (e), deviceSettings (d), settings (s), devicesPanel (bluetooth, e, d),
-      bluetoothPorts (e, bluetooth, s)
+      bluetoothOutput (bluetooth),
+      bluetoothPorts (e, bluetooth, s),
+      bluetoothInput (e, bluetooth, toneListener)
 {
     recentProjects.setMaxNumberOfItems (10);
 
@@ -47,8 +49,9 @@ MainComponent::MainComponent (tracktion::Engine& e, BluetoothMidiManager& blueto
     deviceSettings.addChangeListener (this);
     engine.getDeviceManager().addChangeListener (this);
 
-    // A Bluetooth device the user disconnected stays disconnected only with its ports closed.
-    toneListener.shouldSkip = [this] (const juce::String& name) { return bluetoothPorts.shouldBeClosed (name); };
+    // A Bluetooth device the user disconnected stays disconnected only with its ports closed;
+    // on Windows Purrlude reads Bluetooth input itself (BluetoothMidiInput), with the port closed.
+    toneListener.shouldSkip = [this] (const juce::String& name) { return bluetoothPorts.isInputClosed (name); };
     bluetoothPorts.onChanged = [this] { toneListener.refreshDevices(); };
     toneListener.refreshDevices();
 

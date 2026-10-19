@@ -254,6 +254,13 @@ private:
     std::vector<std::unique_ptr<TrackHeader>> headers;
     juce::TextButton addTrackButton { "+ Track" };
     std::optional<double> recordStartBeat;
+
+    // Notes played while recording, shown in the take before it becomes a clip (from the inputs'
+    // live note queues, which only this view reads). An unfinished note has no end yet.
+    struct LiveNote { int channel, pitch; double startBeat; std::optional<double> endBeat; };
+    std::map<tracktion::EditItemID, std::vector<LiveNote>> liveNotes;
+    double lastTimerBeat = 0.0;
+    void readLiveNotes();
     int lastContentHeight = 0;
 
     static constexpr int rulerHeight = 36, laneHeight = 166, headerWidth = 170, addButtonArea = 44;

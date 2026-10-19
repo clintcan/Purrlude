@@ -5,6 +5,7 @@
 #include <juce_events/juce_events.h>
 
 #include <map>
+#include <mutex>
 #include <set>
 
 namespace purrlude
@@ -61,10 +62,35 @@ public:
     /** Disconnects, removes the OS pairing where possible, and stops remembering it. */
     void forget (const juce::String& deviceId);
 
-    /** Names of the devices the user disconnected this session. Their MIDI ports should be
-        closed: on Windows an open port keeps a Bluetooth MIDI device connected.
+    /** Names of the devices whose MIDI ports should be closed:
+        - devices the user disconnected this session (on Windows an open port keeps a
+          Bluetooth MIDI device connected);
+        - where the backend reads input itself (readsMidiDirectly: Windows), remembered
+          devices until Purrlude has connected them. A port opened before that brings the
+          link up through Windows' MIDI driver alone. So the ports open after every
+          (re)connect. (Their inputs stay closed regardless: see BluetoothMidiPorts.)
     */
-    juce::StringArray getDisconnectedNames() const;
+    juce::StringArray getClosedPortNames() const;
+
+    /** Names of the devices Purrlude reconnects automatically. */
+    juce::StringArray getRememberedNames() const;
+
+    /** Whether connected devices' MIDI input comes through setMidiReceiver rather than the
+        OS's MIDI ports (BleMidiService::readsMidiDirectly: on Windows).
+    */
+    bool readsMidiDirectly() const;
+
+    /** Receives connected devices' MIDI input when readsMidiDirectly(), on a Bluetooth
+        thread: (device id, message). Once this returns, the previous receiver isn't called
+        again. Pass nullptr to stop.
+    */
+    using MidiReceiver = std::function<void (const juce::String& deviceId, const juce::MidiMessage&)>;
+    void setMidiReceiver (MidiReceiver);
+
+    /** Sends a message to a connected device over Purrlude's own connection, when
+        readsMidiDirectly() (BleMidiService::sendMidi). Any thread.
+    */
+    void sendMidi (const juce::String& deviceId, const juce::MidiMessage&);
 
     /** Whether a MIDI port is one of the named Bluetooth device's ("GO:KEYS 5 MIDI" has
         "GO:KEYS 5 MIDI" on macOS and "GO:KEYS 5 MIDI (Bluetooth MIDI IN)" on Windows).
@@ -130,6 +156,14 @@ private:
     juce::String lastError;
 
     juce::ListenerList<Listener> listeners;
+
+    struct SharedReceiver
+    {
+        std::mutex lock;
+        MidiReceiver function;
+    };
+
+    std::shared_ptr<SharedReceiver> midiReceiver = std::make_shared<SharedReceiver>();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (BluetoothMidiManager)
 };

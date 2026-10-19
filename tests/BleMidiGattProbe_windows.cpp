@@ -2,7 +2,9 @@
 // directly over GATT. Used to tell keyboard problems apart from Windows MIDI
 // driver problems. Run with:
 //   PurrludeTests "[gattprobe]" -s
-// Set PURRLUDE_BLE_ADDRESS to the 12-hex-digit device id (from the scan test).
+// Set PURRLUDE_BLE_ADDRESS to the 12-hex-digit device id (from the scan test), and
+// PURRLUDE_BLE_LISTEN_S=60 to wait for the first note, then count packets each second for a minute
+// (Purrlude reads Bluetooth MIDI this way on Windows: see BleMidiService_windows.cpp).
 
 #include <catch2/catch_test_macros.hpp>
 #include <juce_core/juce_core.h>
@@ -190,8 +192,24 @@ TEST_CASE ("GATT-level BLE MIDI probe", "[.][hardware][gattprobe]")
                             gatt::GattClientCharacteristicConfigurationDescriptorValue::Notify).get();
             add ("subscribe (CCCD notify) status=" + juce::String ((int) cccd));
 
-            add ("listening 10 s - play keys");
-            std::this_thread::sleep_for (std::chrono::seconds (10));
+            // PURRLUDE_BLE_LISTEN_S=60 waits for the first packet, then counts packets each second.
+            auto listenSeconds = juce::SystemStats::getEnvironmentVariable ("PURRLUDE_BLE_LISTEN_S", "10").getIntValue();
+            add ("listening " + juce::String (listenSeconds) + " s - play keys");
+
+            if (listenSeconds > 10)
+                for (int i = 0; i < 900 && packets.load() == 0; ++i)
+                    std::this_thread::sleep_for (std::chrono::milliseconds (100));
+
+            for (int second = 1, last = packets.load(); second <= listenSeconds; ++second)
+            {
+                std::this_thread::sleep_for (std::chrono::seconds (1));
+                auto now = packets.load();
+
+                if (listenSeconds > 10)
+                    add (juce::String (second) + "s: +" + juce::String (now - last) + " packets");
+
+                last = now;
+            }
             add ("received " + juce::String (packets.load()) + " packets; note channel="
                  + (channel.load() < 0 ? juce::String ("none") : juce::String (channel.load() + 1)));
 

@@ -14,6 +14,7 @@ namespace
         explicit FakeBleMidiService (std::vector<BleMidiDevice> initial = {}) : devices (std::move (initial)) {}
 
         bool isAvailable() const override                        { return available; }
+        bool readsMidiDirectly() const override                  { return direct; }
         void startScan() override                                { scanning = true;  calls.add ("scan"); }
         void stopScan() override                                 { scanning = false; calls.add ("stop"); }
         bool isScanning() const override                         { return scanning; }
@@ -65,7 +66,7 @@ namespace
         int countCalls (const juce::String& call) const          { return (int) std::count (calls.begin(), calls.end(), call); }
 
         std::vector<BleMidiDevice> devices;
-        bool available = true, scanning = false;
+        bool available = true, scanning = false, direct = false;
         juce::StringArray calls;
     };
 
@@ -83,9 +84,12 @@ namespace
         juce::Time t { juce::Time (2026, 9, 13, 12, 0) };
         juce::PropertySet settings;
 
+        bool direct = false;   ///< Whether the backend reads MIDI itself (as on Windows)
+
         std::unique_ptr<BluetoothMidiManager> makeManager (FakeBleMidiService*& fake, std::vector<BleMidiDevice> devices)
         {
             auto service = std::make_unique<FakeBleMidiService> (std::move (devices));
+            service->direct = direct;
             fake = service.get();
             return std::make_unique<BluetoothMidiManager> (std::move (service), settings, [this] { return t; });
         }
@@ -183,19 +187,80 @@ TEST_CASE ("A device the user disconnected has its ports closed until it's conne
     Fixture f;
     FakeBleMidiService* fake = nullptr;
     auto manager = f.makeConnected (fake);
-    REQUIRE (manager->getDisconnectedNames().isEmpty());
+    REQUIRE (manager->getClosedPortNames().isEmpty());
 
     manager->disconnect ("KEYS");
-    REQUIRE (manager->getDisconnectedNames() == juce::StringArray { "GO:KEYS 5 MIDI" });
+    REQUIRE (manager->getClosedPortNames() == juce::StringArray { "GO:KEYS 5 MIDI" });
 
     // Even while the connect waits for the disconnect to settle.
     manager->connect ("KEYS");
-    REQUIRE (manager->getDisconnectedNames().isEmpty());
+    REQUIRE (manager->getClosedPortNames().isEmpty());
 
     // Only for this session.
     manager->disconnect ("KEYS");
     manager.reset();
-    REQUIRE (f.makeManager (fake, { keyboard() })->getDisconnectedNames().isEmpty());
+    REQUIRE (f.makeManager (fake, { keyboard() })->getClosedPortNames().isEmpty());
+}
+
+TEST_CASE ("Where MIDI is read directly, a remembered device's ports open only once it's connected", "[devices][ble]")
+{
+    Fixture f;
+    f.direct = true;
+    FakeBleMidiService* fake = nullptr;
+    auto manager = f.makeConnected (fake);
+    REQUIRE (manager->readsMidiDirectly());
+    REQUIRE (manager->getClosedPortNames().isEmpty());
+    REQUIRE (manager->getRememberedNames() == juce::StringArray { "GO:KEYS 5 MIDI" });
+
+    // A dropped link closes them until the reconnect is up.
+    fake->setConnected ("KEYS", false);
+    REQUIRE (manager->getClosedPortNames() == juce::StringArray { "GO:KEYS 5 MIDI" });
+    fake->setConnected ("KEYS", true);
+    REQUIRE (manager->getClosedPortNames().isEmpty());
+
+    // After a disconnect, a connect waits for the link too.
+    manager->disconnect ("KEYS");
+    manager->connect ("KEYS");
+    REQUIRE (manager->getClosedPortNames() == juce::StringArray { "GO:KEYS 5 MIDI" });
+    f.advance (BluetoothMidiManager::reconnectSettleMs + 1000);
+    manager->update();
+    fake->setConnected ("KEYS", true);
+    REQUIRE (manager->getClosedPortNames().isEmpty());
+
+    // At the next launch, until it's reconnected.
+    manager.reset();
+    auto next = f.makeManager (fake, { keyboard() });
+    REQUIRE (next->getClosedPortNames() == juce::StringArray { "GO:KEYS 5 MIDI" });
+    fake->setConnected ("KEYS", true);
+    REQUIRE (next->getClosedPortNames().isEmpty());
+
+    // A device Purrlude doesn't remember is left alone.
+    Fixture g;
+    g.direct = true;
+    FakeBleMidiService* other = nullptr;
+    REQUIRE (g.makeManager (other, { keyboard() })->getClosedPortNames().isEmpty());
+}
+
+TEST_CASE ("MIDI read directly reaches the receiver until it's removed", "[devices][ble]")
+{
+    Fixture f;
+    f.direct = true;
+    FakeBleMidiService* fake = nullptr;
+    auto manager = f.makeConnected (fake);
+
+    juce::StringArray received;
+    manager->setMidiReceiver ([&] (const juce::String& id, const juce::MidiMessage& m)
+    {
+        received.add (id + " " + juce::String (m.getNoteNumber()));
+    });
+
+    REQUIRE (fake->onMidiMessage != nullptr);
+    fake->onMidiMessage ("KEYS", "GO:KEYS 5 MIDI", juce::MidiMessage::noteOn (1, 60, 0.5f));
+    REQUIRE (received == juce::StringArray { "KEYS 60" });
+
+    manager->setMidiReceiver (nullptr);
+    fake->onMidiMessage ("KEYS", "GO:KEYS 5 MIDI", juce::MidiMessage::noteOn (1, 62, 0.5f));
+    REQUIRE (received.size() == 1);
 }
 
 TEST_CASE ("A Bluetooth device's MIDI ports are found by name", "[devices][ble]")

@@ -18,6 +18,15 @@ BluetoothMidiManager::BluetoothMidiManager (std::unique_ptr<BleMidiService> s, j
     service->onDevicesChanged = [this] { handleBackendChanged(); };
     service->onError = [this] (const juce::String& id, const juce::String& message) { handleError (id, message); };
 
+    // Bluetooth thread. The receiver is shared, so a message in flight can't outlive it.
+    service->onMidiMessage = [receiver = midiReceiver] (const juce::String& id, const juce::String&, const juce::MidiMessage& m)
+    {
+        const std::scoped_lock lock (receiver->lock);
+
+        if (receiver->function != nullptr)
+            receiver->function (id, m);
+    };
+
     loadRemembered();
 
     if (! remembered.empty())
@@ -29,9 +38,26 @@ BluetoothMidiManager::BluetoothMidiManager (std::unique_ptr<BleMidiService> s, j
 
 BluetoothMidiManager::~BluetoothMidiManager()
 {
+    setMidiReceiver (nullptr);
     stopTimer();
     service->onDevicesChanged = nullptr;
     service->onError = nullptr;
+}
+
+void BluetoothMidiManager::setMidiReceiver (MidiReceiver function)
+{
+    const std::scoped_lock lock (midiReceiver->lock);
+    midiReceiver->function = std::move (function);
+}
+
+void BluetoothMidiManager::sendMidi (const juce::String& deviceId, const juce::MidiMessage& m)
+{
+    service->sendMidi (deviceId, m);
+}
+
+bool BluetoothMidiManager::readsMidiDirectly() const
+{
+    return service->readsMidiDirectly();
 }
 
 juce::Time BluetoothMidiManager::now() const
@@ -96,14 +122,35 @@ std::vector<BluetoothMidiManager::Device> BluetoothMidiManager::getDevices() con
     return result;
 }
 
-juce::StringArray BluetoothMidiManager::getDisconnectedNames() const
+juce::StringArray BluetoothMidiManager::getRememberedNames() const
 {
     juce::StringArray names;
 
     for (const auto& d : getDevices())
-        if (d.remembered && remembered.at (d.info.id).userDisconnected
-            && d.info.name.isNotEmpty() && d.info.name != placeholderName)
+        if (d.remembered && d.info.name.isNotEmpty() && d.info.name != placeholderName)
             names.addIfNotAlreadyThere (d.info.name);
+
+    return names;
+}
+
+juce::StringArray BluetoothMidiManager::getClosedPortNames() const
+{
+    juce::StringArray names;
+
+    for (const auto& d : getDevices())
+    {
+        if (! d.remembered || d.info.name.isEmpty() || d.info.name == placeholderName)
+            continue;
+
+        bool closed = remembered.at (d.info.id).userDisconnected;
+
+        // Where the backend reads input itself (Windows), the output too waits for the connection.
+        if (service->readsMidiDirectly())
+            closed = closed || ! d.info.connected;
+
+        if (closed)
+            names.addIfNotAlreadyThere (d.info.name);
+    }
 
     return names;
 }

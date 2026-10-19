@@ -59,6 +59,8 @@ if(NOT crill_source MATCHES "Purrlude:")
 
     file(WRITE ${crill_wait} "${crill_patched}")
 endif()
+
+include(cmake/TracktionMidiOutputRouter.cmake)
 add_subdirectory(${tracktion_engine_SOURCE_DIR}/modules ${CMAKE_BINARY_DIR}/tracktion_engine)
 
 include(cmake/Verovio.cmake)
@@ -83,6 +85,8 @@ juce_add_binary_data(purrlude_content
 add_library(purrlude_core INTERFACE)
 
 target_sources(purrlude_core INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/devices/BleMidiPacket.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/devices/BleMidiPacket.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/devices/BleMidiService.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/devices/BleMidiService.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/devices/BluetoothMidiManager.h
@@ -155,6 +159,10 @@ target_sources(purrlude_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/SourceSeparator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/AudioToMidi.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/AudioToMidi.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/BluetoothMidiInput.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/BluetoothMidiInput.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/BluetoothMidiOutput.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/BluetoothMidiOutput.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/BluetoothMidiPorts.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/BluetoothMidiPorts.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/InstrumentSeparation.h

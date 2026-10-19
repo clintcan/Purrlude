@@ -40,6 +40,26 @@ void ToneListener::Connection::handleIncomingMidiMessage (juce::MidiInput*, cons
 }
 
 //==============================================================================
+void ToneListener::handleMessage (const juce::String& deviceName, const juce::MidiMessage& m)
+{
+    std::optional<DeviceTone> tone;
+
+    {
+        const juce::ScopedLock sl (directLock);
+        tone = directParsers[deviceName].handle (m);
+    }
+
+    if (tone)
+    {
+        juce::MessageManager::callAsync ([o = selfRef, deviceName, t = *tone]
+        {
+            if (auto* listener = o.get())
+                listener->handleTone (deviceName, t);
+        });
+    }
+}
+
+//==============================================================================
 ToneListener::ToneListener (MidiDeviceSettings& s)
     : settings (s)
 {

@@ -5,6 +5,7 @@
 #include <juce_audio_devices/juce_audio_devices.h>
 
 #include <array>
+#include <map>
 #include <optional>
 
 namespace purrlude
@@ -41,9 +42,15 @@ public:
     void refreshDevices();
 
     /** Inputs this says no to aren't opened, and are closed if open (e.g. Bluetooth
-        devices the user disconnected). Call refreshDevices() when its answers change.
+        devices that aren't connected). Call refreshDevices() when its answers change.
     */
     std::function<bool (const juce::String& deviceName)> shouldSkip;
+
+    /** Learns from a device whose input doesn't come through a MIDI port (a Bluetooth device
+        Purrlude reads itself, on Windows). deviceName is its input port's name, as for the
+        others. Any thread.
+    */
+    void handleMessage (const juce::String& deviceName, const juce::MidiMessage&);
 
     /** Message thread: (device name, tone as learned, with its name). */
     std::function<void (const juce::String& deviceName, const DeviceTone&)> onToneSelected;
@@ -66,7 +73,13 @@ private:
     MidiDeviceSettings& settings;
     std::vector<std::unique_ptr<Connection>> connections;
 
+    juce::CriticalSection directLock;
+    std::map<juce::String, ToneParser> directParsers;   ///< For handleMessage, by device
+
     JUCE_DECLARE_WEAK_REFERENCEABLE (ToneListener)
+
+    // Made on the message thread, so handleMessage can post with it from any thread.
+    juce::WeakReference<ToneListener> selfRef { this };
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ToneListener)
 };
 

@@ -1061,6 +1061,32 @@ void ArrangementView::paint (juce::Graphics& g)
                                                 (float) laneHeight - 9.0f);
             g.setColour (recordColour.withAlpha (0.5f));
             g.fillRoundedRectangle (area, 4.0f);
+
+            // What's been played so far, scaled to its pitch range like a clip's notes.
+            if (auto found = liveNotes.find (track->itemID); found != liveNotes.end() && ! found->second.empty())
+            {
+                int lowest = 127, highest = 0;
+
+                for (const auto& n : found->second)
+                {
+                    lowest = juce::jmin (lowest, n.pitch);
+                    highest = juce::jmax (highest, n.pitch);
+                }
+
+                auto noteArea = area.reduced (2.0f, 6.0f);
+                auto noteHeight = juce::jlimit (2.0f, 6.0f, noteArea.getHeight() / (float) (highest - lowest + 1));
+                g.setColour (juce::Colours::white.withAlpha (0.9f));
+
+                for (const auto& n : found->second)
+                {
+                    auto x1 = beatToX (n.startBeat);
+                    auto x2 = beatToX (n.endBeat.value_or (playheadBeat));
+                    auto proportion = highest == lowest ? 0.5f : (float) (n.pitch - lowest) / (float) (highest - lowest);
+                    auto y = noteArea.getBottom() - noteHeight - proportion * (noteArea.getHeight() - noteHeight);
+
+                    g.fillRect (juce::Rectangle<float> (x1, y, juce::jmax (2.0f, x2 - x1), noteHeight).getIntersection (area));
+                }
+            }
         }
 
         // A parameter's automation, drawn over the clips (which are dimmed beneath it).
@@ -2295,6 +2321,53 @@ void ArrangementView::drawWaveform (juce::Graphics& g, tracktion::WaveAudioClip&
     thumbnail->thumbnail->drawChannels (g, area.toNearestInt(), source, 1.0f);
 }
 
+void ArrangementView::readLiveNotes()
+{
+    auto& transport = edit.getTransport();
+    auto beat = getPlayheadBeat();
+
+    // A loop recording starts each pass afresh, as its take will.
+    if (! transport.isRecording() || beat < lastTimerBeat)
+        liveNotes.clear();
+
+    lastTimerBeat = beat;
+
+    auto* context = edit.getCurrentPlaybackContext();
+
+    if (! transport.isRecording() || context == nullptr)
+        return;
+
+    for (auto* input : context->getAllInputs())
+    {
+        for (auto* track : getSongTracks (edit))
+        {
+            auto queue = input->getRecordingNotes (track->itemID);
+
+            if (queue == nullptr)
+                continue;
+
+            auto& notes = liveNotes[track->itemID];
+            juce::MidiMessage m;
+
+            while (queue->pop (m))
+            {
+                auto at = edit.tempoSequence.toBeats (tracktion::TimePosition::fromSeconds (m.getTimeStamp())).inBeats();
+
+                if (m.isNoteOn())
+                {
+                    notes.push_back ({ m.getChannel(), m.getNoteNumber(), at, std::nullopt });
+                }
+                else if (m.isNoteOff())
+                {
+                    for (auto& n : notes)
+                        if (! n.endBeat && n.channel == m.getChannel() && n.pitch == m.getNoteNumber())
+                            n.endBeat = juce::jmax (at, n.startBeat);
+                }
+            }
+        }
+    }
+}
+
 void ArrangementView::timerCallback()
 {
     auto& transport = edit.getTransport();
@@ -2308,6 +2381,8 @@ void ArrangementView::timerCallback()
     {
         recordStartBeat.reset();
     }
+
+    readLiveNotes();
 
     // Tracks added, removed or reordered (including by undo).
     syncHeaders();
