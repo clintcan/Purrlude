@@ -279,7 +279,7 @@ The app talks to `purrlude::BluetoothMidiManager` (`src/devices/BluetoothMidiMan
 - **UI:** `ExportAudioDialog` (`src/ui/`) remembers the last choices in the settings file. `MainComponent` shows a progress window with Cancel and reveals the file when done.
 
 **MIDI import** (`src/model/MidiImport.h`, File > Import MIDI File, Cmd-I, or drop files on the window):
-- **Parts:** each track/channel pair with notes becomes an instrument track with one clip. The first Program Change picks the GM instrument, channel 10 is the drum kit, and tracks take the file's track names or the instrument.
+- **Parts:** each track/channel pair with notes becomes an instrument track with one clip. The first Program Change picks the GM instrument, channel 10 is the drum kit, and so is a channel whose Program Change before its first note follows Bank Select MSB 127 (Yamaha XG) or 120 (GM2) (`isDrumBank`; the bank takes effect at a Program Change, as in a sound module; XG's SFX kits, MSB 126, aren't drums; GS sets drum channels by SysEx, which isn't read). Other banks (XG/GS variations) are ignored, so those sounds play as their GM sound. Tracks take the file's track names or the instrument.
 - **Content:** notes, CCs (not bank select), pitch bend, channel pressure and aftertouch come in. Ticks convert straight to beats, so placement doesn't depend on tempo.
 - **Placement:** parts start at the playhead's bar.
 - **Empty song:** it reuses the empty track and takes the file's tempo and time signature with their changes (inserted before the clips; tempo changes hold until the next, and signature changes that would change the beat unit are dropped), and its first key signature. SMPTE-timed files are refused.

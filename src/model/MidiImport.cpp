@@ -15,6 +15,12 @@ namespace
 {
     constexpr int drumChannel = 10;
 
+    /** Bank Select MSBs that make a channel a drum kit: Yamaha XG's (127) and GM2's (120). */
+    bool isDrumBank (int bankMsb)
+    {
+        return bankMsb == 127 || bankMsb == 120;
+    }
+
     /** One track and channel of the file. */
     struct Part
     {
@@ -23,6 +29,8 @@ namespace
         int program = -1;                       ///< First Program Change, or -1
         std::vector<const juce::MidiMessageSequence::MidiEventHolder*> events;
         bool hasNotes = false;
+        int bankMsb = 0;                        ///< The latest Bank Select MSB
+        bool drumBank = false;                  ///< A drum kit bank was selected before the first note
     };
 
     bool isEmptySong (tracktion::Edit& edit)
@@ -119,6 +127,13 @@ Result importMidi (tracktion::Edit& edit, LiveInstrument& live, const juce::Midi
             if (m.isProgramChange() && part.program < 0)
                 part.program = m.getProgramChangeNumber();
 
+            if (m.isController() && m.getControllerNumber() == 0)
+                part.bankMsb = m.getControllerValue();
+
+            // A Bank Select takes effect at the next Program Change, as in a sound module.
+            if (m.isProgramChange() && ! part.hasNotes)
+                part.drumBank = isDrumBank (part.bankMsb);
+
             if (m.isNoteOn())
                 part.hasNotes = true;
 
@@ -204,7 +219,7 @@ Result importMidi (tracktion::Edit& edit, LiveInstrument& live, const juce::Midi
 
     for (const auto& part : parts)
     {
-        auto isDrums = part.channel == drumChannel;
+        auto isDrums = part.channel == drumChannel || part.drumBank;
         auto program = isDrums ? gm::drumKit : juce::jmax (0, part.program);
         auto instrumentName = isDrums ? juce::String ("Drums") : juce::String (gm::getName (program));
 

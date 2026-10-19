@@ -15,7 +15,7 @@ You can also **drag files onto the window**, MIDI and audio together. Each impor
 
 **Tracks:**
 - Each part of the file becomes an instrument track with one clip, named after the file's track name or its instrument.
-- Each part gets the General MIDI sound the file asks for. Channel 10 becomes the drum kit.
+- Each part gets the General MIDI sound the file asks for. Channel 10 becomes the drum kit, and so does any other channel the file sets to a drum kit (as Yamaha XG and General MIDI 2 files can). XG's and GS's extra sound variations play as the nearest General MIDI sound.
 
 **What comes in:** notes, controllers, pitch bend and aftertouch.
 

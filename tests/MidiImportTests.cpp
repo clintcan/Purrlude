@@ -164,6 +164,66 @@ TEST_CASE ("Importing into a song adds tracks at the start bar", "[midi-import]"
     REQUIRE_THAT (purrlude::notation::getTrackNotes (*melody)[0].start, WithinAbs (8.0, 0.001));
 }
 
+TEST_CASE ("Drum kits chosen by Bank Select come in as drums on any channel", "[midi-import]")
+{
+    Fixture f;
+
+    juce::MidiFile file;
+    file.setTicksPerQuarterNote (ppq);
+
+    // Each channel: its Bank Select MSB (or none), whether a Program Change follows it, and
+    // whether the program comes after the first note.
+    struct Channel { int channel, bankMsb, program; bool late; };
+    const Channel channels[] = {
+        { 3, 127, 0, false },     // XG's Standard Kit
+        { 4, 120, 0, false },     // GM2's drum kit
+        { 5, 0, 24, false },      // a guitar
+        { 6, 127, -1, false },    // a Bank Select without a Program Change selects nothing
+        { 7, 127, 0, true },      // chosen after the first note
+    };
+
+    for (auto c : channels)
+    {
+        juce::MidiMessageSequence track;
+        track.addEvent (at (juce::MidiMessage::controllerEvent (c.channel, 0, c.bankMsb), 0));
+        track.addEvent (at (juce::MidiMessage::controllerEvent (c.channel, 32, 0), 0));
+
+        if (c.program >= 0)
+            track.addEvent (at (juce::MidiMessage::programChange (c.channel, c.program), c.late ? 2 : 0));
+
+        track.addEvent (at (juce::MidiMessage::noteOn (c.channel, 36, (juce::uint8) 100), 1));
+        track.addEvent (at (juce::MidiMessage::noteOff (c.channel, 36), 1.5));
+        track.updateMatchedPairs();
+        file.addTrack (track);
+    }
+
+    auto result = purrlude::midi_import::importMidi (*f.edit, f.live, roundTrip (file), 0);
+    REQUIRE (result.error.isEmpty());
+    REQUIRE (result.tracks.size() == 5);
+
+    auto playsDrums = [&] (int index)
+    {
+        auto* track = tracktion::findAudioTrackForID (*f.edit, result.tracks[index]);
+        return purrlude::TrackInstrument (*f.edit, *track).playsDrumKit();
+    };
+
+    REQUIRE (playsDrums (0));
+    REQUIRE (playsDrums (1));
+    REQUIRE_FALSE (playsDrums (2));
+    REQUIRE_FALSE (playsDrums (3));
+    REQUIRE_FALSE (playsDrums (4));
+
+    auto* guitar = tracktion::findAudioTrackForID (*f.edit, result.tracks[2]);
+    REQUIRE (purrlude::TrackInstrument (*f.edit, *guitar).getProgram() == 24);
+    REQUIRE (tracktion::findAudioTrackForID (*f.edit, result.tracks[0])->getName() == "Drums");
+
+    // The score writes a drum kit as a percussion part.
+    auto score = purrlude::notation::buildEditScore (*f.edit, {});
+    REQUIRE (score.parts.size() == 5);
+    REQUIRE (score.parts[0].percussion);
+    REQUIRE_FALSE (score.parts[2].percussion);
+}
+
 TEST_CASE ("Files without notes or with SMPTE timing are refused", "[midi-import]")
 {
     Fixture f;
