@@ -43,6 +43,22 @@ cmake --build --preset vs2022-debug
 ctest --preset vs2022-debug
 ```
 
+**A release build** (optimised, for everyday use) builds just the app, without the tests:
+
+```sh
+# macOS, Linux, or any platform with Ninja
+cmake --preset ninja
+cmake --build --preset ninja-release --target Purrlude
+
+# Windows (Visual Studio 2022)
+cmake --preset vs2022
+cmake --build --preset vs2022-release --target Purrlude
+```
+
+The app is in `build/Purrlude_artefacts/Release`: `Purrlude.app` on macOS, `Purrlude.exe` on Windows and `Purrlude` on Linux. On Windows and Linux it needs the files built next to it (libraries, `verovio/`, `soundfonts/`, `licenses/`), so copy or move the whole folder. To package it:
+- **Windows installer:** `python tools/packaging/make_windows_installer.py build/Purrlude_artefacts/Release out/`. It needs Pillow and Inno Setup 6.
+- **Linux AppImage:** `tools/packaging/make_appimage.sh build/Purrlude_artefacts/Release out`. The `appimage` workflow runs this on Ubuntu 22.04, so the AppImage works on older distributions.
+
 On Linux, install JUCE's system packages first:
 
 ```sh

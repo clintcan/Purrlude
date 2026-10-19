@@ -560,6 +560,9 @@ cmake --preset xcode && cmake --build --preset xcode-debug && ctest --preset xco
 
 # Linux / any platform with Ninja
 cmake --preset ninja && cmake --build --preset ninja-debug && ctest --preset ninja-debug
+
+# Release (the app only): ninja-release or vs2022-release, into build/Purrlude_artefacts/Release
+cmake --build --preset ninja-release --target Purrlude
 ```
 
 **Linux AppImage:** `gh workflow run appimage` builds a Release on Ubuntu 22.04 (the oldest glibc it runs on) and runs `tools/packaging/make_appimage.sh`, which packs the build folder (the app and what it finds next to itself) with linuxdeploy and appimagetool (pinned releases, SHA-256 checked; the static type-2 runtime, so users don't need FUSE 2), and fails if a library would be missing. The AppImage is kept as the run's artifact for 14 days; attaching it to a release is a separate step. The separation model isn't included (downloaded on first use). The icon is `branding/purrlude-icon-256.png` (made by `tools/branding/make_icon.py`).
