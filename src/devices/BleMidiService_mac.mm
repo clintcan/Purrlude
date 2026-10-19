@@ -71,6 +71,11 @@ namespace
 
     juce::String describeError (NSError* e)
     {
+        // The device dropped its pairing with this Mac, usually after pairing with another computer.
+        // macOS keeps its own half and refuses to connect until the device is removed there.
+        if (e != nil && [e.domain isEqualToString: CBErrorDomain] && e.code == CBErrorPeerRemovedPairingInformation)
+            return "the device forgot this Mac. Remove it in System Settings > Bluetooth first.";
+
         return e != nil ? toJuceString ([e localizedDescription]) : juce::String ("unknown error");
     }
 

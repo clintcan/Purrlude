@@ -73,6 +73,8 @@ Once connected, the keyboard plays like a wired one.
 
 On Windows, devices that need a PIN must first be paired in Windows Settings.
 
+**Using a keyboard with more than one computer:** some keyboards (a Roland GO:KEYS, for one) remember only the last computer they paired with. If a connect fails with *the device forgot this Mac*, remove the keyboard in System Settings > Bluetooth (the ⓘ button, then **Forget This Device**) and click **Connect** again. On Windows, remove it under Settings > Bluetooth & devices.
+
 ## Playing a keyboard's own sounds
 
 A keyboard with built-in sounds, such as a home keyboard or digital piano, can play a track instead of Purrlude's instruments:
