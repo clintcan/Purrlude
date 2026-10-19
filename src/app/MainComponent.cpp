@@ -639,8 +639,8 @@ void MainComponent::downloadModelThenSeparate (tracktion::EditItemID audioClip, 
     auto options = juce::MessageBoxOptions()
                        .withIconType (juce::MessageBoxIconType::QuestionIcon)
                        .withTitle ("Download the separation model?")
-                       .withMessage ("Separating instruments needs a model that isn't installed yet: Demucs, by Meta "
-                                     "(MIT licence), " + megabytes + " MB.\n\n"
+                       .withMessage ("Separating instruments needs a model that isn't installed yet: Demucs, by Meta, "
+                                     "fine-tuned for Purrlude (MIT licence), " + megabytes + " MB.\n\n"
                                      "Purrlude can download it from its GitHub page (github.com/clintcan/Purrlude) "
                                      "into " + getModelsFolder().getFullPathName() + ". Nothing else is sent or "
                                      "received, and your audio stays on this computer.")
@@ -669,9 +669,14 @@ void MainComponent::downloadModelThenSeparate (tracktion::EditItemID audioClip, 
                 safe->stopMidiConversion();
 
                 if (error.isNotEmpty())
+                {
                     safe->showError ("Couldn't download the separation model", error);
+                }
                 else
+                {
+                    separation::removeOldModels (safe->getModelsFolder());   // the one it replaces
                     safe->separateInstruments (audioClip, output);
+                }
             });
         });
 

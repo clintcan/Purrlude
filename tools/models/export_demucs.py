@@ -14,7 +14,10 @@ graph):
     venv/bin/python tools/models/export_demucs.py .cpm-cache/demucs/htdemucs_6s.onnx
 
 With --weights checkpoints/weights.th it exports fine-tuned weights instead (from
-tools/training/train.py, a state dict of the same model).
+tools/training/train.py, a state dict of the same model). Purrlude's model is the models-2
+release's htdemucs_6s-purrlude-1-weights.th exported this way (htdemucs_6s-purrlude-1.onnx,
+SHA-256 96dda58d164ee5233df6d69a39fd2dadf1f0a64cad6033b7229586646476231b with PyTorch 2.5.1
+on macOS arm64).
 
 It downloads demucs.onnx at a pinned commit and Demucs's pretrained weights (checked by
 SHA-256), then writes the model (115 MB). The export is reproducible: with PyTorch 2.5.1 on

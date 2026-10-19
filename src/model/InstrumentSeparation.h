@@ -14,7 +14,15 @@ namespace purrlude
 namespace separation
 {
     /** The model's file name. It's 115 MB, so it isn't compiled in. */
-    constexpr const char* modelFileName = "htdemucs_6s.onnx";
+    constexpr const char* modelFileName = "htdemucs_6s-purrlude-1.onnx";
+
+    /** Earlier models' file names, deleted from the user's models folder once the current one
+        is downloaded: Meta's htdemucs_6s as it was (models-1).
+    */
+    constexpr const char* oldModelFileNames[] = { "htdemucs_6s.onnx" };
+
+    /** Deletes earlier models from the user's models folder (115 MB each). */
+    void removeOldModels (const juce::File& userModelsFolder);
 
     /** The model: in the user's models folder, else beside the app, else (in development
         builds) where CMake found it. Empty if it isn't anywhere.
@@ -22,9 +30,10 @@ namespace separation
     juce::File findModel (const juce::File& userModelsFolder);
 
     /** Where Purrlude downloads the model from (only when the user agrees): a release asset of
-        Purrlude's GitHub repository, with its size and SHA-256. The model is Meta's Demucs
-        (MIT), exported by tools/models/export_demucs.py; the export is reproducible, so the
-        checksum is the same as a local export's.
+        Purrlude's GitHub repository (models-2), with its size and SHA-256. The model is Meta's
+        Demucs htdemucs_6s (MIT) fine-tuned by tools/training on Slakh2100 (CC BY 4.0) and General
+        MIDI renders of it; tools/models/export_demucs.py --weights exports the release's weights
+        to this file.
     */
     FileDownload::Source getModelDownload();
 

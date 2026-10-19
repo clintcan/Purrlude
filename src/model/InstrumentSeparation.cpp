@@ -58,8 +58,14 @@ juce::File findModel (const juce::File& userModelsFolder)
 
 FileDownload::Source getModelDownload()
 {
-    return { juce::URL ("https://github.com/clintcan/Purrlude/releases/download/models-1/htdemucs_6s.onnx"),
-             114559139, "7924dfb5d8e940cfb16100b634dfafb370e8036a71f968ec9193f4b482ed5b71" };
+    return { juce::URL ("https://github.com/clintcan/Purrlude/releases/download/models-2/htdemucs_6s-purrlude-1.onnx"),
+             114559139, "96dda58d164ee5233df6d69a39fd2dadf1f0a64cad6033b7229586646476231b" };
+}
+
+void removeOldModels (const juce::File& userModelsFolder)
+{
+    for (auto* name : oldModelFileNames)
+        userModelsFolder.getChildFile (name).deleteFile();
 }
 
 bool isAvailable (const juce::File& userModelsFolder)

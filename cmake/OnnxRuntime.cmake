@@ -182,18 +182,19 @@ function(purrlude_bundle_model_licenses target)
     add_custom_command(TARGET ${target} POST_BUILD ${commands} COMMENT "Copying model licenses" VERBATIM)
 endfunction()
 
-# The instrument separation model (Demucs v4 "htdemucs_6s", MIT), exported to ONNX by
-# tools/models/export_demucs.py. At 115 MB it isn't compiled in: the app looks for it in the
-# user's models folder, then beside the app. Development builds that have it in the cache
-# also find it there (PURRLUDE_DEMUCS_MODEL) and copy it into the app.
-set(PURRLUDE_DEMUCS_MODEL ${purrlude_ml_cache}/demucs/htdemucs_6s.onnx CACHE FILEPATH
-    "The Demucs htdemucs_6s ONNX model (made by tools/models/export_demucs.py)")
+# The instrument separation model (Demucs v4 "htdemucs_6s", MIT, fine-tuned by tools/training),
+# exported to ONNX by tools/models/export_demucs.py --weights, and published as the models-2
+# release. At 115 MB it isn't compiled in: the app looks for it in the user's models folder, then
+# beside the app, and offers to download it. Development builds that have it in the cache also
+# find it there (PURRLUDE_DEMUCS_MODEL) and copy it into the app.
+set(PURRLUDE_DEMUCS_MODEL ${purrlude_ml_cache}/demucs/htdemucs_6s-purrlude-1.onnx CACHE FILEPATH
+    "The separation model (the models-2 release's htdemucs_6s-purrlude-1.onnx)")
 
 if(EXISTS ${PURRLUDE_DEMUCS_MODEL})
     target_compile_definitions(purrlude_onnxruntime INTERFACE PURRLUDE_DEMUCS_MODEL="${PURRLUDE_DEMUCS_MODEL}")
 else()
-    message(STATUS "No Demucs model at ${PURRLUDE_DEMUCS_MODEL}: separating instruments needs it "
-                   "(make it with tools/models/export_demucs.py)")
+    message(STATUS "No separation model at ${PURRLUDE_DEMUCS_MODEL}: the app offers to download it "
+                   "(the models-2 release)")
 endif()
 
 function(purrlude_bundle_demucs target)
@@ -209,7 +210,7 @@ function(purrlude_bundle_demucs target)
 
     add_custom_command(TARGET ${target} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory "${dest}"
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PURRLUDE_DEMUCS_MODEL}" "${dest}/htdemucs_6s.onnx"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PURRLUDE_DEMUCS_MODEL}" "${dest}/htdemucs_6s-purrlude-1.onnx"
         COMMENT "Copying the instrument separation model"
         VERBATIM)
 endfunction()

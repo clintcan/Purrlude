@@ -153,6 +153,13 @@ TEST_CASE ("Separating needs the model", "[separation][model]")
     auto placed = folder.getChildFile (separation::modelFileName);
     placed.replaceWithText ("not really a model");
     CHECK (separation::findModel (folder) == placed);   // the user's copy comes first
+
+    // An earlier model goes once the current one is there; the current one stays.
+    auto old = folder.getChildFile (separation::oldModelFileNames[0]);
+    old.replaceWithText ("the model before");
+    separation::removeOldModels (folder);
+    CHECK_FALSE (old.exists());
+    CHECK (placed.existsAsFile());
     nowhere.deleteRecursively();
 }
 

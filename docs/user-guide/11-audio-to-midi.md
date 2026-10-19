@@ -50,7 +50,7 @@ Right-click an audio clip and choose a command. A progress window shows while it
 - piano
 - everything else (strings, synths, horns, ...)
 
-It uses Meta's Demucs model.
+It uses Meta's Demucs model, fine-tuned for Purrlude to tell piano, guitar, bass and the rest apart better.
 
 - **To Audio Tracks** puts each part on its own audio track under the clip, playing in the same place. Use them to mute, solo or remix parts, or to practise along with one taken out.
 - **To MIDI** also converts each part to notes the way that suits it:
@@ -69,10 +69,10 @@ It uses Meta's Demucs model.
 
 **Limits:**
 - Drums usually separate cleanly.
-- Pitched instruments can end up in the wrong part, especially synthesised or General MIDI sounds. For example, a saxophone may land in "piano", or a bass in "guitar".
+- Pitched instruments can still end up in the wrong part now and then, for example strings in "piano" or a bass in "guitar".
 - Separation only knows these six parts.
 
-**The model** is a 115 MB file (`htdemucs_6s.onnx`) that isn't included with Purrlude. The first time you separate instruments, Purrlude asks whether to download it from its GitHub page. Nothing else is sent or received, and your audio stays on your computer. If the download is cancelled or interrupted, the next one carries on from where it stopped, and the file is checked before it's used.
+**The model** is a 115 MB file (`htdemucs_6s-purrlude-1.onnx`) that isn't included with Purrlude. The first time you separate instruments, Purrlude asks whether to download it from its GitHub page. Nothing else is sent or received, and your audio stays on your computer. If the download is cancelled or interrupted, the next one carries on from where it stopped, and the file is checked before it's used. If you had the earlier model (`htdemucs_6s.onnx`), Purrlude offers the new one the next time you separate, and deletes the old file once it's downloaded.
 
 It's kept in your models folder, where you can also put a copy yourself:
 - macOS: `~/Library/Application Support/Purrlude/Models/`
