@@ -199,7 +199,7 @@ TEST_CASE ("Each track's sound and mix reach a multi-part device on its own chan
         std::vector<juce::MidiMessage> messages;
     };
 
-    Song song { 0, 33, purrlude::gm::drumKit };
+    Song song { 0, 33, purrlude::gm::drumKitProgram (8) };   // piano, bass, the room kit
     Capture capture;
     auto port = juce::MidiInput::createNewDevice ("Purrlude Test Synth", &capture);
     REQUIRE (port != nullptr);
@@ -242,7 +242,11 @@ TEST_CASE ("Each track's sound and mix reach a multi-part device on its own chan
 
     CHECK (programOn (1) == 0);     // piano
     CHECK (programOn (2) == 33);    // bass
-    CHECK_FALSE (programOn (10));   // the drum channel needs none
+    CHECK (programOn (10) == 8);    // the room kit, on the drum channel
+
+    // With no Bank Select, which would take a GM2 or XG device's drum channel off its drum bank.
+    for (auto& m : received)
+        CHECK_FALSE ((m.getChannel() == 10 && m.isController() && (m.getControllerNumber() == 0 || m.getControllerNumber() == 32)));
     CHECK_FALSE (programOn (3));    // nothing strays onto other channels
 
     // The bass's volume went to its channel only.
@@ -340,3 +344,171 @@ TEST_CASE ("Playing a keyboard sounds on a multi-part device", "[.live-out]")
     synth->stop();
 }
 #endif
+
+namespace
+{
+    /** Plays test sounds through a MIDI output named like PURRLUDE_MIDI_OUT, for listening tests. */
+    struct ListeningTest
+    {
+        ListeningTest()
+        {
+            auto wanted = juce::SystemStats::getEnvironmentVariable ("PURRLUDE_MIDI_OUT", "GO:KEYS");
+
+            for (auto& device : juce::MidiOutput::getAvailableDevices())
+            {
+                std::cout << "MIDI out: " << device.name << std::endl;
+
+                if (out == nullptr && device.name.containsIgnoreCase (wanted))
+                    out = juce::MidiOutput::openDevice (device.identifier);
+            }
+
+            if (out != nullptr)
+                std::cout << "Playing through " << out->getName() << std::endl;
+        }
+
+        ~ListeningTest()
+        {
+            if (out != nullptr)
+                for (int channel = 1; channel <= 16; ++channel)
+                    send (juce::MidiMessage::allNotesOff (channel));
+        }
+
+        static void wait (int ms)   { juce::Thread::sleep (ms); }
+
+        void send (const juce::MidiMessage& m)   { out->sendMessageNow (m); wait (20); }
+
+        void sysex (std::initializer_list<juce::uint8> bytes)
+        {
+            std::vector<juce::uint8> data (bytes);
+            send (juce::MidiMessage::createSysExMessage (data.data(), (int) data.size()));
+        }
+
+        /** Bank Select (if msb >= 0), then Program Change (if program >= 0). */
+        void select (int channel, int msb, int lsb, int program)
+        {
+            if (msb >= 0)
+            {
+                send (juce::MidiMessage::controllerEvent (channel, 0, msb));
+                send (juce::MidiMessage::controllerEvent (channel, 32, lsb));
+            }
+
+            if (program >= 0)
+                send (juce::MidiMessage::programChange (channel, program));
+        }
+
+        void melody (int channel)
+        {
+            for (int note : { 60, 64, 67, 72 })
+            {
+                send (juce::MidiMessage::noteOn (channel, note, (juce::uint8) 100));
+                wait (350);
+                send (juce::MidiMessage::noteOff (channel, note));
+            }
+        }
+
+        void beat (int channel)
+        {
+            for (int i = 0; i < 8; ++i)
+            {
+                auto drum = i % 4 == 0 ? 36 : i % 4 == 2 ? 38 : 42;   // kick, hat, snare, hat
+                send (juce::MidiMessage::noteOn (channel, drum, (juce::uint8) 110));
+                send (juce::MidiMessage::noteOn (channel, 42, (juce::uint8) 80));
+                wait (250);
+                send (juce::MidiMessage::noteOff (channel, drum));
+                send (juce::MidiMessage::noteOff (channel, 42));
+            }
+        }
+
+        /** The step's number, spoken on a Mac, then the step, so each can be told apart by ear. */
+        void step (int number, const char* what, std::function<void()> play)
+        {
+            std::cout << "Step " << number << ": " << what << std::endl;
+            wait (1000);
+
+           #if JUCE_MAC
+            juce::ChildProcess say;
+
+            if (say.start (juce::StringArray { "/usr/bin/say", "Step " + juce::String (number) }))
+                say.waitForProcessToFinish (5000);
+           #endif
+
+            wait (700);
+            play();
+            wait (800);
+        }
+
+        std::unique_ptr<juce::MidiOutput> out;
+    };
+}
+
+/*  Does a keyboard or sound module answer General MIDI 2? Plays a fixed sequence through it while
+    you listen (about 50 s), each step announced ("Step 1", spoken on a Mac):
+
+        PURRLUDE_MIDI_OUT="GO:KEYS" PurrludeTests "[.gm2-probe]" -s
+
+     1. Before any GM2 message: channel 1, notes with no Bank Select or Program Change
+     2. GM2 System On, then channel 1: violin (Bank Select 121/0, Program Change 40)
+     3. Channel 2: trumpet (121/0, 56)
+     4. Channel 3: a variation, nylon guitar with ukulele's LSB (121/1, 24)
+     5. Channel 10: the standard drum kit (Program Change 0)
+     6. Channel 10: the brush kit (Program Change 40)
+     7. Channel 10: the analog kit with GM2's drum bank (120/0, 25)
+     8. Channel 4 (the GO:KEYS's own part): flute (121/0, 73)
+    Then GM System Off (7E 7F 09 02) and All Notes Off on every channel.
+
+    A Roland GO:KEYS 5 (2026-10) played only step 8, in its current tone (Piano 1): it plays one
+    part, on channel 4, and ignores GM2's banks. "[.gm2-probe-one-channel]" tries its own banks there.
+*/
+TEST_CASE ("A device answers General MIDI 2", "[.gm2-probe]")
+{
+    juce::ScopedJuceInitialiser_GUI juceInit;
+    ListeningTest t;
+    REQUIRE (t.out != nullptr);
+
+    t.step (1, "channel 1, no bank or program", [&] { t.melody (1); });
+    std::cout << "GM2 System On" << std::endl;
+    t.sysex ({ 0x7e, 0x7f, 0x09, 0x03 });
+    ListeningTest::wait (500);
+    t.step (2, "channel 1, violin (121/0, 40)", [&] { t.select (1, 121, 0, 40); t.melody (1); });
+    t.step (3, "channel 2, trumpet (121/0, 56)", [&] { t.select (2, 121, 0, 56); t.melody (2); });
+    t.step (4, "channel 3, ukulele (121/1, 24)", [&] { t.select (3, 121, 1, 24); t.melody (3); });
+    t.step (5, "channel 10, standard kit (0)", [&] { t.select (10, -1, 0, 0); t.beat (10); });
+    t.step (6, "channel 10, brush kit (40)", [&] { t.select (10, -1, 0, 40); t.beat (10); });
+    t.step (7, "channel 10, analog kit (120/0, 25)", [&] { t.select (10, 120, 0, 25); t.beat (10); });
+    t.step (8, "channel 4, flute (121/0, 73)", [&] { t.select (4, 121, 0, 73); t.melody (4); });
+
+    std::cout << "GM System Off" << std::endl;
+    t.sysex ({ 0x7e, 0x7f, 0x09, 0x02 });
+}
+
+/*  The same questions on one channel (PURRLUDE_MIDI_CHANNEL, default 4, the GO:KEYS's): which
+    banks choose a sound there? About 40 s:
+
+        PURRLUDE_MIDI_OUT="GO:KEYS" PurrludeTests "[.gm2-probe-one-channel]" -s
+
+     1. Notes only: the current tone
+     2. GM2's flute (121/0, 73)
+     3. General MIDI's flute (0/0, 73)
+     4. Program Change 73 alone
+     5. The GO:KEYS's own flute (87/88, 73: CM458 "Flute")
+     6. The GO:KEYS's own brush kit (86/65, 6: CD007 "Brush Kit"), a beat
+     7. Back to its Piano 1 (87/85, 0: CM001)
+
+    A Roland GO:KEYS 5 (2026-10): 1-4 stayed on its current tone, 5-7 changed. It answers only its
+    own banks: GM2's sounds and kits are in its tone list, not at GM2's numbers.
+*/
+TEST_CASE ("Which banks a one-part device answers", "[.gm2-probe-one-channel]")
+{
+    juce::ScopedJuceInitialiser_GUI juceInit;
+    ListeningTest t;
+    REQUIRE (t.out != nullptr);
+    auto c = juce::SystemStats::getEnvironmentVariable ("PURRLUDE_MIDI_CHANNEL", "4").getIntValue();
+
+    t.step (1, "notes only", [&] { t.melody (c); });
+    t.step (2, "GM2 flute (121/0, 73)", [&] { t.select (c, 121, 0, 73); t.melody (c); });
+    t.step (3, "GM flute (0/0, 73)", [&] { t.select (c, 0, 0, 73); t.melody (c); });
+    t.step (4, "Program Change 73 alone", [&] { t.select (c, -1, 0, 73); t.melody (c); });
+    t.step (5, "GO:KEYS flute (87/88, 73)", [&] { t.select (c, 87, 88, 73); t.melody (c); });
+    t.step (6, "GO:KEYS brush kit (86/65, 6)", [&] { t.select (c, 86, 65, 6); t.beat (c); });
+    t.step (7, "GO:KEYS Piano 1 (87/85, 0)", [&] { t.select (c, 87, 85, 0); t.melody (c); });
+}

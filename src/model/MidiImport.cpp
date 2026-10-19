@@ -21,6 +21,20 @@ namespace
         return bankMsb == 127 || bankMsb == 120;
     }
 
+    /** The SoundFont bank for a melodic sound's Bank Select, as SoundFonts lay out variations:
+        Roland GS chooses one with the MSB (1-119; the LSB picks a model's map), Yamaha XG with
+        the LSB under MSB 0, General MIDI 2 with the LSB under MSB 121. Anything else (XG's sound
+        effect voices, MSB 64) is the General MIDI sound. A bank the SoundFont hasn't got plays
+        its General MIDI sound too.
+    */
+    int getSoundFontBank (int bankMsb, int bankLsb)
+    {
+        if (bankMsb == 0 || bankMsb == 121)
+            return bankLsb;
+
+        return bankMsb < 120 && bankMsb != 64 ? bankMsb : 0;
+    }
+
     /** One track and channel of the file. */
     struct Part
     {
@@ -29,8 +43,10 @@ namespace
         int program = -1;                       ///< First Program Change, or -1
         std::vector<const juce::MidiMessageSequence::MidiEventHolder*> events;
         bool hasNotes = false;
-        int bankMsb = 0;                        ///< The latest Bank Select MSB
+        int bankMsb = 0, bankLsb = 0;           ///< The latest Bank Select
+        int bank = 0;                           ///< The SoundFont bank selected before the first note
         bool drumBank = false;                  ///< A drum kit bank was selected before the first note
+        int programAtFirstNote = -1;            ///< The last Program Change before the first note
     };
 
     bool isEmptySong (tracktion::Edit& edit)
@@ -130,9 +146,16 @@ Result importMidi (tracktion::Edit& edit, LiveInstrument& live, const juce::Midi
             if (m.isController() && m.getControllerNumber() == 0)
                 part.bankMsb = m.getControllerValue();
 
+            if (m.isController() && m.getControllerNumber() == 32)
+                part.bankLsb = m.getControllerValue();
+
             // A Bank Select takes effect at the next Program Change, as in a sound module.
             if (m.isProgramChange() && ! part.hasNotes)
+            {
                 part.drumBank = isDrumBank (part.bankMsb);
+                part.bank = getSoundFontBank (part.bankMsb, part.bankLsb);
+                part.programAtFirstNote = m.getProgramChangeNumber();
+            }
 
             if (m.isNoteOn())
                 part.hasNotes = true;
@@ -220,7 +243,9 @@ Result importMidi (tracktion::Edit& edit, LiveInstrument& live, const juce::Midi
     for (const auto& part : parts)
     {
         auto isDrums = part.channel == drumChannel || part.drumBank;
-        auto program = isDrums ? gm::drumKit : juce::jmax (0, part.program);
+        // The sound playing at the first note, or else the first one chosen.
+        auto melodic = part.programAtFirstNote >= 0 ? part.programAtFirstNote : juce::jmax (0, part.program);
+        auto program = isDrums ? gm::findDrumKit (juce::jmax (0, part.programAtFirstNote)) : melodic;
         auto instrumentName = isDrums ? juce::String ("Drums") : juce::String (gm::getName (program));
 
         auto name = part.trackName.isNotEmpty() ? part.trackName : instrumentName;
@@ -249,7 +274,7 @@ Result importMidi (tracktion::Edit& edit, LiveInstrument& live, const juce::Midi
         if (instrument.getSoundSourceID().isNotEmpty())
             instrument.useBuiltInSynth();
 
-        instrument.setProgram (program);
+        instrument.setProgram (program, isDrums || part.programAtFirstNote < 0 ? 0 : part.bank);
 
         // One clip from the start bar to the end of the part, rounded up to a whole bar.
         double endQuarters = 0.0;

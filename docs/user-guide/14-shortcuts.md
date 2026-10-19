@@ -74,7 +74,7 @@ On Windows and Linux, use **Ctrl** for **Cmd** and **Alt** for **Option**.
 | Pinch, or Cmd+scroll | Zoom |
 | Sideways swipe, or Shift+scroll | Scroll through time |
 
-**Automation lane** (right-click the track header > Automation):
+**Automation lane** (track menu **⋯** > Automation):
 
 | Gesture | Action |
 |---|---|
@@ -89,7 +89,7 @@ On Windows and Linux, use **Ctrl** for **Cmd** and **Alt** for **Option**.
 | Gesture | Action |
 |---|---|
 | Double-click the name | Rename |
-| Right-click the header | Rename or delete the track |
+| **⋯**, or right-click the header | The track menu: rename, delete, automation, MIDI channel |
 | Double-click the volume slider | 0 dB |
 | Double-click the pan knob | Centre |
 | Click a level meter | Clear its over-0 dB light |

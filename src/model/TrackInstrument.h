@@ -59,9 +59,13 @@ public:
     bool hasOwnChannel() const;
 
     //==============================================================================
-    /** The built-in instrument: a General MIDI program (0-127) or gm::drumKit. */
-    void setProgram (int);
+    /** The built-in instrument: a General MIDI program (0-127) or a drum kit (gm::isDrumKit),
+        and the SoundFont bank it's played from (a variation of the sound; 0 is the General MIDI
+        sound itself). A bank the SoundFont hasn't got plays bank 0.
+    */
+    void setProgram (int program, int bank = 0);
     int getProgram() const;
+    int getBank() const;
 
     /** True when the track plays the GM drum kit, so the notes are drums: the built-in one,
         or a multi-part device's (on channel 10).

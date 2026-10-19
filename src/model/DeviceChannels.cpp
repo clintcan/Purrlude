@@ -12,7 +12,7 @@ namespace
     void giveOwnChannel (tracktion::Edit& edit, const MidiDeviceSettings& settings, tracktion::AudioTrack& track)
     {
         TrackInstrument instrument (edit, track);
-        auto drums = instrument.getProgram() == gm::drumKit;
+        auto drums = gm::isDrumKit (instrument.getProgram());
         auto channel = chooseChannel (edit, instrument.getSoundSourceID(), track.itemID, drums);
 
         // The channel first: a tone or volume sent on the device's channel could change another track's sound.
@@ -86,7 +86,7 @@ void playThrough (tracktion::Edit& edit, const MidiDeviceSettings& settings, tra
 
     // Straight onto a channel of its own, so nothing goes out on another track's.
     instrument.setSoundSource (deviceID, deviceName,
-                               chooseChannel (edit, deviceID, track.itemID, instrument.getProgram() == gm::drumKit));
+                               chooseChannel (edit, deviceID, track.itemID, gm::isDrumKit (instrument.getProgram())));
     giveOwnChannel (edit, settings, track);
 }
 

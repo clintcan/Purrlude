@@ -1,7 +1,9 @@
 #include "MainComponent.h"
 
 #include "ui/ExportAudioDialog.h"
+#include "ui/SoundFontChooser.h"
 #include "ui/PluginWindows.h"
+#include "ui/RecentFolder.h"
 #include "AboutWindow.h"
 
 #include "notation/MusicXmlWriter.h"
@@ -154,6 +156,14 @@ juce::File MainComponent::getAutosaveDirectory() const
 juce::File MainComponent::getDefaultProjectDirectory() const
 {
     return juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Purrlude");
+}
+
+juce::File MainComponent::getStartFolder() const
+{
+    // The last folder a file dialog used, else the song's folder, else the projects folder.
+    auto fallback = project->getFile() != juce::File() ? project->getFile().getParentDirectory() : getDefaultProjectDirectory();
+    fallback.createDirectory();
+    return recent_folder::get (settings, fallback);
 }
 
 void MainComponent::setProject (std::unique_ptr<Project> newProject)
@@ -361,7 +371,7 @@ void MainComponent::openProject()
         auto dir = safe->getDefaultProjectDirectory();
         dir.createDirectory();
 
-        safe->fileChooser = std::make_unique<juce::FileChooser> ("Open project", dir,
+        safe->fileChooser = std::make_unique<juce::FileChooser> ("Open project", recent_folder::get (safe->settings, dir),
                                                                  juce::String ("*") + Project::fileExtension);
 
         safe->fileChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
@@ -370,7 +380,10 @@ void MainComponent::openProject()
             auto file = chooser.getResult();
 
             if (safe != nullptr && file != juce::File())
+            {
+                recent_folder::remember (safe->settings, file);
                 safe->openProjectFile (file);
+            }
         });
     });
 }
@@ -440,8 +453,10 @@ void MainComponent::saveProjectAs (std::function<void (bool)> callback)
     auto dir = getDefaultProjectDirectory();
     dir.createDirectory();
 
-    auto suggested = project->getFile() != juce::File() ? project->getFile()
-                                                        : dir.getNonexistentChildFile ("Untitled", Project::fileExtension, false);
+    // In the last folder used, under the song's name.
+    auto folder = recent_folder::get (settings, dir);
+    auto suggested = project->getFile() != juce::File() ? folder.getChildFile (project->getFile().getFileName())
+                                                        : folder.getNonexistentChildFile ("Untitled", Project::fileExtension, false);
 
     fileChooser = std::make_unique<juce::FileChooser> ("Save project as", suggested, juce::String ("*") + Project::fileExtension);
 
@@ -457,6 +472,7 @@ void MainComponent::saveProjectAs (std::function<void (bool)> callback)
 
         if (file != juce::File())
         {
+            recent_folder::remember (safe->settings, file);
             juce::String error;
             saved = safe->project->saveAs (file, error);
 
@@ -482,8 +498,7 @@ void MainComponent::exportScore (ExportFormat format)
     }
 
     auto extension = format == ExportFormat::pdf ? juce::String (".pdf") : juce::String (".musicxml");
-    auto dir = project->getFile() != juce::File() ? project->getFile().getParentDirectory() : getDefaultProjectDirectory();
-    dir.createDirectory();
+    auto dir = getStartFolder();
 
     fileChooser = std::make_unique<juce::FileChooser> (format == ExportFormat::pdf ? "Export score as PDF" : "Export MusicXML",
                                                        dir.getChildFile (project->getName() + extension), "*" + extension);
@@ -497,6 +512,7 @@ void MainComponent::exportScore (ExportFormat format)
         if (safe == nullptr || file == juce::File())
             return;
 
+        recent_folder::remember (safe->settings, file);
         file = file.withFileExtension (extension);
 
         // The whole song: a part for every track with notes.
@@ -737,15 +753,32 @@ void MainComponent::showAudioSettings()
 {
     // MIDI devices have their own panel; this is the audio interface: which device plays and
     // records, its sample rate and buffer size, and which of its channels are used.
-    // Tracktion saves the choice and rebuilds its inputs when it changes.
-    auto selector = std::make_unique<juce::AudioDeviceSelectorComponent> (engine.getDeviceManager().deviceManager,
-                                                                          0, 64,     // inputs
-                                                                          0, 64,     // outputs
-                                                                          false, false, false, false);
-    selector->setSize (520, 440);
+    // Tracktion saves the choice and rebuilds its inputs when it changes. Under it, the
+    // SoundFont the built-in instrument plays.
+    struct AudioSettings final : public juce::Component
+    {
+        AudioSettings (juce::AudioDeviceManager& devices, juce::PropertiesFile& appSettings)
+            : selector (devices, 0, 64, 0, 64, false, false, false, false),   // inputs, outputs
+              soundFonts (appSettings)
+        {
+            addAndMakeVisible (selector);
+            addAndMakeVisible (soundFonts);
+            setSize (520, 440 + soundFonts.getHeight());
+        }
+
+        void resized() override
+        {
+            auto r = getLocalBounds();
+            soundFonts.setBounds (r.removeFromBottom (soundFonts.getHeight()));
+            selector.setBounds (r);
+        }
+
+        juce::AudioDeviceSelectorComponent selector;
+        SoundFontChooser soundFonts;
+    };
 
     juce::DialogWindow::LaunchOptions launch;
-    launch.content.setOwned (selector.release());
+    launch.content.setOwned (new AudioSettings (engine.getDeviceManager().deviceManager, settings));
     launch.dialogTitle = "Audio Settings";
     launch.dialogBackgroundColour = getLookAndFeel().findColour (juce::ResizableWindow::backgroundColourId);
     launch.escapeKeyTriggersCloseButton = true;
@@ -756,29 +789,33 @@ void MainComponent::showAudioSettings()
 
 void MainComponent::chooseMidiFileToImport()
 {
-    auto dir = project->getFile() != juce::File() ? project->getFile().getParentDirectory() : getDefaultProjectDirectory();
-    fileChooser = std::make_unique<juce::FileChooser> ("Import a MIDI file", dir, "*.mid;*.midi;*.smf;*.kar");
+    fileChooser = std::make_unique<juce::FileChooser> ("Import a MIDI file", getStartFolder(), "*.mid;*.midi;*.smf;*.kar");
 
     fileChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles
                                 | juce::FileBrowserComponent::canSelectMultipleItems,
                               [safe = juce::WeakReference<MainComponent> (this)] (const juce::FileChooser& chooser)
     {
         if (safe != nullptr && ! chooser.getResults().isEmpty())
+        {
+            recent_folder::remember (safe->settings, chooser.getResults().getFirst());
             safe->importMidiFiles (chooser.getResults());
+        }
     });
 }
 
 void MainComponent::chooseAudioFileToImport()
 {
-    auto dir = project->getFile() != juce::File() ? project->getFile().getParentDirectory() : getDefaultProjectDirectory();
-    fileChooser = std::make_unique<juce::FileChooser> ("Import an audio file", dir, audio_import::getWildcard (engine));
+    fileChooser = std::make_unique<juce::FileChooser> ("Import an audio file", getStartFolder(), audio_import::getWildcard (engine));
 
     fileChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles
                                 | juce::FileBrowserComponent::canSelectMultipleItems,
                               [safe = juce::WeakReference<MainComponent> (this)] (const juce::FileChooser& chooser)
     {
         if (safe != nullptr && ! chooser.getResults().isEmpty())
+        {
+            recent_folder::remember (safe->settings, chooser.getResults().getFirst());
             safe->importFiles (chooser.getResults());
+        }
     });
 }
 
@@ -855,13 +892,15 @@ void MainComponent::exportAudio()
 
 void MainComponent::chooseAudioDestination (AudioExportOptions options)
 {
-    auto dir = project->getFile() != juce::File() ? project->getFile().getParentDirectory() : getDefaultProjectDirectory();
-    dir.createDirectory();
+    auto dir = getStartFolder();
 
     auto onChosen = [safe = juce::WeakReference<MainComponent> (this), options] (const juce::FileChooser& chooser)
     {
         if (safe != nullptr && chooser.getResult() != juce::File())
+        {
+            recent_folder::remember (safe->settings, chooser.getResult());
             safe->startAudioExport (options, chooser.getResult());
+        }
     };
 
     if (options.stems)
@@ -941,10 +980,7 @@ void MainComponent::stopAudioExport()
 
 void MainComponent::exportParts()
 {
-    auto dir = project->getFile() != juce::File() ? project->getFile().getParentDirectory() : getDefaultProjectDirectory();
-    dir.createDirectory();
-
-    fileChooser = std::make_unique<juce::FileChooser> ("Choose a folder for the part PDFs", dir);
+    fileChooser = std::make_unique<juce::FileChooser> ("Choose a folder for the part PDFs", getStartFolder());
 
     fileChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
                               [safe = juce::WeakReference<MainComponent> (this)] (const juce::FileChooser& chooser)
@@ -953,6 +989,8 @@ void MainComponent::exportParts()
 
         if (safe == nullptr || ! folder.isDirectory())
             return;
+
+        recent_folder::remember (safe->settings, folder);
 
         // One PDF per track with notes: "<song> - <track>.pdf".
         auto songName = safe->project->getName();

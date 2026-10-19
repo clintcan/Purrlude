@@ -224,6 +224,93 @@ TEST_CASE ("Drum kits chosen by Bank Select come in as drums on any channel", "[
     REQUIRE_FALSE (score.parts[2].percussion);
 }
 
+TEST_CASE ("A drum part keeps the kit its Program Change chose", "[midi-import]")
+{
+    Fixture f;
+
+    juce::MidiFile file;
+    file.setTicksPerQuarterNote (ppq);
+
+    auto addPart = [&] (int channel, int bankMsb, int program)
+    {
+        juce::MidiMessageSequence track;
+
+        if (bankMsb >= 0)
+            track.addEvent (at (juce::MidiMessage::controllerEvent (channel, 0, bankMsb), 0));
+
+        track.addEvent (at (juce::MidiMessage::programChange (channel, 0), 0));
+        track.addEvent (at (juce::MidiMessage::programChange (channel, program), 0.5));   // the last before the notes counts
+        track.addEvent (at (juce::MidiMessage::noteOn (channel, 38, (juce::uint8) 100), 1));
+        track.addEvent (at (juce::MidiMessage::noteOff (channel, 38), 1.5));
+        track.updateMatchedPairs();
+        file.addTrack (track);
+    };
+
+    addPart (10, -1, 25);     // GM2's analog kit
+    addPart (3, 127, 40);     // XG's brush kit, on another channel
+    addPart (10, -1, 3);      // a kit the built-in instrument hasn't: the standard one
+
+    auto result = purrlude::midi_import::importMidi (*f.edit, f.live, roundTrip (file), 0);
+    REQUIRE (result.error.isEmpty());
+    REQUIRE (result.tracks.size() == 3);
+
+    auto program = [&] (int index)
+    {
+        return purrlude::TrackInstrument (*f.edit, *tracktion::findAudioTrackForID (*f.edit, result.tracks[index])).getProgram();
+    };
+
+    CHECK (program (0) == purrlude::gm::drumKitProgram (25));
+    CHECK (program (1) == purrlude::gm::drumKitProgram (40));
+    CHECK (program (2) == purrlude::gm::drumKit);
+}
+
+TEST_CASE ("A part's Bank Select chooses a SoundFont variation, as GS, XG and GM2 lay them out", "[midi-import]")
+{
+    Fixture f;
+
+    juce::MidiFile file;
+    file.setTicksPerQuarterNote (ppq);
+
+    // Channel, Bank Select MSB and LSB, program.
+    struct Sound { int channel, msb, lsb, program; };
+    const Sound sounds[] = {
+        { 1, 8, 1, 24 },      // GS: Ukulele, MSB 8 (the LSB picks a model's map)
+        { 2, 0, 8, 24 },      // XG: a variation in the LSB
+        { 3, 121, 2, 0 },     // GM2: a variation in the LSB under MSB 121
+        { 4, 64, 0, 3 },      // XG's sound effect voices: the General MIDI sound
+        { 5, 0, 0, 33 },      // no variation
+    };
+
+    for (auto s : sounds)
+    {
+        juce::MidiMessageSequence track;
+        track.addEvent (at (juce::MidiMessage::controllerEvent (s.channel, 0, s.msb), 0));
+        track.addEvent (at (juce::MidiMessage::controllerEvent (s.channel, 32, s.lsb), 0));
+        track.addEvent (at (juce::MidiMessage::programChange (s.channel, s.program), 0));
+        track.addEvent (at (juce::MidiMessage::noteOn (s.channel, 60, (juce::uint8) 100), 1));
+        track.addEvent (at (juce::MidiMessage::noteOff (s.channel, 60), 1.5));
+        track.updateMatchedPairs();
+        file.addTrack (track);
+    }
+
+    auto result = purrlude::midi_import::importMidi (*f.edit, f.live, roundTrip (file), 0);
+    REQUIRE (result.error.isEmpty());
+    REQUIRE (result.tracks.size() == 5);
+
+    auto instrument = [&] (int index)
+    {
+        return purrlude::TrackInstrument (*f.edit, *tracktion::findAudioTrackForID (*f.edit, result.tracks[index]));
+    };
+
+    CHECK (instrument (0).getProgram() == 24);
+    CHECK (instrument (0).getBank() == 8);
+    CHECK (instrument (1).getBank() == 8);
+    CHECK (instrument (2).getProgram() == 0);
+    CHECK (instrument (2).getBank() == 2);
+    CHECK (instrument (3).getBank() == 0);
+    CHECK (instrument (4).getBank() == 0);
+}
+
 TEST_CASE ("Files without notes or with SMPTE timing are refused", "[midi-import]")
 {
     Fixture f;

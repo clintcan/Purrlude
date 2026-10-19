@@ -12,22 +12,24 @@ A song is made of tracks, shown top to bottom in the arrangement. There are two 
 <img src="images/add-track-menu.png" alt="The + Track menu: Instrument Track, Audio Track" width="249" align="right">
 
 - **Add a track:** click **+ Track** below the last track and choose **Instrument Track** or **Audio Track**.
-- **Rename a track:** double-click its name, or right-click the header and choose **Rename...**.
-- **Delete a track:** right-click the header and choose **Delete Track**. A song always keeps at least one instrument track, so the last one can't be deleted.
+- **The track menu:** click **⋯** at the top right of a track's header, or right-click the header. It has Rename..., Delete Track and Automation (and MIDI Channel for a track on a multi-part device).
+- **Rename a track:** double-click its name, or choose **Rename...** from the track menu.
+- **Delete a track:** choose **Delete Track** from the track menu. A song always keeps at least one instrument track, so the last one can't be deleted.
 
 Tracks are also added for you when you add loops, import files or convert audio to MIDI.
 
-<img src="images/track-menu.png" alt="A track header's right-click menu: Rename..., Delete Track, Automation" width="202">
+<img src="images/track-menu.png" alt="The track menu opened from the ⋯ button: Rename..., Delete Track, Automation" width="304">
 
 <br clear="right">
 
 ## The instrument track header
 
-<img src="images/track-header.png" alt="An instrument track's header: name, FX, Arm, M, S, the instrument and sound menus, volume, pan and level meter" width="178" align="right">
+<img src="images/track-header.png" alt="An instrument track's header: name, FX, the track menu button, Arm, M, S, the instrument and sound menus, volume, pan and level meter" width="178" align="right">
 
 **Top row:**
 - **Name.** Double-click it to rename the track.
 - **FX** opens the track's [effects](10-effects.md). It's lit green when the track has effects or a reverb send.
+- **⋯** opens the track menu: rename, delete, automation and more. Right-clicking the header opens it too.
 
 **Arm, mute and solo:**
 - **Arm** (orange when on) makes this the track your keyboard plays and records onto. Clicking anywhere on an instrument track's header or lane also selects it, and the selected track is the armed one. A blue stripe marks it.
@@ -36,7 +38,8 @@ Tracks are also added for you when you add loops, import files or convert audio 
 
 **The two menus:**
 - **The instrument menu** (here *Flute*) chooses the sound.
-  - With built-in sounds, it lists the 128 General MIDI instruments by family (Piano, Organ, Guitar, Bass, Strings, Brass, Reed, Synth Lead, ...) and **Standard Drum Kit** under Drums.
+  - With built-in sounds, it lists the 128 General MIDI instruments by family (Piano, Organ, Guitar, Bass, Strings, Brass, Reed, Synth Lead, ...) and nine drum kits under Drums: **Standard**, Room, Power, Electronic, Analog, Jazz, Brush, Orchestra and SFX (the kits of General MIDI 2).
+  - Instruments with **variations** open a submenu: the instrument itself, then its variations, such as *Ukulele* under Acoustic Guitar (nylon) or *Synth Bass 101* under Synth Bass 1. They come from the SoundFont the built-in instruments play (see [Built-in instrument sounds](13-devices.md#built-in-instrument-sounds)).
   - Under **Plugins** it lists the instrument plugins (VST3, AU, LV2) found on your computer. Choosing one opens its window; **Show Plugin Window** at the top of the menu opens it again. See [Plugins](10-effects.md#plugins).
   - When the track plays an external keyboard, it lists that keyboard's tones instead; see [Devices](13-devices.md#playing-a-keyboards-own-sounds).
 - **The sound menu** (here *Built-in instruments*) chooses where the track is heard: Purrlude's built-in instruments, or a connected MIDI device's own sounds.
@@ -50,7 +53,7 @@ Tracks are also added for you when you add loops, import files or convert audio 
 
 ## The audio track header
 
-<img src="images/audio-track-header.png" alt="An audio track's header: name, FX, Arm, M, S, In, the input menu, volume and pan" width="178" align="right">
+<img src="images/audio-track-header.png" alt="An audio track's header: name, FX, the track menu button, Arm, M, S, In, the input menu, volume and pan" width="178" align="right">
 
 Audio tracks have the same name, FX, M, S, volume, pan and meter as instrument tracks. In place of the instrument and sound menus they have:
 
@@ -80,7 +83,7 @@ Automation makes a setting change over time: a fade-in, a louder chorus, a pan f
 <img src="images/automation.png" alt="The Melody track showing its volume automation: a line fading in over two bars, holding, and dipping near the end, drawn over the dimmed clips" width="100%">
 
 **Choosing what to automate:**
-1. Right-click the track's header and open **Automation**.
+1. Open the track menu (**⋯** on the header, or right-click it) and choose **Automation**.
 2. Choose what to automate:
    - **Volume** or **Pan**
    - **Reverb send**, if the track sends to the shared reverb

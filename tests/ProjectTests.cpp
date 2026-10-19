@@ -2,6 +2,7 @@
 
 #include "model/EngineSetup.h"
 #include "model/Project.h"
+#include "ui/RecentFolder.h"
 
 using purrlude::Project;
 
@@ -172,4 +173,32 @@ TEST_CASE ("Opening a file that isn't a project fails cleanly", "[model][project
     REQUIRE (error.isNotEmpty());
 
     REQUIRE (Project::open (f.engine, f.files.dir.getChildFile ("missing.purrlude"), f.autosaves.dir, error) == nullptr);
+}
+
+TEST_CASE ("File dialogs open in the last folder used", "[project]")
+{
+    juce::ScopedJuceInitialiser_GUI juceInit;
+    auto dir = juce::File::createTempFile ("folders");
+    REQUIRE (dir.createDirectory());
+    juce::PropertiesFile::Options options;
+    juce::PropertiesFile settings (dir.getChildFile ("test.settings"), options);
+    auto fallback = dir.getChildFile ("Projects"), songs = dir.getChildFile ("Songs");
+    REQUIRE (fallback.createDirectory());
+    REQUIRE (songs.createDirectory());
+
+    // Nothing yet: the fallback.
+    CHECK (purrlude::recent_folder::get (settings, fallback) == fallback);
+
+    // A chosen file: its folder. A chosen folder: itself.
+    purrlude::recent_folder::remember (settings, songs.getChildFile ("Song.purrlude"));
+    CHECK (purrlude::recent_folder::get (settings, fallback) == songs);
+    purrlude::recent_folder::remember (settings, fallback);
+    CHECK (purrlude::recent_folder::get (settings, fallback) == fallback);
+
+    // A folder that has gone: the fallback.
+    purrlude::recent_folder::remember (settings, songs);
+    REQUIRE (songs.deleteRecursively());
+    CHECK (purrlude::recent_folder::get (settings, fallback) == fallback);
+
+    dir.deleteRecursively();
 }

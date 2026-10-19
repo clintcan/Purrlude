@@ -32,7 +32,7 @@ Played music is rarely exactly on the beat, so the score tidies it for reading. 
 - Each part gets one staff, or a grand staff (treble and bass, split at middle C) when its notes spread too far for one.
 
 **Drums:**
-- Drum tracks (Standard Drum Kit) are written on a percussion staff.
+- Drum tracks (any of the drum kits) are written on a percussion staff.
 - Kick, snare, toms, hi-hats and cymbals each have their usual place and notehead.
 - As drum parts usually are, they're written in two voices: the hands (snare, hi-hats, cymbals, toms) with stems up, the feet (kick, pedal hi-hat) with stems down.
 

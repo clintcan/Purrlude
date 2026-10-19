@@ -1,0 +1,278 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<EDIT appVersion="Unknown" projectID="0/260a00f" creationTime="1792440971653"
+      purrludeKeySignature="-1 major" purrludeTitle="The Format Song"
+      purrludeComposer="A. Tester" lastSignificantChange="1a155ceb426"
+      modifiedBy="Clint Christopher Canada" purrludeFormat="2">
+  <TRANSPORT automationWrite="0" endToEnd="1" position="0.0" start="0.0" loopPoint1="2.345502940358399"
+             loopPoint2="6.71836536832493" purrludeLoopStart="4.0" purrludeLoopEnd="12.0"
+             purrludePunch="1" recordPunchInOut="1"/>
+  <PITCHSEQUENCE>
+    <PITCH startBeat="0.0" pitch="60"/>
+  </PITCHSEQUENCE>
+  <TEMPOSEQUENCE>
+    <TEMPO startBeat="0.0" bpm="100.0" curve="0.0"/>
+    <TEMPO startBeat="16.0" bpm="120.0" curve="1.0"/>
+    <TIMESIG numerator="4" denominator="4" startBeat="0.0"/>
+    <TIMESIG numerator="3" denominator="4" startBeat="32.0"/>
+    <TIMESIG numerator="4" denominator="4" startBeat="35.0"/>
+  </TEMPOSEQUENCE>
+  <VIDEO/>
+  <CLICKTRACK level="0.6000000238418579" active="1"/>
+  <MASTERVOLUME>
+    <PLUGIN type="volume" volume="0.5488116145133972" id="1001" enabled="1"
+            pan="0.2000000029802322">
+      <MODIFIERASSIGNMENTS/>
+    </PLUGIN>
+  </MASTERVOLUME>
+  <RACKS/>
+  <MASTERPLUGINS>
+    <PLUGIN type="4bandEq" windowLocked="1" id="1041" enabled="1" loFreq="150.0"
+            midFreq1="500.0" midFreq2="2500.0" hiFreq="8000.0">
+      <MODIFIERASSIGNMENTS/>
+    </PLUGIN>
+  </MASTERPLUGINS>
+  <INPUTDEVICES>
+    <INPUTDEVICE deviceID="wavein_d7bd293b" name="Input 1"/>
+    <INPUTDEVICE deviceID="wavein_d7bd293c" name="Input 2"/>
+    <INPUTDEVICE deviceID="midiin_20e60750" name="GO:KEYS 5 MIDI Bluetooth"/>
+    <INPUTDEVICE deviceID="all_midi_in" name="All MIDI Ins">
+      <INPUTDEVICEDESTINATION targetID="1003" targetIndex="0" armed="1"/>
+    </INPUTDEVICE>
+  </INPUTDEVICES>
+  <TRACKCOMPS/>
+  <SCENES/>
+  <PURRLUDE_MIDI_CONTROLS>
+    <CONTROL channel="1" number="74" track="1003" plugin="1012" parameter="mix proportion"/>
+    <CONTROL channel="2" number="7" track="0" plugin="1001" parameter="master volume"/>
+  </PURRLUDE_MIDI_CONTROLS>
+  <ARRANGERTRACK name="Arranger" id="1006"/>
+  <CHORDTRACK name="Chord" id="1008"/>
+  <MARKERTRACK id="1002" name="Marker"/>
+  <TEMPOTRACK name="Global" id="1007">
+    <MODIFIERS/>
+  </TEMPOTRACK>
+  <MASTERTRACK name="Master" id="1009">
+    <MODIFIERS/>
+  </MASTERTRACK>
+  <TRACK id="1003" name="Melody" purrludeProgram="73" purrludeAutomation="1004/volume">
+    <MODIFIERS/>
+    <CLIPSLOTS/>
+    <MIDICLIP name="New MIDI Clip" start="0.0" length="4.581713591855832" offset="0.0"
+              id="1011" sync="0" colour="ff55ff00" currentTake="0" speed="1.0">
+      <QUANTISATION/>
+      <GROOVE/>
+      <SEQUENCE ver="1" channelNumber="1">
+        <NOTE p="65" b="0.0" l="0.5" v="90" c="0"/>
+        <NOTE p="66" b="1.0" l="0.5" v="91" c="0"/>
+        <NOTE p="67" b="2.0" l="0.5" v="92" c="0"/>
+        <NOTE p="68" b="3.0" l="0.5" v="93" c="0"/>
+        <NOTE p="69" b="4.0" l="0.5" v="94" c="0"/>
+        <NOTE p="70" b="5.0" l="0.5" v="95" c="0"/>
+        <NOTE p="71" b="6.0" l="0.5" v="96" c="0"/>
+        <NOTE p="72" b="7.0" l="0.5" v="97" c="0"/>
+        <CONTROL b="1.0" type="64" val="16256"/>
+      </SEQUENCE>
+    </MIDICLIP>
+    <PLUGIN type="purrludeSoundFont" windowLocked="1" id="1010" enabled="1"
+            program="73"/>
+    <PLUGIN type="delay" windowLocked="1" id="1012" enabled="1" feedback="-12.0"
+            mix="0.25" length="300">
+      <MODIFIERASSIGNMENTS/>
+    </PLUGIN>
+    <PLUGIN type="4bandEq" windowLocked="1" id="1013" enabled="1" loFreq="150.0"
+            midFreq1="500.0" midFreq2="2500.0" hiFreq="8000.0">
+      <MODIFIERASSIGNMENTS/>
+    </PLUGIN>
+    <PLUGIN type="volume" id="1004" enabled="1" remapOnTempoChange="1" volume="0.2000000029802322">
+      <MODIFIERASSIGNMENTS/>
+      <AUTOMATIONCURVE paramID="volume">
+        <POINT t="0.0" v="0.2000000029802322" c="0.0"/>
+        <POINT t="1.962410687322451" v="0.800000011920929" c="0.0"/>
+        <POINT t="3.847780442033327" v="0.6000000238418579" c="0.0"/>
+      </AUTOMATIONCURVE>
+    </PLUGIN>
+    <PLUGIN type="auxsend" windowLocked="1" id="1019" enabled="1" quickParamName="send level"
+            busNum="0" auxSendSliderPos="0.4065696597099304">
+      <MODIFIERASSIGNMENTS/>
+    </PLUGIN>
+    <PLUGIN type="level" id="1005" enabled="1"/>
+    <OUTPUTDEVICES>
+      <DEVICE name="(default audio output)"/>
+    </OUTPUTDEVICES>
+  </TRACK>
+  <TRACK id="1014" purrludeTrackKind="reverbBus" name="Reverb" soloIsolate="1">
+    <MODIFIERS/>
+    <CLIPSLOTS/>
+    <PLUGIN type="auxreturn" windowLocked="1" id="1015" enabled="1" busNum="0"/>
+    <PLUGIN type="reverb" windowLocked="1" id="1016" enabled="1" roomSize="0.6000000238418579"
+            damp="0.5" wet="0.5" dry="0.0">
+      <MODIFIERASSIGNMENTS/>
+    </PLUGIN>
+    <PLUGIN type="volume" windowLocked="1" id="1017" enabled="1">
+      <MODIFIERASSIGNMENTS/>
+    </PLUGIN>
+    <PLUGIN type="level" windowLocked="1" id="1018" enabled="1"/>
+    <OUTPUTDEVICES>
+      <DEVICE name="(default audio output)"/>
+    </OUTPUTDEVICES>
+  </TRACK>
+  <TRACK id="1020" name="Drums" purrludeProgram="136">
+    <MODIFIERS/>
+    <CLIPSLOTS/>
+    <MIDICLIP name="Rock 1" start="0.0" length="8.763946661853961" offset="0.0"
+              id="1024" sync="0" colour="ff00ff55" currentTake="0" speed="1.0"
+              originalLength="16.0" loopStartBeats="0.0" loopLengthBeats="16.0">
+      <QUANTISATION/>
+      <GROOVE/>
+      <SEQUENCE ver="1" channelNumber="1">
+        <NOTE p="38" b="0.0" l="0.05" v="27" c="0"/>
+        <NOTE p="38" b="0.067" l="0.062" v="22" c="0"/>
+        <NOTE p="38" b="0.194" l="0.056" v="31" c="0"/>
+        <NOTE p="38" b="0.275" l="0.102" v="43" c="0"/>
+        <NOTE p="36" b="1.487" l="0.185" v="92" c="0"/>
+        <NOTE p="46" b="1.81" l="0.183" v="11" c="0"/>
+        <NOTE p="46" b="2.015" l="0.183" v="9" c="0"/>
+        <NOTE p="44" b="2.056" l="0.183" v="100" c="0"/>
+        <NOTE p="38" b="2.558" l="0.183" v="73" c="0"/>
+        <NOTE p="38" b="3.071" l="0.183" v="5" c="0"/>
+        <NOTE p="38" b="3.59" l="0.181" v="8" c="0"/>
+        <NOTE p="38" b="4.058" l="0.183" v="11" c="0"/>
+        <NOTE p="38" b="4.583" l="0.183" v="12" c="0"/>
+        <NOTE p="38" b="5.1" l="0.185" v="66" c="0"/>
+        <NOTE p="51" b="5.592" l="0.185" v="89" c="0"/>
+        <NOTE p="38" b="5.825" l="0.183" v="22" c="0"/>
+        <NOTE p="38" b="6.075" l="0.183" v="24" c="0"/>
+        <NOTE p="38" b="6.331" l="0.185" v="18" c="0"/>
+        <NOTE p="38" b="6.577" l="0.183" v="50" c="0"/>
+        <NOTE p="51" b="7.073" l="0.185" v="113" c="0"/>
+        <NOTE p="38" b="7.588" l="0.183" v="18" c="0"/>
+        <NOTE p="38" b="8.087999999999999" l="0.183" v="51" c="0"/>
+        <NOTE p="36" b="9.103999999999999" l="0.185" v="91" c="0"/>
+        <NOTE p="51" b="9.112" l="0.177" v="78" c="0"/>
+        <NOTE p="51" b="9.603999999999999" l="0.183" v="45" c="0"/>
+        <NOTE p="51" b="9.819000000000001" l="0.183" v="50" c="0"/>
+        <NOTE p="38" b="10.088" l="0.181" v="38" c="0"/>
+        <NOTE p="51" b="10.585" l="0.183" v="74" c="0"/>
+        <NOTE p="51" b="11.088" l="0.183" v="55" c="0"/>
+        <NOTE p="51" b="11.537" l="0.183" v="62" c="0"/>
+        <NOTE p="48" b="11.542" l="0.181" v="54" c="0"/>
+        <NOTE p="48" b="12.06" l="0.183" v="71" c="0"/>
+        <NOTE p="51" b="12.554" l="0.181" v="42" c="0"/>
+        <NOTE p="51" b="13.048" l="0.185" v="75" c="0"/>
+        <NOTE p="36" b="13.067" l="0.181" v="103" c="0"/>
+        <NOTE p="51" b="13.55" l="0.183" v="43" c="0"/>
+        <NOTE p="51" b="13.8" l="0.183" v="61" c="0"/>
+        <NOTE p="38" b="14.056" l="0.185" v="60" c="0"/>
+        <NOTE p="51" b="14.552" l="0.183" v="66" c="0"/>
+        <NOTE p="51" b="15.052" l="0.183" v="61" c="0"/>
+        <NOTE p="51" b="15.527" l="0.181" v="51" c="0"/>
+      </SEQUENCE>
+    </MIDICLIP>
+    <PLUGIN type="purrludeSoundFont" windowLocked="1" id="1021" enabled="1"
+            program="136"/>
+    <PLUGIN type="volume" windowLocked="1" id="1022" enabled="1">
+      <MODIFIERASSIGNMENTS/>
+    </PLUGIN>
+    <PLUGIN type="level" windowLocked="1" id="1023" enabled="1"/>
+    <OUTPUTDEVICES>
+      <DEVICE name="(default audio output)"/>
+    </OUTPUTDEVICES>
+  </TRACK>
+  <TRACK id="1025" name="Bass" purrludeAccompaniment="bass" purrludeProgram="38"
+         purrludeBank="1">
+    <MODIFIERS/>
+    <CLIPSLOTS/>
+    <MIDICLIP name="Root Eighths" start="0.0" length="8.763946661853961" offset="0.0"
+              id="1029" sync="0" colour="ff00ffaa" currentTake="0" speed="1.0"
+              originalLength="16.0" loopStartBeats="0.0" loopLengthBeats="16.0">
+      <QUANTISATION/>
+      <GROOVE/>
+      <SEQUENCE ver="1" channelNumber="1">
+        <NOTE p="41" b="0.0" l="0.45" v="100" c="0"/>
+        <NOTE p="41" b="0.5" l="0.45" v="80" c="0"/>
+        <NOTE p="41" b="1.0" l="0.45" v="95" c="0"/>
+        <NOTE p="41" b="1.5" l="0.45" v="80" c="0"/>
+        <NOTE p="41" b="2.0" l="0.45" v="100" c="0"/>
+        <NOTE p="41" b="2.5" l="0.45" v="80" c="0"/>
+        <NOTE p="41" b="3.0" l="0.45" v="95" c="0"/>
+        <NOTE p="41" b="3.5" l="0.45" v="80" c="0"/>
+        <NOTE p="36" b="4.0" l="0.45" v="100" c="0"/>
+        <NOTE p="36" b="4.5" l="0.45" v="80" c="0"/>
+        <NOTE p="36" b="5.0" l="0.45" v="95" c="0"/>
+        <NOTE p="36" b="5.5" l="0.45" v="80" c="0"/>
+        <NOTE p="36" b="6.0" l="0.45" v="100" c="0"/>
+        <NOTE p="36" b="6.5" l="0.45" v="80" c="0"/>
+        <NOTE p="36" b="7.0" l="0.45" v="95" c="0"/>
+        <NOTE p="36" b="7.5" l="0.45" v="80" c="0"/>
+        <NOTE p="38" b="8.0" l="0.45" v="100" c="0"/>
+        <NOTE p="38" b="8.5" l="0.45" v="80" c="0"/>
+        <NOTE p="38" b="9.0" l="0.45" v="95" c="0"/>
+        <NOTE p="38" b="9.5" l="0.45" v="80" c="0"/>
+        <NOTE p="38" b="10.0" l="0.45" v="100" c="0"/>
+        <NOTE p="38" b="10.5" l="0.45" v="80" c="0"/>
+        <NOTE p="38" b="11.0" l="0.45" v="95" c="0"/>
+        <NOTE p="38" b="11.5" l="0.45" v="80" c="0"/>
+        <NOTE p="34" b="12.0" l="0.45" v="100" c="0"/>
+        <NOTE p="34" b="12.5" l="0.45" v="80" c="0"/>
+        <NOTE p="34" b="13.0" l="0.45" v="95" c="0"/>
+        <NOTE p="34" b="13.5" l="0.45" v="80" c="0"/>
+        <NOTE p="34" b="14.0" l="0.45" v="100" c="0"/>
+        <NOTE p="34" b="14.5" l="0.45" v="80" c="0"/>
+        <NOTE p="34" b="15.0" l="0.45" v="95" c="0"/>
+        <NOTE p="34" b="15.5" l="0.45" v="80" c="0"/>
+      </SEQUENCE>
+    </MIDICLIP>
+    <PLUGIN type="purrludeSoundFont" windowLocked="1" id="1026" enabled="1"
+            program="38" bank="1"/>
+    <PLUGIN type="volume" windowLocked="1" id="1027" enabled="1" volume="0.6376281380653381"
+            pan="-0.300000011920929">
+      <MODIFIERASSIGNMENTS/>
+    </PLUGIN>
+    <PLUGIN type="level" windowLocked="1" id="1028" enabled="1"/>
+    <OUTPUTDEVICES>
+      <DEVICE name="(default audio output)"/>
+    </OUTPUTDEVICES>
+  </TRACK>
+  <TRACK id="1030" name="Keys" purrludeSoundSource="midiout_formattest"
+         purrludeSoundSourceName="Test Keys" purrludeOutputChannel="4"
+         purrludeDeviceTone="0 68 5" purrludeDeviceToneName="Bright Piano"
+         mute="1">
+    <MODIFIERS/>
+    <CLIPSLOTS/>
+    <PLUGIN type="midipatchbay" windowLocked="1" id="1034" enabled="1" mappings="4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4"/>
+    <PLUGIN type="purrludeSoundFont" windowLocked="1" id="1031" enabled="0"/>
+    <PLUGIN type="volume" windowLocked="1" id="1032" enabled="1">
+      <MODIFIERASSIGNMENTS/>
+    </PLUGIN>
+    <PLUGIN type="level" windowLocked="1" id="1033" enabled="1"/>
+    <OUTPUTDEVICES>
+      <DEVICE name="midiout_formattest"/>
+    </OUTPUTDEVICES>
+  </TRACK>
+  <TRACK id="1035" name="Vocal" purrludeTrackKind="audio">
+    <MODIFIERS/>
+    <CLIPSLOTS/>
+    <AUDIOCLIP name="Voice" start="2.345502940358399" length="0.5" offset="0.0"
+               id="1039" source="Format 2 Audio/Voice take 2.wav" sync="0" elastiqueMode="0"
+               pan="0.0" colour="ff00aaff" proxyAllowed="1" resamplingQuality="lagrange"
+               fadeIn="0.1" fadeOut="0.2">
+      <LOOPINFO rootNote="-1" numBeats="0.8333333333333334" oneShot="0" denominator="4"
+                numerator="4" bpm="0.0" inMarker="0" outMarker="-1"/>
+      <PURRLUDE_TAKES current="1">
+        <TAKE source="Format 2 Audio/Voice.wav"/>
+        <TAKE source="Format 2 Audio/Voice take 2.wav"/>
+      </PURRLUDE_TAKES>
+    </AUDIOCLIP>
+    <PLUGIN type="compressor" windowLocked="1" id="1040" enabled="1" attack="10.0">
+      <MODIFIERASSIGNMENTS/>
+    </PLUGIN>
+    <PLUGIN type="volume" windowLocked="1" id="1036" enabled="1">
+      <MODIFIERASSIGNMENTS/>
+    </PLUGIN>
+    <PLUGIN type="level" windowLocked="1" id="1037" enabled="1"/>
+    <OUTPUTDEVICES>
+      <DEVICE name="(default audio output)"/>
+    </OUTPUTDEVICES>
+  </TRACK>
+</EDIT>

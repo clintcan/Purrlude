@@ -9,6 +9,7 @@
 #include "model/TrackMix.h"
 #include "ui/EffectsPanel.h"
 #include "instruments/GeneralMidi.h"
+#include "instruments/SoundFontPlugin.h"
 #include "model/SharedReverb.h"
 #include "model/PluginLibrary.h"
 #include "ui/PluginWindows.h"
@@ -60,11 +61,12 @@ namespace
     constexpr int currentToneId = 1;      // device mode: leave the device's tone alone
     constexpr int firstToneId = 2;        // device mode: tones
     constexpr int renameToneId = 10000;   // device mode: rename the selected tone
-    constexpr int gmDrumKitId = 10001;    // device mode, General MIDI: the drum kit (channel 10)
+    constexpr int firstDrumKitId = 10100; // device mode, General MIDI: + the drum kit's number (channel 10)
     constexpr int pluginInstrumentId = 19997;   // built-in mode: the plugin playing now
     constexpr int showPluginId = 19998;         // built-in mode: open the plugin's window
     constexpr int findPluginsId = 19999;        // built-in mode: the Plugins window
     constexpr int firstPluginId = 20000;        // built-in mode: instrument plugins
+    constexpr int firstVariationId = 40000;     // built-in mode: + bank * 128 + program (a SoundFont variation)
 }
 
 TrackHeader::TrackHeader (tracktion::Edit& e, LiveInstrument& l, MidiDeviceSettings& s, tracktion::EditItemID id)
@@ -135,6 +137,12 @@ TrackHeader::TrackHeader (tracktion::Edit& e, LiveInstrument& l, MidiDeviceSetti
     effectsButton.setColour (juce::TextButton::buttonOnColourId, audioTrackColour);
     effectsButton.onClick = [this] { showEffects(); };
     addAndMakeVisible (effectsButton);
+
+    // The track menu, also on a right-click: a button for those who wouldn't think to right-click.
+    menuButton.setTooltip ("Track menu: rename, delete, automation and more (or right-click the track)");
+    menuButton.setTitle ("Track menu");
+    menuButton.onClick = [this] { showMenu (&menuButton); };
+    addAndMakeVisible (menuButton);
 
     volumeSlider.setSliderStyle (juce::Slider::LinearHorizontal);
     volumeSlider.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
@@ -207,7 +215,7 @@ TrackHeader::TrackHeader (tracktion::Edit& e, LiveInstrument& l, MidiDeviceSetti
     soundBox.onChange = [this] { soundChosen(); };
     addAndMakeVisible (soundBox);
 
-    for (auto* c : std::initializer_list<juce::Component*> { &armButton, &muteButton, &soloButton, &effectsButton, &instrumentBox,
+    for (auto* c : std::initializer_list<juce::Component*> { &armButton, &muteButton, &soloButton, &effectsButton, &menuButton, &instrumentBox,
                                                             &soundBox, &volumeSlider, &panKnob })
         c->setWantsKeyboardFocus (false);
 
@@ -342,7 +350,7 @@ void TrackHeader::refresh()
     auto followsAutomation = [writing] (const juce::String& control)
     {
         return control + (writing ? " follows its automation: move it while the song plays to record over it"
-                                  : " follows its automation (right-click the track > Automation)");
+                                  : " follows its automation (track menu > Automation)");
     };
     volumeSlider.setTooltip (automatedVolume ? followsAutomation ("Volume") : "Volume (double-click for 0 dB)");
     panKnob.setTooltip (automatedPan ? followsAutomation ("Pan") : "Pan (double-click to centre)");
@@ -451,6 +459,8 @@ void TrackHeader::resized()
 {
     auto r = getLocalBounds().reduced (8, 6);
     auto nameRow = r.removeFromTop (22);
+    menuButton.setBounds (nameRow.removeFromRight (26));
+    nameRow.removeFromRight (3);
     effectsButton.setBounds (nameRow.removeFromRight (32));
     nameLabel.setBounds (nameRow.withTrimmedLeft (-4).withTrimmedRight (4));
     r.removeFromTop (4);
@@ -459,18 +469,19 @@ void TrackHeader::resized()
     meter.setBounds (r.removeFromRight (10));
     r.removeFromRight (5);
 
+    // Arm, M, S (and an audio track's In) fit beside the meter.
     auto buttons = r.removeFromTop (24);
-    armButton.setBounds (buttons.removeFromLeft (52));
+    armButton.setBounds (buttons.removeFromLeft (44));
     buttons.removeFromLeft (4);
 
-    muteButton.setBounds (buttons.removeFromLeft (28));
+    muteButton.setBounds (buttons.removeFromLeft (26));
     buttons.removeFromLeft (4);
-    soloButton.setBounds (buttons.removeFromLeft (28));
+    soloButton.setBounds (buttons.removeFromLeft (26));
     r.removeFromTop (6);
 
     if (audio)
     {
-        monitorButton.setBounds (soloButton.getBounds().translated (soloButton.getWidth() + 4, 0).withWidth (32));
+        monitorButton.setBounds (soloButton.getBounds().translated (soloButton.getWidth() + 4, 0).withWidth (30));
         inputBox.setBounds (r.removeFromTop (24));
         r.removeFromTop (6);
         kindLabel.setBounds (r.removeFromTop (24).withTrimmedLeft (-4));
@@ -499,7 +510,7 @@ void TrackHeader::mouseDown (const juce::MouseEvent& e)
     live.selectTrack (trackID);
 }
 
-void TrackHeader::showMenu()
+void TrackHeader::showMenu (juce::Component* anchor)
 {
     juce::PopupMenu menu;
     menu.addItem (1, "Rename...");
@@ -536,8 +547,11 @@ void TrackHeader::showMenu()
         menu.addSubMenu ("MIDI Channel", channels);
     }
 
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this),
-                        [safe = juce::Component::SafePointer<TrackHeader> (this), choices] (int result)
+    // From the button: below it. From a right-click: at the mouse, as context menus open.
+    auto options = anchor != nullptr ? juce::PopupMenu::Options().withTargetComponent (anchor)
+                                     : juce::PopupMenu::Options().withMousePosition();
+
+    menu.showMenuAsync (options, [safe = juce::Component::SafePointer<TrackHeader> (this), choices] (int result)
     {
         if (safe == nullptr)
             return;
@@ -707,11 +721,21 @@ int TrackHeader::getSelectedInstrumentId() const
     auto instrument = getInstrument();
 
     if (instrument.getSoundSourceID().isEmpty())
-        return instrument.getPluginInstrument() != nullptr ? pluginInstrumentId
-                                                           : instrument.getProgram() + 1;   // GM program + 1
+    {
+        if (instrument.getPluginInstrument() != nullptr)
+            return pluginInstrumentId;
+
+        // A variation the SoundFont hasn't got plays (and shows) the General MIDI sound.
+        auto variationId = firstVariationId + instrument.getBank() * 128 + instrument.getProgram();
+
+        if (instrument.getBank() > 0 && instrumentBox.indexOfItemId (variationId) >= 0)
+            return variationId;
+
+        return instrument.getProgram() + 1;   // GM program + 1
+    }
 
     if (instrument.playsDrumKit())
-        return gmDrumKitId;
+        return firstDrumKitId + gm::getKitNumber (instrument.getProgram());
 
     if (auto tone = instrument.getDeviceTone())
         for (size_t i = 0; i < toneChoices.size(); ++i)
@@ -749,7 +773,14 @@ void TrackHeader::updateInstrumentChoices()
             instrumentBox.addSeparator();
         }
 
-        // Built-in: the 128 General MIDI sounds by family, plus the drum kit. Item ID = program + 1.
+        // Built-in: the 128 General MIDI sounds by family, plus the drum kits. Item ID = program + 1.
+        // A sound the SoundFont has variations of is a submenu: the sound, then its variations.
+        std::map<int, std::vector<SoundFontPlugin::Preset>> variations;
+
+        for (auto& preset : SoundFontPlugin::getPresets())
+            if (preset.bank > 0 && preset.bank < 120 && preset.program < 128)   // 120 and up: drum kits
+                variations[preset.program].push_back (preset);
+
         for (size_t family = 0; family < gm::familyNames.size(); ++family)
         {
             instrumentBox.addSectionHeading (gm::familyNames[family]);
@@ -757,12 +788,30 @@ void TrackHeader::updateInstrumentChoices()
             for (int i = 0; i < 8; ++i)
             {
                 auto program = (int) family * 8 + i;
-                instrumentBox.addItem (gm::getName (program), program + 1);
+                auto found = variations.find (program);
+
+                if (found == variations.end())
+                {
+                    instrumentBox.addItem (gm::getName (program), program + 1);
+                    continue;
+                }
+
+                std::sort (found->second.begin(), found->second.end(), [] (auto& a, auto& b) { return a.bank < b.bank; });
+                juce::PopupMenu menu;
+                menu.addItem (program + 1, gm::getName (program));
+                menu.addSeparator();
+
+                for (auto& variation : found->second)
+                    menu.addItem (firstVariationId + variation.bank * 128 + program, variation.name);
+
+                instrumentBox.getRootMenu()->addSubMenu (gm::getName (program), menu);
             }
         }
 
         instrumentBox.addSectionHeading ("Drums");
-        instrumentBox.addItem (gm::getName (gm::drumKit), gm::drumKit + 1);
+
+        for (auto kit : gm::drumKits)
+            instrumentBox.addItem (kit.name, gm::drumKitProgram (kit.number) + 1);
 
         // Third-party instruments found on this computer.
         pluginChoices = plugin_library::getInstruments (edit.engine);
@@ -795,7 +844,9 @@ void TrackHeader::updateInstrumentChoices()
             }
 
             instrumentBox.addSectionHeading ("Drums");
-            instrumentBox.addItem (gm::getName (gm::drumKit), gmDrumKitId);
+
+            for (auto kit : gm::drumKits)
+                instrumentBox.addItem (kit.name, firstDrumKitId + kit.number);
         }
 
         // A known device: its whole tone list, by section and category.
@@ -884,6 +935,11 @@ void TrackHeader::instrumentChosen()
             else if (auto* plugin = instrument.getPluginInstrument())
                 plugin_windows::show (*plugin);
         }
+        else if (id >= firstVariationId)
+        {
+            instrument.useBuiltInInstrument();
+            instrument.setProgram ((id - firstVariationId) % 128, (id - firstVariationId) / 128);
+        }
         else if (id > 0)
         {
             instrument.useBuiltInInstrument();
@@ -905,11 +961,11 @@ void TrackHeader::instrumentChosen()
     {
         instrument.setDeviceTone (std::nullopt);
     }
-    else if (id == gmDrumKitId)
+    else if (juce::isPositiveAndBelow (id - firstDrumKitId, 128))
     {
-        // General MIDI plays drums on channel 10, whatever the program.
+        // General MIDI plays drums on channel 10; moving there sends the kit's Program Change.
         instrument.setDeviceTone (std::nullopt);
-        instrument.setProgram (gm::drumKit);
+        instrument.setProgram (gm::drumKitProgram (id - firstDrumKitId));
         instrument.setOwnChannel (device_channels::drumChannel);
     }
     else if (juce::isPositiveAndBelow (id - firstToneId, (int) toneChoices.size()))
@@ -934,7 +990,8 @@ juce::String TrackHeader::getPluginsKey() const
 {
     auto* plugin = getInstrument().getPluginInstrument();
     return (plugin != nullptr ? plugin->itemID.toString() + (plugin->getAudioPluginInstance() != nullptr ? "+" : "-") : juce::String())
-           + "/" + juce::String (edit.engine.getPluginManager().knownPluginList.getNumTypes());
+           + "/" + juce::String (edit.engine.getPluginManager().knownPluginList.getNumTypes())
+           + "/" + juce::String (SoundFontPlugin::getSoundFontGeneration());   // a new SoundFont has other variations
 }
 
 void TrackHeader::renameCurrentTone()

@@ -4,7 +4,7 @@
 
 ## Audio settings
 
-<img src="images/audio-settings.png" alt="The Audio Settings window: Output, Input, active channels, sample rate and buffer size" width="522">
+<img src="images/audio-settings.png" alt="The Audio Settings window: Output, Input, active channels, sample rate and buffer size, and the built-in instrument sounds" width="522">
 
 Click **Audio** in the toolbar to choose:
 - **Output** and **Input:** the device you listen through and record from. This can be your computer's built-in speakers and microphone, headphones, or an audio interface. **Test** plays a tone, and the meter beside the input shows its level.
@@ -12,6 +12,14 @@ Click **Audio** in the toolbar to choose:
 - **Sample rate** and **Audio buffer size:** a smaller buffer means less delay between playing and hearing, but more risk of clicks on a busy computer.
 
 Purrlude remembers these settings. Close the window with Esc or its close button.
+
+### Built-in instrument sounds
+
+Purrlude's built-in instruments play GeneralUser GS, a SoundFont that comes with it. At the bottom of the Audio window, **Choose SoundFont...** plays another SoundFont (`.sf2`) instead, for every track and song: for example one with the variations of Yamaha XG or General MIDI 2 sounds. **Use Built-in** goes back to GeneralUser GS.
+- Songs keep each track's sound by number, so they play with whichever SoundFont is chosen. A variation the SoundFont hasn't got plays the General MIDI sound.
+- If the SoundFont can't be read or isn't one Purrlude can play, the built-in sounds play and the window says why.
+- Only `.sf2` files work; compressed `.sf3` ones don't.
+- A SoundFont you choose isn't part of Purrlude: check its licence before sharing music made with it.
 
 ## MIDI keyboards
 
@@ -106,9 +114,9 @@ Purrlude can play a whole song through one of these, each track with its own sou
    - Each track gets a channel of its own: drum-kit tracks get channel 10, the General MIDI drum channel, and the others take the lowest free channel.
    - Each track keeps its General MIDI sound, so a whole song switches over and sounds the same.
    - The sound menu shows the track's channel, e.g. *FluidSynth · Ch 3*.
-3. The **instrument menu** lists the 128 General MIDI sounds and **Standard Drum Kit**, sent to the device as Program Changes. Choosing the drum kit moves the track to channel 10.
+3. The **instrument menu** lists the 128 General MIDI sounds and the drum kits, sent to the device as Program Changes. Choosing a drum kit moves the track to channel 10. A General MIDI 2, GS or XG device plays the kit you choose; a plain General MIDI device has only its standard kit.
 
-**Changing a track's channel:** right-click the track's header and choose **MIDI Channel**. For example, give two tracks the same channel to have them share a sound.
+**Changing a track's channel:** open the track menu (**⋯** on its header, or right-click it) and choose **MIDI Channel**. For example, give two tracks the same channel to have them share a sound.
 
 **Turning Multi off** puts every track on that device back on the device's one channel.
 

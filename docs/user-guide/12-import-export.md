@@ -15,7 +15,7 @@ You can also **drag files onto the window**, MIDI and audio together. Each impor
 
 **Tracks:**
 - Each part of the file becomes an instrument track with one clip, named after the file's track name or its instrument.
-- Each part gets the General MIDI sound the file asks for. Channel 10 becomes the drum kit, and so does any other channel the file sets to a drum kit (as Yamaha XG and General MIDI 2 files can). XG's and GS's extra sound variations play as the nearest General MIDI sound.
+- Each part gets the General MIDI sound the file asks for. Channel 10 becomes a drum kit, and so does any other channel the file sets to a drum kit (as Yamaha XG and General MIDI 2 files can). The track gets the kit the file chooses, e.g. Brush or Jazz, or the Standard kit if it's one Purrlude doesn't have. A sound's variation (General MIDI 2, XG or GS) comes in too, and plays if the SoundFont has it (GeneralUser GS has many of Roland GS's), otherwise as the General MIDI sound.
 
 **What comes in:** notes, controllers, pitch bend and aftertouch.
 

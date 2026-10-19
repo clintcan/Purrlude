@@ -240,7 +240,12 @@ void DocScreenshots::addSteps()
     });
 
     // Menus: track header, a MIDI clip, + Track.
-    then (0, [this, headerFor] { if (auto* header = headerFor (0)) rightClick (*header, { 80, 60 }); });
+    then (0, [this, headerFor]
+    {
+        if (auto* header = headerFor (0))
+            if (auto* menu = findButton (*header, "Track menu"))
+                menu->triggerClick();
+    });
     then (800, [this, headerFor] { if (auto* header = headerFor (0)) capture ("track-menu", around (*header)); closePopups(); });
 
     then (300, [this, clipOn]
@@ -732,7 +737,9 @@ void DocScreenshots::closePopups()
 //==============================================================================
 juce::Button* DocScreenshots::findButton (juce::Component& in, const juce::String& text) const
 {
-    if (auto* button = dynamic_cast<juce::Button*> (&in); button != nullptr && button->getButtonText() == text && button->isShowing())
+    // By its text, or its title for a button without one (the track menu's ⋯).
+    if (auto* button = dynamic_cast<juce::Button*> (&in);
+         button != nullptr && (button->getButtonText() == text || button->getTitle() == text) && button->isShowing())
         return button;
 
     for (auto* child : in.getChildren())

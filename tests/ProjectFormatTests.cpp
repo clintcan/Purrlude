@@ -16,6 +16,8 @@
 #include "model/TimeSignature.h"
 #include "model/TrackEffects.h"
 #include "model/TrackMix.h"
+#include "instruments/GeneralMidi.h"
+#include "instruments/SoundFontPlugin.h"
 #include "notation/TrackNotation.h"
 
 /*  The project format is frozen from 1.0 on: a song saved by one version opens in every
@@ -97,8 +99,12 @@ namespace
                  tracktion::BeatPosition::fromBeats (purrlude::bars::getBarStart (edit, to)) };
     }
 
-    /** Builds the song for format 1 and saves it as folder/"Format 1.purrlude". */
-    void writeFormat1Song (tracktion::Engine& engine, const juce::File& folder, const juce::File& autosaves)
+    juce::String getSongName (int version)    { return "Format " + juce::String (version); }
+
+    /** Builds the song for a format version and saves it as folder/"Format <version>.purrlude".
+        Version 2 adds a drum kit besides the standard one, and a SoundFont variation.
+    */
+    void writeSong (tracktion::Engine& engine, const juce::File& folder, const juce::File& autosaves, int version)
     {
         auto project = Project::createNew (engine, autosaves);
         auto& edit = project->getEdit();
@@ -138,6 +144,9 @@ namespace
         // A drum loop and a bass part.
         LoopLibrary::insertLoop (edit, live, LoopLibrary::getAll().front(), 0, 4);
 
+        if (version >= 2)
+            TrackInstrument (edit, *LoopLibrary::findOrCreateDrumTrack (edit, live)).setProgram (gm::drumKitProgram (8));   // Room
+
         for (auto& pattern : accompaniment::getPatterns())
         {
             if (pattern.isBass())
@@ -149,6 +158,10 @@ namespace
                         auto* bassClip = accompaniment::insert (edit, live, pattern, progression, { 5, false }, 0, 4);
                         auto* bass = dynamic_cast<tracktion::AudioTrack*> (bassClip->getTrack());
                         bass->setName ("Bass");
+
+                        // From format 2, a variation: GeneralUser GS's Synth Bass 101.
+                        if (version >= 2)
+                            TrackInstrument (edit, *bass).setProgram (38, 1);
 
                         // Its mix.
                         TrackMix::change (edit, bass->itemID, TrackMix::Control::volumeDb, -3.0f, 0.0f);
@@ -220,12 +233,12 @@ namespace
 
         pump();
         juce::String error;
-        REQUIRE (project->saveAs (folder.getChildFile ("Format 1.purrlude"), error));
+        REQUIRE (project->saveAs (folder.getChildFile (getSongName (version) + ".purrlude"), error));
         INFO (error);
     }
 
-    /** Checks everything the format 1 song should have. */
-    void checkFormat1Song (Project& project)
+    /** Checks everything the song for a format version should have. */
+    void checkSong (Project& project, int version)
     {
         auto& edit = project.getEdit();
         auto names = juce::StringArray();
@@ -302,11 +315,21 @@ namespace
         REQUIRE (bass->getClips().size() == 1);
         CHECK (bass->getClips()[0]->isLooping());
         CHECK (bass->state["purrludeAccompaniment"].toString() == "bass");
+
+        if (version >= 2)
+        {
+            CHECK (TrackInstrument (edit, *bass).getProgram() == 38);
+            CHECK (TrackInstrument (edit, *bass).getBank() == 1);
+            auto synths = bass->pluginList.getPluginsOfType<SoundFontPlugin>();
+            REQUIRE (synths.size() == 1);
+            CHECK (synths[0]->getBank() == 1);
+        }
         CHECK_THAT (TrackInstrument (edit, *bass).getVolumeDb(), WithinAbs (-3.0, 0.01));
         CHECK_THAT (TrackInstrument (edit, *bass).getPan(), WithinAbs (-0.3, 0.001));
 
-        // The drum loop: a looping clip on a drum kit.
+        // The drum loop: a looping clip on a drum kit (from format 2, the room kit).
         CHECK (TrackInstrument (edit, *drums).playsDrumKit());
+        CHECK (TrackInstrument (edit, *drums).getProgram() == (version >= 2 ? gm::drumKitProgram (8) : gm::drumKit));
         REQUIRE (drums->getClips().size() == 1);
         CHECK (drums->getClips()[0]->isLooping());
 
@@ -327,7 +350,7 @@ namespace
         auto* wave = dynamic_cast<tracktion::WaveAudioClip*> (vocal->getClips()[0]);
         REQUIRE (wave != nullptr);
         CHECK (wave->getAudioFile().getFile().existsAsFile());
-        CHECK (wave->getAudioFile().getFile().getParentDirectory().getFileName() == "Format 1 Audio");
+        CHECK (wave->getAudioFile().getFile().getParentDirectory().getFileName() == getSongName (version) + " Audio");
         CHECK_THAT (wave->getFadeIn().inSeconds(), WithinAbs (0.1, 1.0e-3));
         CHECK_THAT (wave->getFadeOut().inSeconds(), WithinAbs (0.2, 1.0e-3));
         CHECK (takes::getCount (*wave) == 2);
@@ -358,25 +381,30 @@ namespace
     }
 }
 
-TEST_CASE ("Songs saved in format 1 open with everything in them", "[project-format]")
+TEST_CASE ("Songs saved in each format open with everything in them", "[project-format]")
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
     auto engine = createEngine ("PurrludeTests");
-    TempDir copy, autosaves;
 
-    // A copy, so opening (which may write) leaves the saved song as it is.
-    auto saved = getSongsFolder().getChildFile ("format-1");
-    REQUIRE (saved.isDirectory());
-    REQUIRE (saved.copyDirectoryTo (copy.dir));
+    for (int version = 1; version <= project_format::currentVersion; ++version)
+    {
+        INFO ("Format " << version);
+        TempDir copy, autosaves;
 
-    juce::String error;
-    auto project = Project::open (*engine, copy.dir.getChildFile ("Format 1.purrlude"), autosaves.dir, error);
-    REQUIRE (project != nullptr);
-    INFO (error);
-    CHECK (project->getOpenWarning().isEmpty());
-    pump();
+        // A copy, so opening (which may write) leaves the saved song as it is.
+        auto saved = getSongsFolder().getChildFile ("format-" + juce::String (version));
+        REQUIRE (saved.isDirectory());
+        REQUIRE (saved.copyDirectoryTo (copy.dir));
 
-    checkFormat1Song (*project);
+        juce::String error;
+        auto project = Project::open (*engine, copy.dir.getChildFile (getSongName (version) + ".purrlude"), autosaves.dir, error);
+        REQUIRE (project != nullptr);
+        INFO (error);
+        CHECK (project->getOpenWarning().isEmpty());
+        pump();
+
+        checkSong (*project, version);
+    }
 }
 
 TEST_CASE ("Saving writes the format version, and a newer one opens with a warning", "[project-format]")
@@ -416,16 +444,18 @@ TEST_CASE ("Write the song for the current format version", "[.write-format-song
     auto engine = createEngine ("PurrludeTests");
     TempDir autosaves;
 
-    static_assert (project_format::currentVersion == 1, "Add a writer and checks for the new version");
-    auto folder = getSongsFolder().getChildFile ("format-1");
+    // A new version adds what it changed to writeSong and checkSong.
+    static_assert (project_format::currentVersion == 2, "Add the new version's features to writeSong and checkSong");
+    constexpr auto version = project_format::currentVersion;
+    auto folder = getSongsFolder().getChildFile ("format-" + juce::String (version));
     folder.deleteRecursively();
     REQUIRE (folder.createDirectory());
-    writeFormat1Song (*engine, folder, autosaves.dir);
+    writeSong (*engine, folder, autosaves.dir, version);
 
     // And it reads back as it should.
     juce::String error;
-    auto project = Project::open (*engine, folder.getChildFile ("Format 1.purrlude"), autosaves.dir, error);
+    auto project = Project::open (*engine, folder.getChildFile (getSongName (version) + ".purrlude"), autosaves.dir, error);
     REQUIRE (project != nullptr);
     pump();
-    checkFormat1Song (*project);
+    checkSong (*project, version);
 }

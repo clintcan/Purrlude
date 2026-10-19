@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
 
 namespace purrlude::gm
@@ -56,13 +57,61 @@ constexpr std::array<const char*, 16> familyNames
     "Reed", "Pipe", "Synth Lead", "Synth Pad", "Synth Effects", "Ethnic", "Percussive", "Sound Effects",
 };
 
-/** Not a GM program number: the standard drum kit (bank 128 / channel 10 in GM). */
+/** Not a GM program number: the standard drum kit (bank 128 / channel 10 in GM). Other drum
+    kits follow it: 128 + the kit's Program Change number on the drum channel (GM2, GS, XG).
+*/
 constexpr int drumKit = 128;
+
+/** A drum kit's program: 128 + its Program Change number. */
+constexpr int drumKitProgram (int kit)  { return drumKit + kit; }
+
+constexpr bool isDrumKit (int program)  { return program >= drumKit && program < drumKit + 128; }
+
+/** The kit's Program Change number on the drum channel. */
+constexpr int getKitNumber (int program)  { return program - drumKit; }
+
+struct DrumKit
+{
+    int number;             ///< Its Program Change number on the drum channel
+    const char* name;
+};
+
+/** General MIDI 2's drum kits, which GS and XG number the same way (the built-in SoundFont has them all). */
+constexpr std::array<DrumKit, 9> drumKits
+{{
+    { 0, "Standard Drum Kit" }, { 8, "Room Drum Kit" }, { 16, "Power Drum Kit" },
+    { 24, "Electronic Drum Kit" }, { 25, "Analog Drum Kit" }, { 32, "Jazz Drum Kit" },
+    { 40, "Brush Drum Kit" }, { 48, "Orchestra Drum Kit" }, { 56, "SFX Kit" },
+}};
+
+/** The drum kit for a file's or device's kit number: the same one, or the standard kit. */
+constexpr int findDrumKit (int kitNumber)
+{
+    for (auto kit : drumKits)
+        if (kit.number == kitNumber)
+            return drumKitProgram (kitNumber);
+
+    return drumKit;
+}
+
+/** A program the built-in instrument can play: a GM program (0-127) or one of the drum kits. */
+constexpr int validProgram (int program)
+{
+    return isDrumKit (program) ? findDrumKit (getKitNumber (program)) : std::clamp (program, 0, 127);
+}
 
 inline const char* getName (int program)
 {
-    return program == drumKit ? "Standard Drum Kit"
-         : program >= 0 && program < 128 ? programNames[(size_t) program] : "";
+    if (isDrumKit (program))
+    {
+        for (auto kit : drumKits)
+            if (drumKitProgram (kit.number) == program)
+                return kit.name;
+
+        return "Drum Kit";
+    }
+
+    return program >= 0 && program < 128 ? programNames[(size_t) program] : "";
 }
 
 } // namespace purrlude::gm

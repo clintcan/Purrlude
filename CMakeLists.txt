@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(Purrlude VERSION 1.0.2 LANGUAGES C CXX)
+project(Purrlude VERSION 1.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -204,6 +204,8 @@ target_sources(purrlude_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/MidiLearnPanel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/ExportAudioDialog.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/ExportAudioDialog.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/SoundFontChooser.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/SoundFontChooser.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/LevelMeter.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/LevelMeter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/TimelineView.h

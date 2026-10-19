@@ -14,6 +14,7 @@ namespace
     const juce::Identifier outputChannelProperty   { "purrludeOutputChannel" };
     const juce::Identifier ownChannelProperty      { "purrludeOwnChannel" };     // true: not the device's channel
     const juce::Identifier programProperty         { "purrludeProgram" };
+    const juce::Identifier bankProperty            { "purrludeBank" };
     const juce::Identifier toneProperty            { "purrludeDeviceTone" };   // "msb lsb program" or absent
     const juce::Identifier toneNameProperty        { "purrludeDeviceToneName" };
     const juce::Identifier kindProperty            { "purrludeTrackKind" };   // "audio", or absent for instrument tracks
@@ -116,8 +117,9 @@ void TrackInstrument::setUp (tracktion::Edit& edit, tracktion::AudioTrack& track
     addMixPlugins (edit, track);
 
     // Only when it differs: setting it makes the audio thread re-apply it.
-    if (auto* soundFont = findSoundFont (track); soundFont != nullptr && soundFont->getProgram() != instrument.getProgram())
-        soundFont->setProgram (instrument.getProgram());
+    if (auto* soundFont = findSoundFont (track);
+         soundFont != nullptr && (soundFont->getProgram() != instrument.getProgram() || soundFont->getBank() != instrument.getBank()))
+        soundFont->setProgram (instrument.getProgram(), instrument.getBank());
 }
 
 void TrackInstrument::addMixPlugins (tracktion::Edit& edit, tracktion::AudioTrack& track)
@@ -193,7 +195,7 @@ void TrackInstrument::useBuiltInInstrument()
         synth->setEnabled (getSoundSourceID().isEmpty());
     }
 
-    setProgram (getProgram());
+    setProgram (getProgram(), getBank());
 }
 
 tracktion::ExternalPlugin* TrackInstrument::getPluginInstrument() const
@@ -323,7 +325,7 @@ bool TrackInstrument::hasOwnChannel() const
 
 bool TrackInstrument::playsDrumKit() const
 {
-    if (getProgram() != gm::drumKit || isAudio())
+    if (! gm::isDrumKit (getProgram()) || isAudio())
         return false;
 
     // On a multi-part device, the General MIDI drums are on channel 10.
@@ -331,24 +333,36 @@ bool TrackInstrument::playsDrumKit() const
 }
 
 //==============================================================================
-void TrackInstrument::setProgram (int program)
+void TrackInstrument::setProgram (int program, int bank)
 {
     auto* track = getTrack();
 
     if (track == nullptr)
         return;
 
-    program = program == gm::drumKit ? gm::drumKit : juce::jlimit (0, 127, program);
+    program = gm::validProgram (program);
+    bank = gm::isDrumKit (program) ? 0 : juce::jlimit (0, 127, bank);
     track->state.setProperty (programProperty, program, nullptr);
 
+    if (bank == 0)
+        track->state.removeProperty (bankProperty, nullptr);   // songs without variations stay as they were
+    else
+        track->state.setProperty (bankProperty, bank, nullptr);
+
     if (auto* soundFont = findSoundFont (*track))
-        soundFont->setProgram (program);
+        soundFont->setProgram (program, bank);
 }
 
 int TrackInstrument::getProgram() const
 {
     auto* track = getTrack();
     return track != nullptr ? (int) track->state.getProperty (programProperty, 0) : 0;
+}
+
+int TrackInstrument::getBank() const
+{
+    auto* track = getTrack();
+    return track != nullptr ? (int) track->state.getProperty (bankProperty, 0) : 0;
 }
 
 void TrackInstrument::setDeviceTone (std::optional<DeviceTone> tone)
@@ -394,13 +408,24 @@ void TrackInstrument::sendToneToDevice() const
     auto id = getSoundSourceID();
     auto tone = getDeviceTone();
 
-    if (id.isEmpty() || ! tone)
+    // A drum kit on a multi-part device's channel 10 is chosen by its Program Change alone: without a
+    // Bank Select, GM2, GS and XG devices keep the channel's drum bank.
+    auto sendsKit = ! tone && playsDrumKit();
+
+    if (id.isEmpty() || ! (tone || sendsKit))
         return;
 
     if (auto* device = findMidiOutput (edit, id); device != nullptr && device->isEnabled())
     {
-        // Bank Select first: devices like the GO:KEYS 5 ignore a Program Change outside their own bank.
         auto channel = getOutputChannel();
+
+        if (sendsKit)
+        {
+            device->fireMessage (juce::MidiMessage::programChange (channel, gm::getKitNumber (getProgram())));
+            return;
+        }
+
+        // Bank Select first: devices like the GO:KEYS 5 ignore a Program Change outside their own bank.
         device->fireMessage (juce::MidiMessage::controllerEvent (channel, 0, tone->bankMsb));
         device->fireMessage (juce::MidiMessage::controllerEvent (channel, 32, tone->bankLsb));
         device->fireMessage (juce::MidiMessage::programChange (channel, tone->program));

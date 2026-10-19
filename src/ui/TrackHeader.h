@@ -46,7 +46,8 @@ private:
     void renameCurrentTone();
     int getSelectedInstrumentId() const;
     void showSelectedInstrument();
-    void showMenu();
+    /** The track menu (rename, delete, automation, MIDI channel), below the anchor or at the mouse. */
+    void showMenu (juce::Component* anchor = nullptr);
 
     /** The automation choices in a menu: Purrlude's own controls, then a submenu per
         third-party plugin with its automated and recently moved controls and Choose a Control...
@@ -72,6 +73,24 @@ private:
 
     juce::Label nameLabel;
     juce::TextButton armButton { "Arm" }, muteButton { "M" }, soloButton { "S" }, effectsButton { "FX" };
+
+    /** Opens the track menu, which right-clicking the header also opens: three dots, drawn
+        rather than typed, as not every platform's UI font has "⋯".
+    */
+    struct MenuButton final : public juce::TextButton
+    {
+        MenuButton() : juce::TextButton (juce::String()) {}
+
+        void paintButton (juce::Graphics& g, bool highlighted, bool down) override
+        {
+            juce::TextButton::paintButton (g, highlighted, down);
+            g.setColour (findColour (juce::TextButton::textColourOffId).withMultipliedAlpha (isEnabled() ? 1.0f : 0.5f));
+            auto centre = getLocalBounds().toFloat().getCentre();
+
+            for (int i = -1; i <= 1; ++i)
+                g.fillEllipse (juce::Rectangle<float> (3.4f, 3.4f).withCentre (centre.translated ((float) i * 5.5f, 0.0f)));
+        }
+    } menuButton;
     std::unique_ptr<juce::LookAndFeel> panKnobLook;   // declared before the knob that uses it
     juce::Slider volumeSlider, panKnob;
     float valueBeforeDrag = 0.0f;   ///< Volume or pan when a drag started (for its undo step)

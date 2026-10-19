@@ -88,6 +88,9 @@ private:
     void exportScore (ExportFormat);
     void exportParts();
 
+    /** Where a file dialog opens (see RecentFolder.h). */
+    juce::File getStartFolder() const;
+
     void showAudioSettings();
     void chooseMidiFileToImport();
     void importMidiFiles (const juce::Array<juce::File>&);

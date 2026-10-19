@@ -19,7 +19,7 @@ All of these are in the **File** menu.
 
 Purrlude always starts with a new, empty song; your earlier songs are under **Open Recent**.
 
-The default folder is `Documents/Purrlude`. The window's title shows the song's name, with a `*` in front when there are unsaved changes ("Untitled" until it's first saved).
+The default folder is `Documents/Purrlude`. After that, every file window (open, save, import, export, choosing a SoundFont) opens in the folder you last used in one. The window's title shows the song's name, with a `*` in front when there are unsaved changes ("Untitled" until it's first saved).
 
 If the song has unsaved changes when you start a new one, open another or quit, Purrlude asks **Save changes?** with **Save**, **Don't Save** and **Cancel**.
 

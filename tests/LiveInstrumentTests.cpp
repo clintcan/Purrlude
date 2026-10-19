@@ -10,6 +10,49 @@
 #include "model/TrackInstrument.h"
 #include "model/TrackMix.h"
 
+namespace
+{
+    /** Renders one track of an edit offline, from the start. */
+    juce::AudioBuffer<float> renderTrack (tracktion::Edit& edit, tracktion::AudioTrack& track, double seconds)
+    {
+        auto& engine = edit.engine;
+        auto file = juce::File::createTempFile (".wav");
+        // Bits index getAllTracks(), which starts with the hidden tempo/marker/chord tracks.
+        juce::BigInteger tracks;
+        tracks.setBit (tracktion::getAllTracks (edit).indexOf (&track));
+
+        // Explicit render settings: there may be no audio device (and so no sample rate) in tests.
+        tracktion::Renderer::Parameters params (edit);
+        params.destFile = file;
+        params.audioFormat = engine.getAudioFileFormatManager().getWavFormat();
+        params.sampleRateForAudio = 44100.0;
+        params.blockSizeForAudio = 512;
+        params.time = { tracktion::TimePosition(), tracktion::TimePosition::fromSeconds (seconds) };
+        params.tracksToDo = tracks;
+
+        // Renders on a background thread, which also calls the callback.
+        std::atomic<bool> finished { false };
+        auto handle = tracktion::EditRenderer::render (std::move (params), [&finished] (auto) { finished = true; });
+
+        for (auto end = juce::Time::getMillisecondCounter() + 20000; ! finished && juce::Time::getMillisecondCounter() < end;)
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
+
+        REQUIRE (finished);
+        REQUIRE (file.existsAsFile());
+
+        juce::AudioFormatManager formats;
+        formats.registerBasicFormats();
+        std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (file));
+        REQUIRE (reader != nullptr);
+
+        juce::AudioBuffer<float> audio ((int) reader->numChannels, (int) reader->lengthInSamples);
+        reader->read (&audio, 0, (int) reader->lengthInSamples, 0, true, true);
+        reader = nullptr;
+        file.deleteFile();
+        return audio;
+    }
+}
+
 TEST_CASE ("A live instrument gets a synth and every MIDI input", "[model][instrument]")
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
@@ -153,6 +196,14 @@ TEST_CASE ("Choosing an instrument sets the GM program", "[model][instrument]")
     instrument.setProgram (purrlude::gm::drumKit);
     REQUIRE (synth->getProgram() == purrlude::gm::drumKit);
 
+    // The other drum kits, by their number on the drum channel; unknown ones are the standard kit.
+    instrument.setProgram (purrlude::gm::drumKitProgram (40));
+    REQUIRE (synth->getProgram() == purrlude::gm::drumKitProgram (40));
+    REQUIRE (instrument.getInstrument().playsDrumKit());
+    REQUIRE (juce::String (purrlude::gm::getName (synth->getProgram())) == "Brush Drum Kit");
+    instrument.setProgram (purrlude::gm::drumKitProgram (3));
+    REQUIRE (instrument.getProgram() == purrlude::gm::drumKit);
+
     instrument.setProgram (500);
     REQUIRE (instrument.getProgram() == 127);
 }
@@ -174,39 +225,7 @@ TEST_CASE ("The GM instrument renders sound offline", "[model][instrument][rende
     for (int note : { 60, 64, 67 })
         clip->getSequence().addNote (note, tracktion::BeatPosition(), tracktion::BeatDuration::fromBeats (3.0), 100, 0, nullptr);
 
-    auto file = juce::File::createTempFile (".wav");
-    // Bits index getAllTracks(), which starts with the hidden tempo/marker/chord tracks.
-    juce::BigInteger tracks;
-    tracks.setBit (tracktion::getAllTracks (*edit).indexOf (track));
-
-    // Explicit render settings: there may be no audio device (and so no sample rate) in tests.
-    tracktion::Renderer::Parameters params (*edit);
-    params.destFile = file;
-    params.audioFormat = engine.getAudioFileFormatManager().getWavFormat();
-    params.sampleRateForAudio = 44100.0;
-    params.blockSizeForAudio = 512;
-    params.time = { tracktion::TimePosition(), tracktion::TimePosition::fromSeconds (2.0) };
-    params.tracksToDo = tracks;
-
-    // Renders on a background thread, which also calls the callback.
-    std::atomic<bool> finished { false };
-    auto handle = tracktion::EditRenderer::render (std::move (params), [&finished] (auto) { finished = true; });
-
-    for (auto end = juce::Time::getMillisecondCounter() + 20000; ! finished && juce::Time::getMillisecondCounter() < end;)
-        juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
-
-    REQUIRE (finished);
-    REQUIRE (file.existsAsFile());
-
-    juce::AudioFormatManager formats;
-    formats.registerBasicFormats();
-    std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (file));
-    REQUIRE (reader != nullptr);
-
-    juce::AudioBuffer<float> audio ((int) reader->numChannels, (int) reader->lengthInSamples);
-    reader->read (&audio, 0, (int) reader->lengthInSamples, 0, true, true);
-    reader = nullptr;
-    file.deleteFile();
+    auto audio = renderTrack (*edit, *track, 2.0);
 
     auto peak = audio.getMagnitude (0, audio.getNumSamples());
     INFO ("Peak level " << peak);
@@ -541,4 +560,139 @@ TEST_CASE ("Volume and pan change what's heard", "[model][instrument][render]")
 
     um.undo();
     REQUIRE (renderPeaks (*edit).first > full.first * 0.9f);
+}
+
+TEST_CASE ("Each drum kit plays its own sounds", "[model][instrument][render]")
+{
+    juce::ScopedJuceInitialiser_GUI juceInit;
+    auto engine = purrlude::createEngine ("PurrludeTests");
+    auto edit = tracktion::Edit::createSingleTrackEdit (*engine);
+    purrlude::LiveInstrument instrument (*edit);
+    auto* track = instrument.getTrack();
+
+    // A snare hit.
+    auto clip = track->insertMIDIClip ({ tracktion::TimePosition(), tracktion::TimePosition::fromSeconds (1.0) }, nullptr);
+    clip->getSequence().addNote (38, tracktion::BeatPosition(), tracktion::BeatDuration::fromBeats (0.5), 100, 0, nullptr);
+
+    instrument.setProgram (purrlude::gm::drumKit);
+    auto standard = renderTrack (*edit, *track, 1.0);
+    instrument.setProgram (purrlude::gm::drumKitProgram (40));
+    auto brush = renderTrack (*edit, *track, 1.0);
+
+    REQUIRE (standard.getNumSamples() == brush.getNumSamples());
+    auto standardLevel = standard.getRMSLevel (0, 0, standard.getNumSamples());
+    auto brushLevel = brush.getRMSLevel (0, 0, brush.getNumSamples());
+    INFO ("Standard " << standardLevel << ", brush " << brushLevel);
+    REQUIRE (standardLevel > 0.001f);
+    REQUIRE (brushLevel > 0.001f);
+
+    // A brush on the snare isn't a stick on it.
+    juce::AudioBuffer<float> difference (standard);
+    difference.addFrom (0, 0, brush, 0, 0, brush.getNumSamples(), -1.0f);
+    auto differenceLevel = difference.getRMSLevel (0, 0, difference.getNumSamples());
+    INFO ("Difference " << differenceLevel);
+    REQUIRE (differenceLevel > 0.5f * juce::jmin (standardLevel, brushLevel));
+}
+
+TEST_CASE ("A track plays a SoundFont variation, or the General MIDI sound if there's none", "[model][instrument][render]")
+{
+    juce::ScopedJuceInitialiser_GUI juceInit;
+    auto engine = purrlude::createEngine ("PurrludeTests");
+    auto edit = tracktion::Edit::createSingleTrackEdit (*engine);
+    purrlude::LiveInstrument instrument (*edit);
+    auto* track = instrument.getTrack();
+    auto* synth = track->pluginList.getPluginsOfType<purrlude::SoundFontPlugin>()[0];
+
+    auto clip = track->insertMIDIClip ({ tracktion::TimePosition(), tracktion::TimePosition::fromSeconds (1.0) }, nullptr);
+    clip->getSequence().addNote (40, tracktion::BeatPosition(), tracktion::BeatDuration::fromBeats (1.0), 100, 0, nullptr);
+
+    // GeneralUser GS has the GS variation "Synth Bass 101" (bank 1) of Synth Bass 1 (38).
+    auto presets = purrlude::SoundFontPlugin::getPresets();
+    REQUIRE (std::any_of (presets.begin(), presets.end(), [] (auto& p) { return p.bank == 1 && p.program == 38; }));
+
+    auto bass = instrument.getInstrument();
+    bass.setProgram (38);
+    auto plain = renderTrack (*edit, *track, 1.0);
+
+    bass.setProgram (38, 1);
+    REQUIRE (bass.getBank() == 1);
+    REQUIRE (synth->getBank() == 1);
+    REQUIRE (track->state["purrludeBank"].toString() == "1");
+    auto variation = renderTrack (*edit, *track, 1.0);
+
+    // A bank it hasn't got for this program: the General MIDI sound.
+    bass.setProgram (38, 99);
+    auto missing = renderTrack (*edit, *track, 1.0);
+
+    auto difference = [] (const juce::AudioBuffer<float>& a, const juce::AudioBuffer<float>& b)
+    {
+        juce::AudioBuffer<float> d (a);
+        d.addFrom (0, 0, b, 0, 0, b.getNumSamples(), -1.0f);
+        return d.getRMSLevel (0, 0, d.getNumSamples());
+    };
+
+    auto level = plain.getRMSLevel (0, 0, plain.getNumSamples());
+    INFO ("Level " << level << ", variation differs by " << difference (plain, variation)
+          << ", missing bank by " << difference (plain, missing));
+    REQUIRE (level > 0.001f);
+    REQUIRE (difference (plain, variation) > 0.2f * level);
+    REQUIRE (difference (plain, missing) < 0.01f * level);
+
+    // Back to the General MIDI sound: no bank left on the track. Drum kits have none.
+    bass.setProgram (38);
+    REQUIRE_FALSE (track->state.hasProperty ("purrludeBank"));
+    bass.setProgram (purrlude::gm::drumKit, 5);
+    REQUIRE (bass.getBank() == 0);
+}
+
+TEST_CASE ("The built-in instrument plays another SoundFont, or the bundled one if it won't load", "[model][instrument][render]")
+{
+    juce::ScopedJuceInitialiser_GUI juceInit;
+    auto engine = purrlude::createEngine ("PurrludeTests");
+    auto edit = tracktion::Edit::createSingleTrackEdit (*engine);
+    purrlude::LiveInstrument instrument (*edit);
+    auto* track = instrument.getTrack();
+    auto clip = track->insertMIDIClip ({ tracktion::TimePosition(), tracktion::TimePosition::fromSeconds (1.0) }, nullptr);
+    clip->getSequence().addNote (60, tracktion::BeatPosition(), tracktion::BeatDuration::fromBeats (1.0), 100, 0, nullptr);
+    REQUIRE (purrlude::SoundFontPlugin::isAvailable());
+
+    struct Restore { ~Restore() { purrlude::SoundFontPlugin::useSoundFont ({}); purrlude::SoundFontPlugin::isAvailable(); } } restore;
+
+    auto useAndWait = [] (const juce::File& file)
+    {
+        auto before = purrlude::SoundFontPlugin::getSoundFontGeneration();
+        purrlude::SoundFontPlugin::useSoundFont (file);
+
+        // Loaded in the background, then the instruments move to it on the message thread.
+        for (auto end = juce::Time::getMillisecondCounter() + 20000;
+             purrlude::SoundFontPlugin::getSoundFontGeneration() == before && juce::Time::getMillisecondCounter() < end;)
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
+
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (100);
+        REQUIRE (purrlude::SoundFontPlugin::getSoundFontGeneration() != before);
+    };
+
+    // Another SoundFont file (here a copy of the bundled one).
+    auto copy = juce::File::createTempFile (".sf2");
+    REQUIRE (purrlude::SoundFontPlugin::findSoundFont().copyFileTo (copy));
+    useAndWait (copy);
+    CHECK (purrlude::SoundFontPlugin::getChosenSoundFont() == copy);
+    CHECK (purrlude::SoundFontPlugin::getSoundFontError().isEmpty());
+    CHECK (renderTrack (*edit, *track, 1.0).getMagnitude (0, 0, 44100) > 0.01f);
+
+    // A file that isn't a SoundFont: the bundled one plays, and the reason is given.
+    auto broken = juce::File::createTempFile (".sf2");
+    REQUIRE (broken.replaceWithText ("not a SoundFont"));
+    useAndWait (broken);
+    CHECK (purrlude::SoundFontPlugin::getSoundFontError().contains ("isn't a SoundFont"));
+    CHECK (purrlude::SoundFontPlugin::isAvailable());
+    CHECK (renderTrack (*edit, *track, 1.0).getMagnitude (0, 0, 44100) > 0.01f);
+
+    // And back to the bundled one.
+    useAndWait ({});
+    CHECK (purrlude::SoundFontPlugin::getChosenSoundFont() == juce::File());
+    CHECK (purrlude::SoundFontPlugin::getSoundFontError().isEmpty());
+
+    copy.deleteFile();
+    broken.deleteFile();
 }

@@ -4,6 +4,7 @@
 #include "Splash.h"
 #include "model/EngineSetup.h"
 #include "ui/PluginWindows.h"
+#include "ui/SoundFontChooser.h"
 
 namespace purrlude
 {
@@ -103,6 +104,7 @@ public:
         if (screenshots == juce::File())
             splash = std::make_unique<Splash> (getApplicationVersion());
 
+        SoundFontChooser::applySavedChoice (*settings.getUserSettings());   // before the engine loads the bundled one
         engine = createEngine (getApplicationName(), std::make_unique<plugin_windows::Behaviour>(), true);
         bluetooth = std::make_unique<BluetoothMidiManager> (BleMidiService::createForPlatform(),
                                                             *settings.getUserSettings());

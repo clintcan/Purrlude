@@ -176,7 +176,7 @@ public:
         // to record over it.
         auto writing = automation::isWriting (edit);
         auto followsAutomation = writing ? "Follows its automation: turn it while the song plays to record over it"
-                                         : "Follows its automation (right-click the track > Automation)";
+                                         : "Follows its automation (track menu > Automation)";
 
         for (auto* knob : knobs)
         {
@@ -537,7 +537,7 @@ void EffectsPanel::refreshSend()
     sendKnob.setEnabled (! automated || writing);
     sendKnob.setTooltip (! automated ? "How much of this track goes to the shared reverb (double-click for none)"
                          : writing   ? "The send follows its automation: turn it while the song plays to record over it"
-                                     : "The send follows its automation (right-click the track > Automation)");
+                                     : "The send follows its automation (track menu > Automation)");
     sendKnob.setValue (send != nullptr ? send->gain->getCurrentValue() : 0.0f, juce::dontSendNotification);
     sendKnob.updateText();
 }
