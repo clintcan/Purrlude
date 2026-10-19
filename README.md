@@ -51,11 +51,11 @@ sudo apt-get install ninja-build libasound2-dev libjack-jackd2-dev ladspa-sdk li
   libxinerama-dev libxrandr-dev libxrender-dev libwebkit2gtk-4.1-dev libglu1-mesa-dev mesa-common-dev
 ```
 
-**Separating instruments** needs the Demucs model (`htdemucs_6s.onnx`, 115 MB). The first time you separate, Purrlude offers to download it from this repository's `models-1` release (checked against its SHA-256). `tools/models/export_demucs.py` makes the same file from Meta's published weights. Everything else works without it.
+**Separating instruments** needs the Demucs model, fine-tuned for Purrlude (`htdemucs_6s-purrlude-1.onnx`, 115 MB). The first time you separate, Purrlude offers to download it from this repository's `models-2` release (checked against its SHA-256). `tools/models/export_demucs.py --weights` makes the same file from that release's weights. Everything else works without it.
 
 ## Licence
 
-Purrlude is free software under the **GNU Affero General Public License v3.0**; see [LICENSE](LICENSE). It's built on JUCE (AGPLv3) and Tracktion Engine (GPLv3).
+Copyright © 2026 Clint Christopher Canada. Purrlude is free software under the **GNU Affero General Public License v3.0**; see [LICENSE](LICENSE). It's built on JUCE (AGPLv3) and Tracktion Engine (GPLv3).
 
 It also uses:
 - **[Verovio](https://www.verovio.org)** (LGPLv3) for score engraving
