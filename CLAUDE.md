@@ -6,7 +6,7 @@ Purrlude is a cross-platform digital audio workstation (DAW) for composing, reco
 > - **Works:** the signature features (score, audio to MIDI, separation, loops and accompaniment, devices) and recording, editing, mixing and export, in real use on macOS (Apple Silicon) and Windows.
 > - **The project format is frozen** (format 1, `docs/project-format.md`): every later change needs an upgrade step.
 > - **Still to do:**
->   - prebuilt releases for macOS (signed, notarised) and Windows (an installer); Linux has an x86-64 AppImage since 1.0.1 (`appimage` workflow)
+>   - prebuilt releases for macOS (signed, notarised) and Windows (an installer can be made, `tools/packaging/make_windows_installer.py`, but isn't signed or published yet); Linux has an x86-64 AppImage since 1.0.1 (`appimage` workflow)
 >   - everyday use on Linux, and its Bluetooth MIDI backend (BlueZ)
 > - **Public:** github.com/clintcan/Purrlude, AGPLv3.
 
@@ -560,6 +560,8 @@ cmake --preset ninja && cmake --build --preset ninja-debug && ctest --preset nin
 ```
 
 **Linux AppImage:** `gh workflow run appimage` builds a Release on Ubuntu 22.04 (the oldest glibc it runs on) and runs `tools/packaging/make_appimage.sh`, which packs the build folder (the app and what it finds next to itself) with linuxdeploy and appimagetool (pinned releases, SHA-256 checked; the static type-2 runtime, so users don't need FUSE 2), and fails if a library would be missing. The AppImage is kept as the run's artifact for 14 days; attaching it to a release is a separate step. The separation model isn't included (downloaded on first use). The icon is `branding/purrlude-icon-256.png` (made by `tools/branding/make_icon.py`).
+
+**Windows installer:** `python tools/packaging/make_windows_installer.py build/Purrlude_artefacts/Release <out>` (needs Pillow and Inno Setup 6) compiles `tools/packaging/purrlude.iss`: the build folder (not `models/`), `LICENSE` and `NOTICE` (shown as pages too), wizard images and icon drawn from `branding/`, and Microsoft's latest Visual C++ runtime installer (ONNX Runtime needs it), run only when the PC's runtime is older. Windows 10 1903+ (DirectML). Keep the `AppId` unchanged: upgrades and the uninstaller find Purrlude by it. It isn't code-signed yet, so SmartScreen warns.
 
 Dependencies download into `.cpm-cache/` on first configure (slow the first time). MSVC builds compile with `/MP` (parallel files within a target). Linux needs the JUCE system packages listed in `.github/workflows/build.yml`.
 
