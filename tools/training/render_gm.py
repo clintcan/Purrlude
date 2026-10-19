@@ -4,12 +4,13 @@ separation model also learns how General MIDI instruments sound (Purrlude's own,
 programs' renders).
 
     python tools/training/render_gm.py <slakh folder> <output folder> GeneralUser-GS.sf2 [more.sf2 ...]
-        [--limit N] [--sample-rate 44100]
+        [--limit N] [--sample-rate 44100] [--part I/N]
 
 Each song is rendered with one of the sound sets, in turn. Each instrument (MIDI/Sxx.mid) is
 rendered on its own with its General MIDI program from metadata.yaml (drums on channel 10), to
 stems/Sxx.flac, and metadata.yaml is copied, so slakh.py reads the result like Slakh. Songs
-already rendered are skipped, so it can be stopped and run again.
+already rendered are skipped, so it can be stopped and run again. FluidSynth renders on one core,
+so to use several, run one per core, each with its own --part (1/4, 2/4, 3/4, 4/4).
 
 Needs FluidSynth (the program; LGPL, used only to render) and mido. Sound sets with licences that
 allow this: GeneralUser GS (Purrlude's own), FluidR3_GM (MIT), MuseScore_General (MIT).
@@ -92,7 +93,9 @@ def main():
     parser.add_argument("soundfonts", type=Path, nargs="+")
     parser.add_argument("--limit", type=int, default=0, help="render at most this many songs")
     parser.add_argument("--sample-rate", type=int, default=44100)
+    parser.add_argument("--part", default="1/1", help="I/N: render only every Nth song, from the Ith")
     args = parser.parse_args()
+    part, parts = (int(x) for x in args.part.split("/"))
 
     if shutil.which("fluidsynth") is None:
         sys.exit("Needs FluidSynth (apt install fluidsynth, brew install fluid-synth)")
@@ -103,6 +106,9 @@ def main():
 
     with tempfile.TemporaryDirectory() as work:
         for i, song in enumerate(songs):
+            if i % parts != part - 1:
+                continue
+
             soundfont = args.soundfonts[i % len(args.soundfonts)]
             out = args.output / (song.name + "-" + soundfont.stem)
 

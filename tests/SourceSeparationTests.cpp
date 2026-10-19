@@ -256,3 +256,61 @@ TEST_CASE ("Separation: the GPU gives the CPU's stems", "[.separate-gpu]")
         CHECK (snr > 40.0);
     }
 }
+
+// PURRLUDE_SEPARATION_MODEL=/path/new.onnx PURRLUDE_AUDIO_FILE=/path/song.wav PurrludeTests "[.separate-compare]" -s
+// separates a song (its first PURRLUDE_SECONDS, default 120) with that model and with the usual
+// one (or PURRLUDE_SEPARATION_BASELINE), and prints, per part, how close the two are (SDR of the
+// new part against the old, dB) and the new one's level beside the old (dB, negative = quieter). For checking a
+// fine-tuned model on real songs without references, singing above all: fine-tuning on Slakh
+// leaves vocals out, so the vocals should stay close to the old model's and not get quieter.
+TEST_CASE ("Separation: a model compared with another on a song", "[.separate-compare]")
+{
+    juce::File model (juce::SystemStats::getEnvironmentVariable ("PURRLUDE_SEPARATION_MODEL", {}));
+    juce::File baseline (juce::SystemStats::getEnvironmentVariable ("PURRLUDE_SEPARATION_BASELINE",
+                                                                    juce::SystemStats::getEnvironmentVariable ("PURRLUDE_DEMUCS_MODEL", {})));
+   #ifdef PURRLUDE_DEMUCS_MODEL
+    if (! baseline.existsAsFile())
+        baseline = juce::File (PURRLUDE_DEMUCS_MODEL);
+   #endif
+    juce::File file (juce::SystemStats::getEnvironmentVariable ("PURRLUDE_AUDIO_FILE", {}));
+    REQUIRE (model.existsAsFile());
+    REQUIRE (baseline.existsAsFile());
+
+    juce::AudioFormatManager formats;
+    formats.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (file));
+    REQUIRE (reader != nullptr);
+
+    const auto seconds = juce::SystemStats::getEnvironmentVariable ("PURRLUDE_SECONDS", "120").getDoubleValue();
+    juce::AudioBuffer<float> audio ((int) reader->numChannels, (int) juce::jmin<juce::int64> (reader->lengthInSamples, (juce::int64) (seconds * reader->sampleRate)));
+    reader->read (&audio, 0, audio.getNumSamples(), 0, true, true);
+    const auto length = (int) std::ceil (audio.getNumSamples() * separationSampleRate / reader->sampleRate);
+
+    auto separateWith = [&] (const juce::File& onnx)
+    {
+        juce::String error;
+        Collector collector (length);
+        REQUIRE (separateStems (audio, reader->sampleRate, onnx, collector.receiver(), error));
+        return collector.stems;
+    };
+
+    auto old = separateWith (baseline);
+    auto now = separateWith (model);
+
+    for (int s = 0; s < numStems; ++s)
+    {
+        double oldEnergy = 0.0, newEnergy = 0.0, difference = 0.0;
+
+        for (int ch = 2 * s; ch < 2 * s + 2; ++ch)
+            for (int i = 0; i < length; ++i)
+            {
+                oldEnergy += juce::square ((double) old.getSample (ch, i));
+                newEnergy += juce::square ((double) now.getSample (ch, i));
+                difference += juce::square ((double) now.getSample (ch, i) - old.getSample (ch, i));
+            }
+
+        std::cerr << getStemName ((Stem) s) << ": " << juce::String (10.0 * std::log10 ((oldEnergy + 1.0e-12) / (difference + 1.0e-12)), 1)
+                  << " dB from the old model's, level " << juce::String (10.0 * std::log10 ((newEnergy + 1.0e-12) / (oldEnergy + 1.0e-12)), 1)
+                  << " dB beside it\n";
+    }
+}
