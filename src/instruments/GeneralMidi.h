@@ -94,10 +94,13 @@ constexpr int findDrumKit (int kitNumber)
     return drumKit;
 }
 
-/** A program the built-in instrument can play: a GM program (0-127) or one of the drum kits. */
+/** A program the built-in instrument can play: a GM program (0-127) or a drum kit. Any kit
+    number is kept, as a SoundFont may have kits besides General MIDI 2's; one it hasn't got
+    plays its standard kit.
+*/
 constexpr int validProgram (int program)
 {
-    return isDrumKit (program) ? findDrumKit (getKitNumber (program)) : std::clamp (program, 0, 127);
+    return isDrumKit (program) ? program : std::clamp (program, 0, 127);
 }
 
 inline const char* getName (int program)

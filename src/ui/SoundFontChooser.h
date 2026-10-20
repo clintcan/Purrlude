@@ -15,8 +15,19 @@ class SoundFontChooser final : public juce::Component,
 public:
     explicit SoundFontChooser (juce::PropertiesFile&);
 
-    /** At launch, before the engine: plays the SoundFont the settings name, if any. */
+    /** At launch, before the engine: plays the SoundFont the settings name, if any, and keeps
+        the settings for the recent SoundFonts.
+    */
     static void applySavedChoice (juce::PropertiesFile&);
+
+    /** SoundFonts chosen lately (for the app or a track), newest first, that still exist. */
+    static juce::Array<juce::File> getRecent();
+    static void addRecent (const juce::File&);
+
+    /** Asks for a SoundFont file (in the folder last used), remembers it among the recent ones
+        and passes it on; nothing if the user cancels.
+    */
+    static void chooseFile (std::function<void (const juce::File&)> onChosen);
 
     void resized() override;
 
@@ -29,7 +40,6 @@ private:
     juce::PropertiesFile& settings;
     juce::Label title { {}, "Built-in instrument sounds" }, current, note;
     juce::TextButton chooseButton { "Choose SoundFont..." }, builtInButton { "Use Built-in" };
-    std::unique_ptr<juce::FileChooser> fileChooser;
     int shownGeneration = -1;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SoundFontChooser)

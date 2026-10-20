@@ -1,5 +1,7 @@
 #include "TrackHeader.h"
 
+#include <set>
+
 #include "model/AudioInputs.h"
 #include "model/Automation.h"
 #include "model/DeviceChannels.h"
@@ -10,6 +12,7 @@
 #include "ui/EffectsPanel.h"
 #include "instruments/GeneralMidi.h"
 #include "instruments/SoundFontPlugin.h"
+#include "ui/SoundFontChooser.h"
 #include "model/SharedReverb.h"
 #include "model/PluginLibrary.h"
 #include "ui/PluginWindows.h"
@@ -67,6 +70,10 @@ namespace
     constexpr int findPluginsId = 19999;        // built-in mode: the Plugins window
     constexpr int firstPluginId = 20000;        // built-in mode: instrument plugins
     constexpr int firstVariationId = 40000;     // built-in mode: + bank * 128 + program (a SoundFont variation)
+
+    // The sound menu: built-in instruments 1, devices from 2 (see soundIDs), then SoundFonts.
+    constexpr int chooseSoundFontId = 999;
+    constexpr int firstSoundFontId = 1000;      // + index in soundFontChoices
 }
 
 TrackHeader::TrackHeader (tracktion::Edit& e, LiveInstrument& l, MidiDeviceSettings& s, tracktion::EditItemID id)
@@ -725,13 +732,15 @@ int TrackHeader::getSelectedInstrumentId() const
         if (instrument.getPluginInstrument() != nullptr)
             return pluginInstrumentId;
 
-        // A variation the SoundFont hasn't got plays (and shows) the General MIDI sound.
-        auto variationId = firstVariationId + instrument.getBank() * 128 + instrument.getProgram();
+        // A variation (or, with the track's own SoundFont, any melodic preset) when the menu has
+        // it. A bank the SoundFont hasn't got plays bank 0: with the track's own SoundFont that's
+        // its bank 0 preset, else the General MIDI sound.
+        if (! gm::isDrumKit (instrument.getProgram()))
+            for (auto bank : { instrument.getBank(), 0 })
+                if (auto id = firstVariationId + bank * 128 + instrument.getProgram(); instrumentBox.indexOfItemId (id) >= 0)
+                    return id;
 
-        if (instrument.getBank() > 0 && instrumentBox.indexOfItemId (variationId) >= 0)
-            return variationId;
-
-        return instrument.getProgram() + 1;   // GM program + 1
+        return instrument.getProgram() + 1;   // GM program + 1, or a drum kit's
     }
 
     if (instrument.playsDrumKit())
@@ -773,45 +782,88 @@ void TrackHeader::updateInstrumentChoices()
             instrumentBox.addSeparator();
         }
 
-        // Built-in: the 128 General MIDI sounds by family, plus the drum kits. Item ID = program + 1.
-        // A sound the SoundFont has variations of is a submenu: the sound, then its variations.
-        std::map<int, std::vector<SoundFontPlugin::Preset>> variations;
+        // A track with a SoundFont of its own: that SoundFont's presets, by bank. It may not be
+        // General MIDI at all (a piano SoundFont, say). Melodic item IDs are firstVariationId +
+        // bank * 128 + program, drum kits (bank 128) their program + 1.
+        auto ownPresets = SoundFontPlugin::getPresets (instrument.getSoundFont());
 
-        for (auto& preset : SoundFontPlugin::getPresets())
-            if (preset.bank > 0 && preset.bank < 120 && preset.program < 128)   // 120 and up: drum kits
-                variations[preset.program].push_back (preset);
-
-        for (size_t family = 0; family < gm::familyNames.size(); ++family)
+        if (instrument.getSoundFont() != juce::File() && ! ownPresets.empty())
         {
-            instrumentBox.addSectionHeading (gm::familyNames[family]);
+            std::sort (ownPresets.begin(), ownPresets.end(), [] (auto& a, auto& b)
+                       { return a.bank != b.bank ? a.bank < b.bank : a.program < b.program; });
+            auto banks = std::set<int>();
 
-            for (int i = 0; i < 8; ++i)
+            for (auto& preset : ownPresets)
+                banks.insert (preset.bank);
+
+            int shownBank = -1;
+
+            for (auto& preset : ownPresets)
             {
-                auto program = (int) family * 8 + i;
-                auto found = variations.find (program);
-
-                if (found == variations.end())
-                {
-                    instrumentBox.addItem (gm::getName (program), program + 1);
+                if (preset.bank > 128 || preset.program > 127)
                     continue;
+
+                if (preset.bank != shownBank)
+                {
+                    shownBank = preset.bank;
+
+                    if (preset.bank == 128)
+                        instrumentBox.addSectionHeading ("Drum kits");
+                    else if (banks.size() > 1)
+                        instrumentBox.addSectionHeading ("Bank " + juce::String (preset.bank));
                 }
 
-                std::sort (found->second.begin(), found->second.end(), [] (auto& a, auto& b) { return a.bank < b.bank; });
-                juce::PopupMenu menu;
-                menu.addItem (program + 1, gm::getName (program));
-                menu.addSeparator();
+                auto name = preset.name.isNotEmpty() ? preset.name : "Program " + juce::String (preset.program + 1);
 
-                for (auto& variation : found->second)
-                    menu.addItem (firstVariationId + variation.bank * 128 + program, variation.name);
-
-                instrumentBox.getRootMenu()->addSubMenu (gm::getName (program), menu);
+                if (preset.bank == 128)
+                    instrumentBox.addItem (name, gm::drumKitProgram (preset.program) + 1);
+                else
+                    instrumentBox.addItem (name, firstVariationId + preset.bank * 128 + preset.program);
             }
         }
+        else
+        {
+            // The app's SoundFont: the 128 General MIDI sounds by family, plus the drum kits. Item
+            // ID = program + 1. A sound the SoundFont has variations of is a submenu: the sound,
+            // then its variations.
+            std::map<int, std::vector<SoundFontPlugin::Preset>> variations;
 
-        instrumentBox.addSectionHeading ("Drums");
+            for (auto& preset : SoundFontPlugin::getPresets())
+                if (preset.bank > 0 && preset.bank < 120 && preset.program < 128)   // 120 and up: drum kits
+                    variations[preset.program].push_back (preset);
 
-        for (auto kit : gm::drumKits)
-            instrumentBox.addItem (kit.name, gm::drumKitProgram (kit.number) + 1);
+            for (size_t family = 0; family < gm::familyNames.size(); ++family)
+            {
+                instrumentBox.addSectionHeading (gm::familyNames[family]);
+
+                for (int i = 0; i < 8; ++i)
+                {
+                    auto program = (int) family * 8 + i;
+                    auto found = variations.find (program);
+
+                    if (found == variations.end())
+                    {
+                        instrumentBox.addItem (gm::getName (program), program + 1);
+                        continue;
+                    }
+
+                    std::sort (found->second.begin(), found->second.end(), [] (auto& a, auto& b) { return a.bank < b.bank; });
+                    juce::PopupMenu menu;
+                    menu.addItem (program + 1, gm::getName (program));
+                    menu.addSeparator();
+
+                    for (auto& variation : found->second)
+                        menu.addItem (firstVariationId + variation.bank * 128 + program, variation.name);
+
+                    instrumentBox.getRootMenu()->addSubMenu (gm::getName (program), menu);
+                }
+            }
+
+            instrumentBox.addSectionHeading ("Drums");
+
+            for (auto kit : gm::drumKits)
+                instrumentBox.addItem (kit.name, gm::drumKitProgram (kit.number) + 1);
+        }
 
         // Third-party instruments found on this computer.
         pluginChoices = plugin_library::getInstruments (edit.engine);
@@ -991,7 +1043,8 @@ juce::String TrackHeader::getPluginsKey() const
     auto* plugin = getInstrument().getPluginInstrument();
     return (plugin != nullptr ? plugin->itemID.toString() + (plugin->getAudioPluginInstance() != nullptr ? "+" : "-") : juce::String())
            + "/" + juce::String (edit.engine.getPluginManager().knownPluginList.getNumTypes())
-           + "/" + juce::String (SoundFontPlugin::getSoundFontGeneration());   // a new SoundFont has other variations
+           + "/" + juce::String (SoundFontPlugin::getSoundFontGeneration())   // a new SoundFont has other variations
+           + "/" + getInstrument().getSoundFont().getFullPathName();             // and a track's own, its presets
 }
 
 void TrackHeader::renameCurrentTone()
@@ -1052,28 +1105,102 @@ void TrackHeader::updateSoundChoices()
         soundNames.add (instrument.getSoundSourceName() + " (not connected)");
     }
 
+    // SoundFonts: the track's own (even if it's missing), then the recent ones.
+    auto trackFont = instrument.getSoundFont();
+    soundFontChoices.clear();
+
+    if (trackFont != juce::File())
+        soundFontChoices.add (trackFont);
+
+    for (auto& recent : SoundFontChooser::getRecent())
+        soundFontChoices.addIfNotAlreadyThere (recent);
+
     soundBox.clear (juce::dontSendNotification);
     shownChannel = instrument.hasOwnChannel() ? instrument.getOutputChannel() : 0;
+    shownSoundFont = trackFont;
+
+    // Purrlude's instruments: the app's SoundFont, or one for this track.
+    soundBox.addItem (soundNames[0], 1);
+    soundBox.addSectionHeading ("SoundFont for this track");
+
+    for (int i = 0; i < soundFontChoices.size(); ++i)
+    {
+        auto file = soundFontChoices[i];
+        auto state = SoundFontPlugin::getState (file);
+        auto name = file.getFileNameWithoutExtension()
+                  + (! file.existsAsFile() ? " (missing)" : state.loading ? " (loading...)" : state.error.isNotEmpty() ? " (can't play)" : "");
+        soundBox.addItem (name, firstSoundFontId + i);
+    }
+
+    soundBox.addItem ("Choose a SoundFont...", chooseSoundFontId);
 
     // A track with a channel of its own on a multi-part device shows it.
-    for (int i = 0; i < soundNames.size(); ++i)
+    if (soundIDs.size() > 1)
+        soundBox.addSectionHeading ("MIDI devices");
+
+    for (int i = 1; i < soundNames.size(); ++i)
         soundBox.addItem (soundNames[i] + (shownChannel > 0 && soundIDs[i] == current ? juce::String (juce::CharPointer_UTF8 (" \xc2\xb7 Ch ")) + juce::String (shownChannel) : juce::String()),
                           i + 1);
 
-    soundBox.setSelectedItemIndex (juce::jmax (0, soundIDs.indexOf (current)), juce::dontSendNotification);
+    auto selected = current.isNotEmpty() ? soundIDs.indexOf (current) + 1
+                  : trackFont != juce::File() ? firstSoundFontId + soundFontChoices.indexOf (trackFont)
+                                              : 1;
+    soundBox.setSelectedId (selected, juce::dontSendNotification);
+
+    // Why a track's SoundFont isn't playing, where it's chosen.
+    auto state = SoundFontPlugin::getState (trackFont);
+    soundBox.setTooltip (trackFont == juce::File() ? "Where this track is heard: Purrlude's built-in instruments (the app's SoundFont, "
+                                                     "or one for this track), or a MIDI device's own sounds"
+                         : ! trackFont.existsAsFile() ? trackFont.getFullPathName() + " isn't there, so this track plays the app's SoundFont."
+                         : state.error.isNotEmpty() ? state.error + " This track plays the app's SoundFont."
+                                                    : "This track plays " + trackFont.getFullPathName());
 }
 
 void TrackHeader::soundChosen()
 {
-    auto index = soundBox.getSelectedItemIndex();
+    auto id = soundBox.getSelectedId();
     auto instrument = getInstrument();
+    auto* track = instrument.getTrack();
 
-    if (! juce::isPositiveAndBelow (index, soundIDs.size()) || soundIDs[index] == instrument.getSoundSourceID())
+    if (track == nullptr)
         return;
 
-    if (auto* track = instrument.getTrack())
-        device_channels::playThrough (edit, deviceSettings, *track, soundIDs[index],
-                                      soundNames[index].upToLastOccurrenceOf (" (not connected)", false, false));
+    // Purrlude's instruments with this SoundFont (none: the app's).
+    auto useBuiltIn = [this, track] (const juce::File& file)
+    {
+        auto chosen = getInstrument();
+
+        if (chosen.getSoundSourceID().isNotEmpty())
+            device_channels::playThrough (edit, deviceSettings, *track, {}, {});
+
+        chosen.setSoundFont (file);
+        updateChoices();
+    };
+
+    if (id == chooseSoundFontId)
+    {
+        updateSoundChoices();   // shows the current choice until a file is picked
+
+        SoundFontChooser::chooseFile ([safe = juce::Component::SafePointer<TrackHeader> (this), useBuiltIn] (const juce::File& file)
+        {
+            if (safe != nullptr)
+                useBuiltIn (file);
+        });
+    }
+    else if (juce::isPositiveAndBelow (id - firstSoundFontId, soundFontChoices.size()))
+    {
+        SoundFontChooser::addRecent (soundFontChoices[id - firstSoundFontId]);
+        useBuiltIn (soundFontChoices[id - firstSoundFontId]);
+    }
+    else if (id == 1)
+    {
+        useBuiltIn ({});
+    }
+    else if (juce::isPositiveAndBelow (id - 1, soundIDs.size()) && soundIDs[id - 1] != instrument.getSoundSourceID())
+    {
+        device_channels::playThrough (edit, deviceSettings, *track, soundIDs[id - 1],
+                                      soundNames[id - 1].upToLastOccurrenceOf (" (not connected)", false, false));
+    }
 }
 
 } // namespace purrlude

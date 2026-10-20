@@ -10,6 +10,7 @@ The `EDIT` element's `purrludeFormat` attribute is the format version. Each save
 |---|---|---|
 | 1 | 1.0 | The format described here |
 | 2 | 1.1 | Drum kits besides the standard one (`purrludeProgram` and the SoundFont's `program` from 129 up), and SoundFont variations (`purrludeBank`, the SoundFont's `bank`). Version 1 songs need no conversion |
+| 3 | after 1.1.0 | A track's own SoundFont (`purrludeSoundFont`, the SoundFont plugin's `soundFont`). Version 2 songs need no conversion |
 
 **From 1.0 on, the format is frozen:** a song saved by one version of Purrlude opens in every later one.
 - When the format changes, `project_format::currentVersion` (`src/model/ProjectFormat.h`) goes up, and `project_format::upgrade` gains a step that converts the older version as a song opens.
@@ -54,6 +55,7 @@ Tracktion's own loop points (in seconds) follow these; Purrlude rewrites them.
 | `purrludeTrackKind` | `"audio"` for an audio track, `"reverbBus"` for the shared reverb's bus; absent for an instrument track |
 | `purrludeProgram` | The General MIDI program (0-127), or a drum kit: 128 + its Program Change number on the drum channel (128 Standard; from format 2 also 136 Room, 144 Power, 152 Electronic, 153 Analog, 160 Jazz, 168 Brush, 176 Orchestra, 184 SFX) |
 | `purrludeBank` | From format 2: the SoundFont bank the program is played from (1-127, a variation of the sound). Absent: bank 0, the General MIDI sound. A bank the SoundFont hasn't got plays bank 0 |
+| `purrludeSoundFont` | From format 3: the SoundFont (`.sf2`) the built-in instrument plays on this track, as an absolute path. Absent: the app's SoundFont. A file that isn't there, or won't load, plays the app's |
 | `purrludeSoundSource`, `purrludeSoundSourceName` | When the track plays a MIDI device's own sounds: the device's id and name |
 | `purrludeOutputChannel` | The MIDI channel it plays on (1-16) |
 | `purrludeOwnChannel` | `1` when the track has its own channel on a multi-part device |
@@ -67,7 +69,7 @@ Tracktion's own loop points (in seconds) follow these; Purrlude rewrites them.
 
 | Type | |
 |---|---|
-| `purrludeSoundFont` | The built-in General MIDI instrument; `program` is its sound, numbered like `purrludeProgram`, and `bank` (from format 2) like `purrludeBank` |
+| `purrludeSoundFont` | The built-in General MIDI instrument; `program` is its sound, numbered like `purrludeProgram`, `bank` (from format 2) like `purrludeBank`, and `soundFont` (from format 3) like `purrludeSoundFont` |
 
 A track playing a MIDI device's sounds has a `midipatchbay` at the front of its chain, remapping every channel to the device's.
 

@@ -9,12 +9,84 @@ namespace purrlude
 namespace
 {
     const char* soundFontKey = "soundFont";
+    const char* recentKey = "recentSoundFonts";
+    constexpr int maxRecent = 8;
+
+    /** The app's settings, once applySavedChoice has run (not in tests). */
+    juce::PropertiesFile* appSettings = nullptr;
 }
 
 void SoundFontChooser::applySavedChoice (juce::PropertiesFile& settings)
 {
+    appSettings = &settings;
+
     if (auto path = settings.getValue (soundFontKey); juce::File::isAbsolutePath (path))
         SoundFontPlugin::useSoundFont (juce::File (path));
+}
+
+juce::Array<juce::File> SoundFontChooser::getRecent()
+{
+    juce::Array<juce::File> files;
+
+    if (appSettings != nullptr)
+        for (auto& path : juce::StringArray::fromLines (appSettings->getValue (recentKey)))
+            if (juce::File::isAbsolutePath (path) && juce::File (path).existsAsFile())
+                files.add (juce::File (path));
+
+    return files;
+}
+
+void SoundFontChooser::addRecent (const juce::File& file)
+{
+    if (appSettings == nullptr || file == juce::File())
+        return;
+
+    juce::StringArray paths;
+    paths.add (file.getFullPathName());
+
+    for (auto& recent : getRecent())
+        if (recent != file && paths.size() < maxRecent)
+            paths.add (recent.getFullPathName());
+
+    appSettings->setValue (recentKey, paths.joinIntoString ("\n"));
+}
+
+namespace
+{
+    /** The open file dialog, kept while it's open and deleted before JUCE shuts down. */
+    struct OpenChooser final : public juce::DeletedAtShutdown
+    {
+        ~OpenChooser() override     { clearSingletonInstance(); }
+
+        std::unique_ptr<juce::FileChooser> chooser;
+
+        JUCE_DECLARE_SINGLETON_INLINE (OpenChooser, false)
+    };
+}
+
+void SoundFontChooser::chooseFile (std::function<void (const juce::File&)> onChosen)
+{
+    auto documents = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory);
+    auto folder = appSettings != nullptr ? recent_folder::get (*appSettings, documents) : documents;
+    auto& fileChooser = OpenChooser::getInstance()->chooser;
+    fileChooser = std::make_unique<juce::FileChooser> ("Choose a SoundFont", folder, "*.sf2");
+
+    fileChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                              [onChosen] (const juce::FileChooser& c)
+    {
+        auto file = c.getResult();
+
+        if (file == juce::File())
+            return;
+
+        if (appSettings != nullptr)
+            recent_folder::remember (*appSettings, file);
+
+        addRecent (file);
+
+        if (onChosen != nullptr)
+            onChosen (file);
+    });
 }
 
 SoundFontChooser::SoundFontChooser (juce::PropertiesFile& s)
@@ -62,17 +134,10 @@ void SoundFontChooser::timerCallback()
 
 void SoundFontChooser::choose()
 {
-    auto folder = recent_folder::get (settings, juce::File::getSpecialLocation (juce::File::userDocumentsDirectory));
-    fileChooser = std::make_unique<juce::FileChooser> ("Choose a SoundFont", folder, "*.sf2");
-
-    fileChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-                              [safe = juce::Component::SafePointer<SoundFontChooser> (this)] (const juce::FileChooser& c)
+    chooseFile ([safe = juce::Component::SafePointer<SoundFontChooser> (this)] (const juce::File& file)
     {
-        if (safe != nullptr && c.getResult() != juce::File())
-        {
-            recent_folder::remember (safe->settings, c.getResult());
-            safe->use (c.getResult());
-        }
+        if (safe != nullptr)
+            safe->use (file);
     });
 }
 

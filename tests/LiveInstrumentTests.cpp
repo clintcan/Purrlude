@@ -196,13 +196,13 @@ TEST_CASE ("Choosing an instrument sets the GM program", "[model][instrument]")
     instrument.setProgram (purrlude::gm::drumKit);
     REQUIRE (synth->getProgram() == purrlude::gm::drumKit);
 
-    // The other drum kits, by their number on the drum channel; unknown ones are the standard kit.
+    // The other drum kits, by their number on the drum channel.
     instrument.setProgram (purrlude::gm::drumKitProgram (40));
     REQUIRE (synth->getProgram() == purrlude::gm::drumKitProgram (40));
     REQUIRE (instrument.getInstrument().playsDrumKit());
     REQUIRE (juce::String (purrlude::gm::getName (synth->getProgram())) == "Brush Drum Kit");
     instrument.setProgram (purrlude::gm::drumKitProgram (3));
-    REQUIRE (instrument.getProgram() == purrlude::gm::drumKit);
+    REQUIRE (instrument.getProgram() == purrlude::gm::drumKitProgram (3));   // kept: another SoundFont may have it
 
     instrument.setProgram (500);
     REQUIRE (instrument.getProgram() == 127);
@@ -696,3 +696,75 @@ TEST_CASE ("The built-in instrument plays another SoundFont, or the bundled one 
     copy.deleteFile();
     broken.deleteFile();
 }
+
+TEST_CASE ("A track can play a SoundFont of its own beside the app's", "[model][instrument][render]")
+{
+    juce::ScopedJuceInitialiser_GUI juceInit;
+    auto engine = purrlude::createEngine ("PurrludeTests");
+    auto edit = tracktion::Edit::createSingleTrackEdit (*engine);
+    purrlude::LiveInstrument live (*edit);
+    REQUIRE (purrlude::SoundFontPlugin::isAvailable());
+
+    auto* first = live.getTrack();
+    auto* second = live.addTrack (false);
+
+    for (auto* track : { first, second })
+    {
+        auto clip = track->insertMIDIClip ({ tracktion::TimePosition(), tracktion::TimePosition::fromSeconds (1.0) }, nullptr);
+        clip->getSequence().addNote (60, tracktion::BeatPosition(), tracktion::BeatDuration::fromBeats (1.0), 100, 0, nullptr);
+    }
+
+    auto synthOf = [] (tracktion::AudioTrack& t) { return t.pluginList.getPluginsOfType<purrlude::SoundFontPlugin>()[0]; };
+    auto pump = [] (int ms) { juce::MessageManager::getInstance()->runDispatchLoopUntil (ms); };
+
+    auto waitForLoad = [&] (const juce::File& file)
+    {
+        for (auto end = juce::Time::getMillisecondCounter() + 20000;
+             purrlude::SoundFontPlugin::getState (file).loading && juce::Time::getMillisecondCounter() < end;)
+            pump (20);
+
+        pump (100);   // then the instruments move to it
+        REQUIRE_FALSE (purrlude::SoundFontPlugin::getState (file).loading);
+    };
+
+    // Another SoundFont file for the first track (a copy of the bundled one).
+    auto own = juce::File::createTempFile (".sf2");
+    REQUIRE (purrlude::SoundFontPlugin::findSoundFont().copyFileTo (own));
+
+    purrlude::TrackInstrument firstInstrument (*edit, *first);
+    firstInstrument.setSoundFont (own);
+    CHECK (firstInstrument.getSoundFont() == own);
+    CHECK (first->state["purrludeSoundFont"].toString() == own.getFullPathName());
+    CHECK (synthOf (*first)->getSoundFont() == own);
+    waitForLoad (own);
+
+    CHECK (purrlude::SoundFontPlugin::getState (own).error.isEmpty());
+    CHECK_FALSE (purrlude::SoundFontPlugin::getPresets (own).empty());
+
+    // Each track plays its own: the first its file, the second the app's.
+    CHECK (renderTrack (*edit, *first, 1.0).getMagnitude (0, 0, 44100) > 0.01f);
+    CHECK (synthOf (*first)->getPlayingSoundFont() == own);
+    CHECK (renderTrack (*edit, *second, 1.0).getMagnitude (0, 0, 44100) > 0.01f);
+    CHECK (synthOf (*second)->getPlayingSoundFont() == juce::File());
+
+    // A file that isn't a SoundFont: the reason, and the app's plays.
+    auto broken = juce::File::createTempFile (".sf2");
+    REQUIRE (broken.replaceWithText ("not a SoundFont"));
+    purrlude::TrackInstrument (*edit, *second).setSoundFont (broken);
+    waitForLoad (broken);
+    CHECK (purrlude::SoundFontPlugin::getState (broken).error.contains ("isn't a SoundFont"));
+    CHECK (renderTrack (*edit, *second, 1.0).getMagnitude (0, 0, 44100) > 0.01f);
+    CHECK (synthOf (*second)->getPlayingSoundFont() == juce::File());
+
+    // Back to the app's: no property left, and a SoundFont no track plays is unloaded.
+    firstInstrument.setSoundFont ({});
+    CHECK_FALSE (first->state.hasProperty ("purrludeSoundFont"));
+    CHECK (purrlude::SoundFontPlugin::getPresets (own).empty());
+    CHECK (renderTrack (*edit, *first, 1.0).getMagnitude (0, 0, 44100) > 0.01f);
+    CHECK (synthOf (*first)->getPlayingSoundFont() == juce::File());
+
+    purrlude::TrackInstrument (*edit, *second).setSoundFont ({});
+    own.deleteFile();
+    broken.deleteFile();
+}
+

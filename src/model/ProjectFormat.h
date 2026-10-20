@@ -18,7 +18,7 @@ namespace purrlude
 */
 namespace project_format
 {
-    constexpr int currentVersion = 2;
+    constexpr int currentVersion = 3;
 
     /** The version a song was saved in. Songs saved before versions were written are 1. */
     int getVersion (const juce::ValueTree& editState);

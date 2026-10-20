@@ -54,6 +54,18 @@ public:
     int getProgram() const;
     int getBank() const;
 
+    /** The SoundFont (.sf2) this instrument plays instead of the app's, or an empty File for
+        the app's. It loads in the background (the app's plays until then) and unloads when no
+        instrument plays it; one that won't load leaves the app's playing (see getState).
+    */
+    void setSoundFont (const juce::File&);
+    juce::File getSoundFont() const;
+
+    /** The SoundFont playing now: this instrument's own once it has loaded, else an empty File
+        (the app's). Nothing plays until the instrument is initialised.
+    */
+    juce::File getPlayingSoundFont() const;
+
     /** Plays or releases a note now, outside the track's own MIDI (e.g. previewing while
         editing). Lock-free; call from one thread (the message thread).
     */
@@ -90,8 +102,20 @@ public:
         juce::String name;
     };
 
-    /** The loaded SoundFont's presets (none while it loads). */
+    /** The app's SoundFont's presets (none while it loads). */
     static std::vector<Preset> getPresets();
+
+    /** A track's SoundFont's presets (none while it loads or if it won't); the app's for an empty File. */
+    static std::vector<Preset> getPresets (const juce::File&);
+
+    /** A track's SoundFont: still loading, or why it won't play (empty if it plays). */
+    struct TrackFontState
+    {
+        bool loading = false;
+        juce::String error;
+    };
+
+    static TrackFontState getState (const juce::File&);
 
     /** Moves every instrument to a newly loaded SoundFont (message thread). */
     static void fontChanged();
@@ -99,10 +123,17 @@ public:
 private:
     void applyProgram (int packed);
     void buildSynth();
+    void rebuildIfFontChanged();
+
+    /** The SoundFont to play now, and what it is (to notice a change); null if none would load.
+        Waits for the app's to load if wait is true.
+    */
+    tsf* chooseFont (juce::String& signature, bool wait);
 
     juce::CachedValue<int> program, bank;
+    juce::CachedValue<juce::String> soundFont;
+    juce::String builtFrom;   ///< chooseFont's signature for the synth playing now
     std::atomic<int> pendingProgram { -1 };
-    int builtGeneration = 0;
 
     // Preview notes, message thread -> audio thread: note number, +128 for note-on.
     juce::AbstractFifo previewFifo { 64 };

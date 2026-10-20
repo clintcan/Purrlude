@@ -67,6 +67,12 @@ public:
     int getProgram() const;
     int getBank() const;
 
+    /** The SoundFont (.sf2) the built-in instrument plays on this track instead of the app's,
+        or an empty File for the app's (see SoundFontPlugin::setSoundFont).
+    */
+    void setSoundFont (const juce::File&);
+    juce::File getSoundFont() const;
+
     /** True when the track plays the GM drum kit, so the notes are drums: the built-in one,
         or a multi-part device's (on channel 10).
     */

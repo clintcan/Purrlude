@@ -121,6 +121,8 @@ private:
     juce::String instrumentMenuPlugins;       ///< Plugin instrument and plugin list it was built for (getPluginsKey)
     juce::String getPluginsKey() const;
     int shownChannel = 0;                     ///< The track's own channel the Sound menu shows (0: none)
+    juce::Array<juce::File> soundFontChoices; ///< SoundFonts in the Sound menu (firstSoundFontId + index)
+    juce::File shownSoundFont;                ///< The track's own SoundFont the Sound menu shows
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TrackHeader)
 };

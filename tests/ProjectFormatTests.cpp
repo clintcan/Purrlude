@@ -101,8 +101,12 @@ namespace
 
     juce::String getSongName (int version)    { return "Format " + juce::String (version); }
 
+    /** Format 3's melody plays its own SoundFont: a file that isn't there, so it plays the app's. */
+    const char* trackSoundFont = "/Purrlude Format Test/Strings.sf2";
+
     /** Builds the song for a format version and saves it as folder/"Format <version>.purrlude".
-        Version 2 adds a drum kit besides the standard one, and a SoundFont variation.
+        Version 2 adds a drum kit besides the standard one, and a SoundFont variation; version 3
+        a track's own SoundFont (one that isn't there, so it's the same everywhere).
     */
     void writeSong (tracktion::Engine& engine, const juce::File& folder, const juce::File& autosaves, int version)
     {
@@ -123,6 +127,9 @@ namespace
         auto* melody = live.getTrack();
         melody->setName ("Melody");
         TrackInstrument (edit, *melody).setProgram (73);
+
+        if (version >= 3)
+            TrackInstrument (edit, *melody).setSoundFont (juce::File (trackSoundFont));
         auto* clip = melody->insertMIDIClip ({ tracktion::TimePosition(), edit.tempoSequence.toTime (tracktion::BeatPosition::fromBeats (8.0)) }, nullptr).get();
 
         for (int i = 0; i < 8; ++i)
@@ -282,6 +289,15 @@ namespace
 
         // Melody: instrument, notes, pedal.
         CHECK (TrackInstrument (edit, *melody).getProgram() == 73);
+
+        if (version >= 3)
+        {
+            // Its own SoundFont, by path (compared as text: it's a macOS path on every system).
+            CHECK (melody->state["purrludeSoundFont"].toString() == trackSoundFont);
+            auto synths = melody->pluginList.getPluginsOfType<SoundFontPlugin>();
+            REQUIRE (synths.size() == 1);
+            CHECK (synths[0]->state["soundFont"].toString() == trackSoundFont);
+        }
         REQUIRE (melody->getClips().size() == 1);
         auto* melodyClip = dynamic_cast<tracktion::MidiClip*> (melody->getClips()[0]);
         REQUIRE (melodyClip != nullptr);
@@ -445,7 +461,7 @@ TEST_CASE ("Write the song for the current format version", "[.write-format-song
     TempDir autosaves;
 
     // A new version adds what it changed to writeSong and checkSong.
-    static_assert (project_format::currentVersion == 2, "Add the new version's features to writeSong and checkSong");
+    static_assert (project_format::currentVersion == 3, "Add the new version's features to writeSong and checkSong");
     constexpr auto version = project_format::currentVersion;
     auto folder = getSongsFolder().getChildFile ("format-" + juce::String (version));
     folder.deleteRecursively();

@@ -21,6 +21,18 @@ Purrlude's built-in instruments play GeneralUser GS, a SoundFont that comes with
 - Only `.sf2` files work; compressed `.sf3` ones don't.
 - A SoundFont you choose isn't part of Purrlude: check its licence before sharing music made with it.
 
+### A track's own SoundFont
+
+A track can play a SoundFont of its own while the others play the app's, for example a piano SoundFont on the piano track only. In the track's **sound menu** (under the instrument menu):
+- **Choose a SoundFont...** picks a `.sf2` file for this track. SoundFonts you've used lately are listed above it, by name, to pick again in one click.
+- The **instrument menu** then lists that SoundFont's own sounds by name, grouped by bank, with its drum kits under **Drum kits**.
+- **Built-in instruments** goes back to the app's SoundFont.
+
+**Good to know:**
+- A SoundFont used by several tracks is loaded once. A big one takes a few seconds to load; until then the track plays the app's sounds, and the menu shows *(loading...)*.
+- The song remembers where the file is but doesn't copy it. On another computer, or if the file moves, the track plays the app's sounds and its sound menu shows the SoundFont as *(missing)*. Choose it again from there.
+- Earlier versions of Purrlude open such a song with a warning, and play the app's SoundFont on that track.
+
 ## MIDI keyboards
 
 <img src="images/midi-devices.png" alt="The MIDI Devices panel: Bluetooth MIDI with Scan, Playing the Instrument track, and MIDI outputs with a channel menu" width="340" align="right">

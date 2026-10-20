@@ -42,7 +42,7 @@ Tracks are also added for you when you add loops, import files or convert audio 
   - Instruments with **variations** open a submenu: the instrument itself, then its variations, such as *Ukulele* under Acoustic Guitar (nylon) or *Synth Bass 101* under Synth Bass 1. They come from the SoundFont the built-in instruments play (see [Built-in instrument sounds](13-devices.md#built-in-instrument-sounds)).
   - Under **Plugins** it lists the instrument plugins (VST3, AU, LV2) found on your computer. Choosing one opens its window; **Show Plugin Window** at the top of the menu opens it again. See [Plugins](10-effects.md#plugins).
   - When the track plays an external keyboard, it lists that keyboard's tones instead; see [Devices](13-devices.md#playing-a-keyboards-own-sounds).
-- **The sound menu** (here *Built-in instruments*) chooses where the track is heard: Purrlude's built-in instruments, or a connected MIDI device's own sounds.
+- **The sound menu** (here *Built-in instruments*) chooses where the track is heard: Purrlude's built-in instruments, a SoundFont for this track only, or a connected MIDI device's own sounds. See [a track's own SoundFont](13-devices.md#a-tracks-own-soundfont).
 
 **Bottom row:**
 - **The slider** is the track's volume, from silent to +6 dB. Double-click it to reset to 0 dB.

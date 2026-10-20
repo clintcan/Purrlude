@@ -15,6 +15,7 @@ namespace
     const juce::Identifier ownChannelProperty      { "purrludeOwnChannel" };     // true: not the device's channel
     const juce::Identifier programProperty         { "purrludeProgram" };
     const juce::Identifier bankProperty            { "purrludeBank" };
+    const juce::Identifier soundFontProperty       { "purrludeSoundFont" };
     const juce::Identifier toneProperty            { "purrludeDeviceTone" };   // "msb lsb program" or absent
     const juce::Identifier toneNameProperty        { "purrludeDeviceToneName" };
     const juce::Identifier kindProperty            { "purrludeTrackKind" };   // "audio", or absent for instrument tracks
@@ -117,9 +118,13 @@ void TrackInstrument::setUp (tracktion::Edit& edit, tracktion::AudioTrack& track
     addMixPlugins (edit, track);
 
     // Only when it differs: setting it makes the audio thread re-apply it.
-    if (auto* soundFont = findSoundFont (track);
-         soundFont != nullptr && (soundFont->getProgram() != instrument.getProgram() || soundFont->getBank() != instrument.getBank()))
-        soundFont->setProgram (instrument.getProgram(), instrument.getBank());
+    if (auto* soundFont = findSoundFont (track))
+    {
+        if (soundFont->getProgram() != instrument.getProgram() || soundFont->getBank() != instrument.getBank())
+            soundFont->setProgram (instrument.getProgram(), instrument.getBank());
+
+        soundFont->setSoundFont (instrument.getSoundFont());
+    }
 }
 
 void TrackInstrument::addMixPlugins (tracktion::Edit& edit, tracktion::AudioTrack& track)
@@ -363,6 +368,29 @@ int TrackInstrument::getBank() const
 {
     auto* track = getTrack();
     return track != nullptr ? (int) track->state.getProperty (bankProperty, 0) : 0;
+}
+
+void TrackInstrument::setSoundFont (const juce::File& file)
+{
+    auto* track = getTrack();
+
+    if (track == nullptr)
+        return;
+
+    if (file == juce::File())
+        track->state.removeProperty (soundFontProperty, nullptr);   // the app's: stays as it was
+    else
+        track->state.setProperty (soundFontProperty, file.getFullPathName(), nullptr);
+
+    if (auto* soundFont = findSoundFont (*track))
+        soundFont->setSoundFont (file);
+}
+
+juce::File TrackInstrument::getSoundFont() const
+{
+    auto* track = getTrack();
+    auto path = track != nullptr ? track->state[soundFontProperty].toString() : juce::String();
+    return juce::File::isAbsolutePath (path) ? juce::File (path) : juce::File();
 }
 
 void TrackInstrument::setDeviceTone (std::optional<DeviceTone> tone)

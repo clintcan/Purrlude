@@ -3,6 +3,8 @@
 #include "GeneralMidi.h"
 
 #include <condition_variable>
+#include <map>
+#include <set>
 #include <mutex>
 #include <thread>
 
@@ -14,7 +16,7 @@ namespace purrlude
 
 namespace
 {
-    const juce::Identifier programProperty { "program" }, bankProperty { "bank" };
+    const juce::Identifier programProperty { "program" }, bankProperty { "bank" }, soundFontProperty { "soundFont" };
     constexpr int maxVoices = 96;
     constexpr float outputGainDb = -3.0f;
 
@@ -39,25 +41,29 @@ namespace
         return nullptr;
     }
 
-    /** The SoundFont, loaded on a background thread and shared by every plugin, each of which
-        plays a tsf_copy of it. It's the bundled one unless the user chose another
-        (SoundFontPlugin::useSoundFont); one that won't load is replaced by the bundled one.
+    /** Goes up each time any SoundFont finishes loading (SoundFontPlugin::getSoundFontGeneration). */
+    std::atomic<int> loadsFinished { 0 };
 
-        Deleted when JUCE shuts down, and waits for a load still in progress first: a loading
-        thread left running into process exit crashes on Windows as statics are torn down.
+    /** One SoundFont, loaded on a background thread: the app's (the bundled one unless the user
+        chose another, see SoundFontPlugin::useSoundFont; one that won't load is replaced by the
+        bundled one) or a track's own (one that won't load is null, with the reason). Plugins play
+        tsf_copies of it, which share its data until the last one closes.
+
+        Its destructor waits for a load still in progress: a loading thread left running into
+        process exit crashes on Windows as statics are torn down.
     */
-    class SharedFont final : public juce::DeletedAtShutdown
+    class FontSource
     {
     public:
-        ~SharedFont() override
+        FontSource (juce::File file, bool appFont) : chosen (std::move (file)), isApp (appFont) {}
+
+        ~FontSource()
         {
             if (loader.joinable())
                 loader.join();
 
             if (font != nullptr)
                 tsf_close (font);
-
-            clearSingletonInstance();
         }
 
         void startLoading()
@@ -68,7 +74,7 @@ namespace
                 startLoader();
         }
 
-        /** Loads another SoundFont (none: the bundled one). Plugins move to it when it's loaded. */
+        /** The app's: loads another SoundFont (none: the bundled one). Plugins move to it when it's loaded. */
         void choose (const juce::File& file)
         {
             if (loader.joinable())
@@ -90,7 +96,7 @@ namespace
             return chosen;
         }
 
-        /** Waits for the load if it's still running. Null if no SoundFont would load. */
+        /** Waits for the load if it's still running. Null if the SoundFont won't load. */
         tsf* get (int* loadedGeneration = nullptr)
         {
             startLoading();
@@ -101,6 +107,26 @@ namespace
                 *loadedGeneration = generation;
 
             return font;
+        }
+
+        /** Without waiting: false while it's loading; else the font (null if it won't load). */
+        bool tryGet (tsf*& loaded, int& loadedGeneration)
+        {
+            startLoading();
+            const std::lock_guard<std::mutex> lock (mutex);
+
+            if (! done)
+                return false;
+
+            loaded = font;
+            loadedGeneration = generation;
+            return true;
+        }
+
+        bool isLoading()
+        {
+            const std::lock_guard<std::mutex> lock (mutex);
+            return started && ! done;
         }
 
         /** The loaded SoundFont's presets; none while it's loading. */
@@ -122,10 +148,6 @@ namespace
             return error;
         }
 
-        int getGeneration() const   { return generation; }
-
-        JUCE_DECLARE_SINGLETON_INLINE (SharedFont, false)
-
     private:
         void startLoader()   // with the mutex held
         {
@@ -134,7 +156,7 @@ namespace
                 juce::String loadError;
                 auto* loaded = file != juce::File() ? loadSoundFont (file, loadError) : nullptr;
 
-                if (loaded == nullptr)
+                if (loaded == nullptr && isApp)
                 {
                     juce::String bundledError;
                     loaded = loadSoundFont (SoundFontPlugin::findSoundFont(), bundledError);
@@ -155,6 +177,7 @@ namespace
                     ++generation;
                 }
 
+                ++loadsFinished;
                 loadedCondition.notify_all();
 
                 // Plugins play copies, which share the font's data until the last one closes.
@@ -171,13 +194,59 @@ namespace
         bool started = false, done = false;
         tsf* font = nullptr;
         juce::File chosen;
+        const bool isApp;
         juce::String error;
-        std::atomic<int> generation { 0 };
+        int generation = 0;
     };
 
-    SharedFont& getSharedFont()
+    /** The app's SoundFont and the tracks' own, by file, shared by every plugin. Tracks'
+        SoundFonts load when a plugin first wants one and unload when none does (message thread).
+        Deleted when JUCE shuts down.
+    */
+    class FontCache final : public juce::DeletedAtShutdown
     {
-        return *SharedFont::getInstance();
+    public:
+        ~FontCache() override   { clearSingletonInstance(); }
+
+        FontSource& getApp()    { return app; }
+
+        /** A track's SoundFont, loading in the background if it isn't yet. */
+        FontSource& get (const juce::File& file)
+        {
+            auto& source = sources[file.getFullPathName()];
+
+            if (source == nullptr)
+            {
+                source = std::make_unique<FontSource> (file, false);
+                source->startLoading();
+            }
+
+            return *source;
+        }
+
+        FontSource* find (const juce::File& file)
+        {
+            auto found = sources.find (file.getFullPathName());
+            return found != sources.end() ? found->second.get() : nullptr;
+        }
+
+        /** Unloads the tracks' SoundFonts that no plugin plays any more. */
+        void releaseUnused (const std::set<juce::String>& used)
+        {
+            for (auto it = sources.begin(); it != sources.end();)
+                it = used.count (it->first) == 0 ? sources.erase (it) : std::next (it);
+        }
+
+        JUCE_DECLARE_SINGLETON_INLINE (FontCache, false)
+
+    private:
+        FontSource app { {}, true };
+        std::map<juce::String, std::unique_ptr<FontSource>> sources;
+    };
+
+    FontCache& getFonts()
+    {
+        return *FontCache::getInstance();
     }
 
     /** Every plugin, to move them to a newly loaded SoundFont (message thread). */
@@ -185,6 +254,23 @@ namespace
     {
         static juce::Array<SoundFontPlugin*> plugins;
         return plugins;
+    }
+
+    /** Unloads the tracks' SoundFonts no plugin plays any more. */
+    void releaseUnusedFonts()
+    {
+        auto* fonts = FontCache::getInstanceWithoutCreating();
+
+        if (fonts == nullptr)
+            return;
+
+        std::set<juce::String> used;
+
+        for (auto* plugin : getPlugins())
+            if (auto file = plugin->getSoundFont(); file != juce::File())
+                used.insert (file.getFullPathName());
+
+        fonts->releaseUnused (used);
     }
 }
 
@@ -200,9 +286,13 @@ SoundFontPlugin::SoundFontPlugin (tracktion::PluginCreationInfo info)
 {
     program.referTo (state, programProperty, getUndoManager(), 0);
     bank.referTo (state, bankProperty, getUndoManager(), 0);
+    soundFont.referTo (state, soundFontProperty, getUndoManager(), {});
     pendingProgram = pack (program.get(), bank.get());
     preload();
     getPlugins().add (this);
+
+    if (auto file = getSoundFont(); file != juce::File())
+        getFonts().get (file);   // a saved track's own: loading while the song opens
 }
 
 SoundFontPlugin::~SoundFontPlugin()
@@ -210,6 +300,7 @@ SoundFontPlugin::~SoundFontPlugin()
     getPlugins().removeAllInstancesOf (this);
     notifyListenersOfDeletion();
     deinitialise();
+    releaseUnusedFonts();
 }
 
 void SoundFontPlugin::initialise (const tracktion::PluginInitialisationInfo&)
@@ -217,10 +308,37 @@ void SoundFontPlugin::initialise (const tracktion::PluginInitialisationInfo&)
     buildSynth();   // with Plugin's sampleRate and blockSizeSamples, already set
 }
 
+tsf* SoundFontPlugin::chooseFont (juce::String& signature, bool wait)
+{
+    // The track's own SoundFont once it's loaded; until then, or if it won't load, the app's.
+    if (auto file = getSoundFont(); file != juce::File())
+    {
+        tsf* font = nullptr;
+        int generation = 0;
+
+        if (getFonts().get (file).tryGet (font, generation) && font != nullptr)
+        {
+            signature = file.getFullPathName() + "#" + juce::String (generation);
+            return font;
+        }
+    }
+
+    tsf* font = nullptr;
+    int generation = 0;
+
+    if (wait)
+        font = getFonts().getApp().get (&generation);
+    else if (! getFonts().getApp().tryGet (font, generation))
+        return nullptr;
+
+    signature = "#" + juce::String (generation);
+    return font;
+}
+
 void SoundFontPlugin::buildSynth()
 {
-    int generation = 0;
-    auto* font = getSharedFont().get (&generation);
+    juce::String signature;
+    auto* font = chooseFont (signature, true);
 
     if (font == nullptr || sampleRate <= 0.0)
         return;
@@ -245,17 +363,24 @@ void SoundFontPlugin::buildSynth()
         applyProgram (pack (program.get(), bank.get()));
     }
 
-    builtGeneration = generation;
+    builtFrom = signature;
 
     if (fresh != nullptr)
         tsf_close (fresh);
 }
 
+void SoundFontPlugin::rebuildIfFontChanged()
+{
+    juce::String signature;
+
+    if (synth != nullptr && chooseFont (signature, false) != nullptr && signature != builtFrom)
+        buildSynth();
+}
+
 void SoundFontPlugin::fontChanged()
 {
     for (auto* plugin : getPlugins())
-        if (plugin->synth != nullptr && plugin->builtGeneration != getSharedFont().getGeneration())
-            plugin->buildSynth();
+        plugin->rebuildIfFontChanged();
 }
 
 void SoundFontPlugin::deinitialise()
@@ -371,8 +496,45 @@ void SoundFontPlugin::applyToBuffer (const tracktion::PluginRenderContext& fc)
 
 void SoundFontPlugin::restorePluginStateFromValueTree (const juce::ValueTree& v)
 {
-    tracktion::copyPropertiesToCachedValues (v, program, bank);
+    tracktion::copyPropertiesToCachedValues (v, program, bank, soundFont);
     pendingProgram = pack (program.get(), bank.get());
+
+    if (auto file = getSoundFont(); file != juce::File())
+        getFonts().get (file);
+
+    rebuildIfFontChanged();
+    releaseUnusedFonts();
+}
+
+void SoundFontPlugin::setSoundFont (const juce::File& file)
+{
+    if (file == getSoundFont())
+        return;
+
+    if (file == juce::File())
+    {
+        soundFont.resetToDefault();   // not written: tracks on the app's SoundFont stay as they were
+    }
+    else
+    {
+        soundFont = file.getFullPathName();
+        getFonts().get (file);        // starts loading now, so its state shows before anything plays
+    }
+
+    rebuildIfFontChanged();   // at once if it's loaded; otherwise when it is (fontChanged)
+    releaseUnusedFonts();
+}
+
+juce::File SoundFontPlugin::getPlayingSoundFont() const
+{
+    auto path = builtFrom.upToLastOccurrenceOf ("#", false, false);   // "<path>#<generation>", or "#<generation>"
+    return juce::File::isAbsolutePath (path) ? juce::File (path) : juce::File();
+}
+
+juce::File SoundFontPlugin::getSoundFont() const
+{
+    auto path = soundFont.get();
+    return juce::File::isAbsolutePath (path) ? juce::File (path) : juce::File();
 }
 
 void SoundFontPlugin::setProgram (int newProgram, int newBank)
@@ -428,37 +590,56 @@ juce::File SoundFontPlugin::findSoundFont()
 
 void SoundFontPlugin::preload()
 {
-    getSharedFont().startLoading();
+    getFonts().getApp().startLoading();
 }
 
 bool SoundFontPlugin::isAvailable()
 {
-    return getSharedFont().get() != nullptr;
+    return getFonts().getApp().get() != nullptr;
 }
 
 void SoundFontPlugin::useSoundFont (const juce::File& file)
 {
-    getSharedFont().choose (file);
+    getFonts().getApp().choose (file);
 }
 
 juce::File SoundFontPlugin::getChosenSoundFont()
 {
-    return getSharedFont().getChosen();
+    return getFonts().getApp().getChosen();
 }
 
 juce::String SoundFontPlugin::getSoundFontError()
 {
-    return getSharedFont().getError();
+    return getFonts().getApp().getError();
 }
 
 int SoundFontPlugin::getSoundFontGeneration()
 {
-    return getSharedFont().getGeneration();
+    return loadsFinished.load();
 }
 
 std::vector<SoundFontPlugin::Preset> SoundFontPlugin::getPresets()
 {
-    return getSharedFont().getPresets();
+    return getFonts().getApp().getPresets();
+}
+
+std::vector<SoundFontPlugin::Preset> SoundFontPlugin::getPresets (const juce::File& file)
+{
+    if (file == juce::File())
+        return getPresets();
+
+    auto* source = getFonts().find (file);
+    return source != nullptr ? source->getPresets() : std::vector<Preset>();
+}
+
+SoundFontPlugin::TrackFontState SoundFontPlugin::getState (const juce::File& file)
+{
+    auto* source = file != juce::File() ? getFonts().find (file) : nullptr;
+
+    if (source == nullptr || source->isLoading())
+        return { source != nullptr, {} };
+
+    return { false, source->getError() };
 }
 
 } // namespace purrlude
