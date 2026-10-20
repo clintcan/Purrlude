@@ -116,7 +116,8 @@ DATASETS = {
     "libritts": Dataset(
         "LibriTTS (train-clean-100)", "Heiga Zen, Viet Dang, Rob Clark, Yu Zhang, Ron J. Weiss, Ye Jia, Zhifeng Chen, Yonghui Wu",
         "CC BY 4.0", "https://www.openslr.org/60/",
-        [("https://www.openslr.org/resources/60/train-clean-100.tar.gz", "train-clean-100.tar.gz", "4a8c202b78fe1bc0c47916a98f3a2ea8")],
+        # OpenSLR's EU mirror: its main server gave 1-3 MB/s, the mirror 40+ (the MD5 is the same file's).
+        [("https://openslr.elda.org/resources/60/train-clean-100.tar.gz", "train-clean-100.tar.gz", "4a8c202b78fe1bc0c47916a98f3a2ea8")],
         everything("vocals"), weight=0.5,
         notes="Read speech, not singing: a little of it teaches voice apart from instruments."),
     "guitarset": Dataset(

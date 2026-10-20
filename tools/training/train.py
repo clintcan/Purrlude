@@ -35,7 +35,7 @@ import argparse
 import math
 import random
 import time
-from pathlib import Path
+from pathlib import Path, PosixPath, WindowsPath
 
 import numpy as np
 import torch
@@ -233,7 +233,10 @@ def main():
     step = 0
 
     if checkpoint.exists():
-        state = torch.load(checkpoint, map_location=device)
+        # Checkpoints saved before args were stored as text hold Paths, which PyTorch 2.6+'s
+        # safe loading refuses unless allowed.
+        with torch.serialization.safe_globals([PosixPath, WindowsPath]):
+            state = torch.load(checkpoint, map_location=device)
         model.load_state_dict(state["model"])
         optimizer.load_state_dict(state["optimizer"])
         step = state["step"]
@@ -256,7 +259,9 @@ def main():
     examples = fixed_validation(valid_songs, frames, args.valid_count, pools)
 
     def save():
-        state = {"model": model.state_dict(), "optimizer": optimizer.state_dict(), "step": step, "args": vars(args)}
+        text = lambda v: [str(x) for x in v] if isinstance(v, list) else str(v) if isinstance(v, Path) else v
+        state = {"model": model.state_dict(), "optimizer": optimizer.state_dict(), "step": step,
+                 "args": {k: text(v) for k, v in vars(args).items()}}
         torch.save(state, str(checkpoint) + ".tmp")
         Path(str(checkpoint) + ".tmp").replace(checkpoint)
         torch.save(model.state_dict(), args.checkpoints / "weights.th")
