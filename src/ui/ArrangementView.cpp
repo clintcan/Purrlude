@@ -1,6 +1,7 @@
 #include "ArrangementView.h"
 
 #include "model/AudioInputs.h"
+#include "model/VocalSplit.h"
 #include "model/ClipEditing.h"
 #include "model/LoopRange.h"
 #include "model/Takes.h"
@@ -1777,7 +1778,7 @@ namespace
 
 void ArrangementView::showClipMenu (tracktion::EditItemID clipID, bool isMidi, double clickBeat, juce::Point<int> screenPosition)
 {
-    enum { editNotes = 1, convertMelody, convertChords, convertDrums, separateToMidi, separateToAudio, loopClip, remove, keepTake,
+    enum { editNotes = 1, convertMelody, convertChords, convertDrums, separateToMidi, separateToAudio, splitVocals, loopClip, remove, keepTake,
            splitAtPlayhead, splitHere, cut, copy, duplicate, firstTake = 100 };
     juce::PopupMenu menu;
 
@@ -1838,6 +1839,11 @@ void ArrangementView::showClipMenu (tracktion::EditItemID clipID, bool isMidi, d
         auto canSeparate = onSeparateInstruments != nullptr && analysis::isSeparationAvailable();
         menu.addItem (separateToMidi, "Separate Instruments to MIDI...", canSeparate);
         menu.addItem (separateToAudio, "Separate Instruments to Audio Tracks...", canSeparate);
+
+        // Lead and backing vocals by where they sit: only a stereo clip has sides.
+        auto source = audio_to_midi::getSource (edit, clipID);
+        menu.addItem (splitVocals, "Split Lead and Backing Vocals (Rough)...",
+                      onSplitVocals != nullptr && source.has_value() && vocal_split::isStereo (edit.engine, *source));
     }
 
     menu.addSeparator();
@@ -1869,6 +1875,8 @@ void ArrangementView::showClipMenu (tracktion::EditItemID clipID, bool isMidi, d
                                                                    : audio_to_midi::Mode::melody);
         else if ((result == separateToMidi || result == separateToAudio) && safe->onSeparateInstruments != nullptr)
             safe->onSeparateInstruments (clipID, result == separateToMidi ? separation::Output::midi : separation::Output::audio);
+        else if (result == splitVocals && safe->onSplitVocals != nullptr)
+            safe->onSplitVocals (clipID);
         else if (result == remove)
             safe->deleteSelectedClips();
         else if (result >= firstTake || result == keepTake)

@@ -3,7 +3,11 @@
 
 #include "model/AudioImport.h"
 #include "model/EngineSetup.h"
+#include "model/AudioExport.h"
 #include "model/InstrumentSeparation.h"
+#include "model/TrackMix.h"
+#include "model/VocalSplit.h"
+#include "model/SharedReverb.h"
 #include "model/TrackInstrument.h"
 #include "analysis/PolyphonicTranscriber.h"
 #include "notation/TrackNotation.h"
@@ -815,4 +819,120 @@ TEST_CASE ("Separating a song into MIDI tracks: scored against its MIDI file", "
                     std::cerr << "thresholds " << (only ? juce::String (purrlude::analysis::getStemName (*only)) : juce::String ("All"))
                               << " onset " << onset << " frame " << frame << ": " << withThresholds (only, onset, frame) << "\n";
     }
+}
+
+namespace
+{
+    /** The song's mix, exported. */
+    juce::AudioBuffer<float> exportMix (tracktion::Edit& edit)
+    {
+        auto out = juce::File::createTempFile (".wav");
+        std::optional<juce::String> error;
+        juce::Array<juce::File> files;
+
+        {
+            purrlude::AudioExport exporter (edit, {}, out, [&] (const juce::String& e, const juce::Array<juce::File>& f) { error = e; files = f; });
+
+            for (auto end = juce::Time::getMillisecondCounter() + 20000; ! error && juce::Time::getMillisecondCounter() < end;)
+                pump (20);
+        }
+
+        REQUIRE (error.has_value());
+        REQUIRE (error->isEmpty());
+
+        juce::AudioFormatManager formats;
+        formats.registerBasicFormats();
+        std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (files[0]));
+        REQUIRE (reader != nullptr);
+        juce::AudioBuffer<float> audio ((int) reader->numChannels, (int) reader->lengthInSamples);
+        reader->read (&audio, 0, (int) reader->lengthInSamples, 0, true, true);
+        reader = nullptr;
+        files[0].deleteFile();
+        return audio;
+    }
+}
+
+TEST_CASE ("A stereo vocal splits into lead and backing tracks that sound like it together", "[vocal-split][model][render]")
+{
+    Song song;
+
+    // A "lead" in the centre and a "backing" part off to the left.
+    auto file = song.folder.getChildFile ("Vocals.wav");
+    {
+        juce::WavAudioFormat wav;
+        std::unique_ptr<juce::AudioFormatWriter> writer (wav.createWriterFor (new juce::FileOutputStream (file), 44100.0, 2, 24, {}, 0));
+        juce::AudioBuffer<float> buffer (2, 2 * 44100);
+
+        for (int i = 0; i < buffer.getNumSamples(); ++i)
+        {
+            auto t = (float) i / 44100.0f * juce::MathConstants<float>::twoPi;
+            auto lead = 0.3f * std::sin (440.0f * t), backing = 0.2f * std::sin (659.3f * t);
+            buffer.setSample (0, i, lead + 0.9f * backing);
+            buffer.setSample (1, i, lead + 0.2f * backing);
+        }
+
+        writer->writeFromAudioSampleBuffer (buffer, 0, buffer.getNumSamples());
+    }
+
+    auto source = song.addClip (file);
+    REQUIRE (source.has_value());
+    REQUIRE (purrlude::vocal_split::isStereo (*song.engine, *source));
+
+    std::optional<purrlude::vocal_split::Result> result;
+    juce::String error;
+    auto audioFolder = song.folder.getChildFile ("Audio");
+
+    {
+        purrlude::vocal_split::Job job (*song.engine, *source, audioFolder,
+                                        [&] (purrlude::vocal_split::Result r, const juce::String& e) { result = r; error = e; });
+
+        for (auto end = juce::Time::getMillisecondCounter() + 30000; ! result && juce::Time::getMillisecondCounter() < end;)
+            pump (20);
+    }
+
+    REQUIRE (result.has_value());
+    INFO (error);
+    REQUIRE (error.isEmpty());
+    CHECK (result->lead.getParentDirectory() == audioFolder);
+    CHECK (result->lead.getFileName() == "Vocals - Lead Vocals.wav");
+    CHECK (result->backing.getFileName() == "Vocals - Backing Vocals.wav");
+
+    // What the clip sounds like on its own.
+    auto original = exportMix (*song.edit);
+    auto tracksBefore = purrlude::getSongTracks (*song.edit).size();
+
+    REQUIRE (purrlude::vocal_split::insertParts (*song.edit, song.live, *source, *result) == 2);
+    auto tracks = purrlude::getSongTracks (*song.edit);
+    REQUIRE (tracks.size() == tracksBefore + 2);
+
+    auto clipTrack = tracks.indexOf (tracktion::findAudioTrackForID (*song.edit, source->track));
+    auto* lead = tracks[clipTrack + 1];
+    auto* backing = tracks[clipTrack + 2];
+    CHECK (lead->getName() == "Vocals Lead Vocals");
+    CHECK (backing->getName() == "Vocals Backing Vocals");
+    CHECK (purrlude::TrackInstrument::isAudioTrack (*lead));
+    REQUIRE (lead->getClips().size() == 1);
+    CHECK (lead->getClips()[0]->getPosition().time == tracktion::findClipForID (*song.edit, source->clip)->getPosition().time);
+
+    // The two together, without the clip, sound like the clip.
+    purrlude::TrackMix::change (*song.edit, source->track, purrlude::TrackMix::Control::mute, 1.0f, 0.0f);
+    auto split = exportMix (*song.edit);
+    REQUIRE (split.getNumSamples() == original.getNumSamples());
+
+    juce::AudioBuffer<float> difference (split);
+
+    for (int c = 0; c < 2; ++c)
+        difference.addFrom (c, 0, original, c, 0, original.getNumSamples(), -1.0f);
+
+    auto level = original.getRMSLevel (0, 0, original.getNumSamples());
+    INFO ("Original " << level << ", difference " << difference.getRMSLevel (0, 0, difference.getNumSamples())
+          << " / " << difference.getRMSLevel (1, 0, difference.getNumSamples()));
+    CHECK (level > 0.05f);
+    CHECK (difference.getRMSLevel (0, 0, difference.getNumSamples()) < 0.01f * level);
+    CHECK (difference.getRMSLevel (1, 0, difference.getNumSamples()) < 0.01f * level);
+
+    // One undo step takes both tracks away.
+    song.edit->getUndoManager().undo();   // the mute
+    song.edit->getUndoManager().undo();
+    CHECK (purrlude::getSongTracks (*song.edit).size() == tracksBefore);
 }

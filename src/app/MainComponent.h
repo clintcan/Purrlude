@@ -12,6 +12,7 @@
 #include "model/InstrumentSeparation.h"
 #include "model/MidiImport.h"
 #include "model/Project.h"
+#include "model/VocalSplit.h"
 #include "ui/ArrangementView.h"
 #include "ui/LoopsPanel.h"
 #include "ui/MidiLearnPanel.h"
@@ -102,6 +103,7 @@ private:
 
     void convertToMidi (tracktion::EditItemID audioClip, audio_to_midi::Mode);
     void separateInstruments (tracktion::EditItemID audioClip, separation::Output);
+    void splitVocals (tracktion::EditItemID audioClip);
 
     /** Asks whether to download the separation model, and downloads it if the user agrees,
         then separates the clip.
@@ -160,10 +162,13 @@ private:
 
     int ticksSinceAutosave = 0;
 
-    // A conversion to MIDI, a separation or the model's download (only one at a time), with its
-    // progress window.
+    // A conversion to MIDI, a separation, a vocal split or the model's download (only one at a
+    // time), with its progress window.
+    bool isBusyConverting() const   { return midiConversion != nullptr || separationJob != nullptr || vocalSplitJob != nullptr
+                                             || modelDownload != nullptr; }
     std::unique_ptr<audio_to_midi::Conversion> midiConversion;
     std::unique_ptr<separation::Job> separationJob;
+    std::unique_ptr<vocal_split::Job> vocalSplitJob;
     std::unique_ptr<FileDownload> modelDownload;   ///< The separation model, before a separation
     std::unique_ptr<juce::AlertWindow> conversionWindow;
     double conversionProgress = 0.0;   ///< Read by the progress bar
@@ -171,6 +176,7 @@ private:
     {
         if (midiConversion != nullptr)      conversionProgress = midiConversion->getProgress();
         else if (separationJob != nullptr)  conversionProgress = separationJob->getProgress();
+        else if (vocalSplitJob != nullptr)  conversionProgress = vocalSplitJob->getProgress();
         else if (modelDownload != nullptr)  conversionProgress = modelDownload->getProgress();
     } };
 

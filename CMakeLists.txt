@@ -157,6 +157,8 @@ target_sources(purrlude_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/OnnxRuntime.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/SourceSeparator.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/SourceSeparator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/CentreSplit.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/CentreSplit.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/AudioToMidi.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/AudioToMidi.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/BluetoothMidiInput.h
@@ -167,6 +169,8 @@ target_sources(purrlude_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/BluetoothMidiPorts.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/InstrumentSeparation.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/InstrumentSeparation.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/VocalSplit.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/model/VocalSplit.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/FileDownload.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/FileDownload.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/NoteEditing.h

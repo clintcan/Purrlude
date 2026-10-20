@@ -58,6 +58,9 @@ public:
     /** Called when "Separate Instruments to MIDI/Audio Tracks" is chosen for an audio clip. */
     std::function<void (tracktion::EditItemID, separation::Output)> onSeparateInstruments;
 
+    /** Called when "Split Lead and Backing Vocals" is chosen for a stereo audio clip. */
+    std::function<void (tracktion::EditItemID)> onSplitVocals;
+
     void paint (juce::Graphics&) override;
     void resized() override;
     void moved() override;

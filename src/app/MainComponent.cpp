@@ -214,6 +214,8 @@ void MainComponent::setProject (std::unique_ptr<Project> newProject)
         separateInstruments (clipID, output);
     };
 
+    arrangement->onSplitVocals = [this] (tracktion::EditItemID clipID) { splitVocals (clipID); };
+
     // Double-click a clip to edit its notes.
     arrangement->onClipDoubleClicked = [this] (tracktion::EditItemID clipID)
     {
@@ -542,7 +544,7 @@ void MainComponent::exportScore (ExportFormat format)
 //==============================================================================
 void MainComponent::convertToMidi (tracktion::EditItemID audioClip, audio_to_midi::Mode mode)
 {
-    if (midiConversion != nullptr || separationJob != nullptr || modelDownload != nullptr)
+    if (isBusyConverting())
         return;
 
     auto source = audio_to_midi::getSource (project->getEdit(), audioClip);
@@ -588,7 +590,7 @@ juce::File MainComponent::getModelsFolder() const
 
 void MainComponent::separateInstruments (tracktion::EditItemID audioClip, separation::Output output)
 {
-    if (midiConversion != nullptr || separationJob != nullptr || modelDownload != nullptr)
+    if (isBusyConverting())
         return;
 
     const juce::String title ("Couldn't separate the instruments");
@@ -643,6 +645,42 @@ void MainComponent::separateInstruments (tracktion::EditItemID audioClip, separa
         }
 
         if (separation::insertParts (safe->project->getEdit(), safe->project->getInstrument(), src, parts, output) == 0)
+            safe->showError (title, "The audio clip has gone.");
+    });
+
+    conversionProgressTimer.startTimerHz (10);
+}
+
+void MainComponent::splitVocals (tracktion::EditItemID audioClip)
+{
+    if (isBusyConverting())
+        return;
+
+    const juce::String title ("Couldn't split the vocals");
+    auto source = audio_to_midi::getSource (project->getEdit(), audioClip);
+
+    if (! source)
+    {
+        showError (title, "This clip's audio file can't be read.");
+        return;
+    }
+
+    showConversionWindow ("Splitting " + source->name,
+                          "Lead vocals from the centre, backing vocals from the sides. Backing vocals sung "
+                          "in the centre stay with the lead.");
+
+    auto safe = juce::WeakReference<MainComponent> (this);
+    vocalSplitJob = std::make_unique<vocal_split::Job> (engine, *source, project->getAudioFolder(),
+        [safe, src = *source, title] (vocal_split::Result result, const juce::String& error)
+    {
+        if (safe == nullptr)
+            return;
+
+        juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->stopMidiConversion(); });
+
+        if (error.isNotEmpty())
+            safe->showError (title, error);
+        else if (vocal_split::insertParts (safe->project->getEdit(), safe->project->getInstrument(), src, result) == 0)
             safe->showError (title, "The audio clip has gone.");
     });
 
@@ -741,6 +779,7 @@ void MainComponent::stopMidiConversion()
     conversionProgressTimer.stopTimer();
     midiConversion = nullptr;   // cancels them if they're still running
     separationJob = nullptr;
+    vocalSplitJob = nullptr;
     modelDownload = nullptr;    // keeps what's downloaded, to carry on next time
 
     if (conversionWindow != nullptr && conversionWindow->isCurrentlyModal())

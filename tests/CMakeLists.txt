@@ -35,6 +35,7 @@ target_sources(PurrludeTests PRIVATE
     DrumTranscriptionTests.cpp
     PolyphonicTranscriptionTests.cpp
     SourceSeparationTests.cpp
+    CentreSplitTests.cpp
     InstrumentSeparationTests.cpp
     FileDownloadTests.cpp
     TrackEffectsTests.cpp

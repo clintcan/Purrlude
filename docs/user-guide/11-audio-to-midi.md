@@ -6,7 +6,7 @@ Purrlude can listen to an audio clip and write down its notes as MIDI. You can t
 
 Everything runs on your computer. No audio is sent anywhere.
 
-<img src="images/clip-menu-audio.png" alt="An audio clip's right-click menu: Split at Playhead, Split Here, Cut, Copy, Duplicate, Convert Melody to MIDI..., Convert Notes and Chords to MIDI..., Convert Drums to MIDI..., Separate Instruments to MIDI..., Separate Instruments to Audio Tracks..., Loop This Clip, Delete" width="766">
+<img src="images/clip-menu-audio.png" alt="An audio clip's right-click menu: Split at Playhead, Split Here, Cut, Copy, Duplicate, Convert Melody to MIDI..., Convert Notes and Chords to MIDI..., Convert Drums to MIDI..., Separate Instruments to MIDI..., Separate Instruments to Audio Tracks..., Split Lead and Backing Vocals (Rough)..., Loop This Clip, Delete" width="766">
 
 Right-click an audio clip and choose a command. A progress window shows while it works, and **Cancel** (or Esc) stops it. Only one conversion runs at a time.
 
@@ -78,5 +78,14 @@ It's kept in your models folder, where you can also put a copy yourself:
 - macOS: `~/Library/Application Support/Purrlude/Models/`
 - Windows: `%APPDATA%\Purrlude\Models\`
 - Linux: `~/.config/Purrlude/Models/`
+
+## Splitting lead and backing vocals
+
+**Split Lead and Backing Vocals (Rough)...** in a stereo audio clip's menu splits a vocal recording in two: the lead vocal and the backing vocals. It's meant for the vocals part from **Separate Instruments to Audio Tracks**, but works on any stereo clip.
+
+- **How it tells them apart:** by where they sit. The lead is usually in the middle, and backing vocals are often spread to the sides. What's in the middle goes to *Lead Vocals*, the rest to *Backing Vocals*.
+- **What you get:** two audio tracks under the clip's track, playing in the same place. Together they sound exactly like the clip, so mute the clip's own track to use them. One undo step.
+- **Limits:** backing vocals sung in the middle (doubled or stacked under the lead) stay with the lead, and the lead's reverb, if it's wide, goes with the backing vocals. A mono clip has no sides, so the item is greyed out.
+- **Speed:** a few seconds for a song, and it doesn't need the separation model.
 
 Developers can make it with `tools/models/export_demucs.py`.
