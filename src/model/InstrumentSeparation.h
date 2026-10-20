@@ -31,7 +31,7 @@ namespace separation
 
     /** Where Purrlude downloads the model from (only when the user agrees): a release asset of
         Purrlude's GitHub repository (models-2), with its size and SHA-256. The model is Meta's
-        Demucs htdemucs_6s (MIT) fine-tuned by tools/training on Slakh2100 (CC BY 4.0) and General
+        Demucs htdemucs_6s (weights for scientific use only, not MIT) fine-tuned by tools/training on Slakh2100 (CC BY 4.0) and General
         MIDI renders of it; tools/models/export_demucs.py --weights exports the release's weights
         to this file.
     */

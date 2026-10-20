@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Fine-tunes Demucs's six-instrument model (htdemucs_6s, MIT) on Slakh-style songs (slakh.py):
+"""Fine-tunes Demucs's six-instrument model (htdemucs_6s; its weights are for scientific use
+only, not MIT, and so is the result) on Slakh-style songs (slakh.py):
 Slakh2100 and General MIDI renders of it (render_gm.py).
 
     python tools/training/train.py <checkpoint folder> <song folder> [more ...]

@@ -10,7 +10,7 @@ namespace purrlude::analysis
 {
 
 /** Splitting a song into its instruments with Demucs v4 (Meta's hybrid transformer,
-    "htdemucs_6s", MIT): drums, bass, vocals, guitar, piano and everything else.
+    "htdemucs_6s"; code MIT, weights for scientific use only): drums, bass, vocals, guitar, piano and everything else.
 
     The network is exported to ONNX without its spectrogram steps (as in sevagh/demucs.onnx),
     so this does them, along with Demucs's own processing around it (apply_model with no

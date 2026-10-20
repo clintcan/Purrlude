@@ -67,7 +67,7 @@ sudo apt-get install ninja-build libasound2-dev libjack-jackd2-dev ladspa-sdk li
   libxinerama-dev libxrandr-dev libxrender-dev libwebkit2gtk-4.1-dev libglu1-mesa-dev mesa-common-dev
 ```
 
-**Separating instruments** needs the Demucs model, fine-tuned for Purrlude (`htdemucs_6s-purrlude-1.onnx`, 115 MB). The first time you separate, Purrlude offers to download it from this repository's `models-2` release (checked against its SHA-256). `tools/models/export_demucs.py --weights` makes the same file from that release's weights. Everything else works without it.
+**Separating instruments** needs the Demucs model, fine-tuned for Purrlude (`htdemucs_6s-purrlude-1.onnx`, 115 MB). The first time you separate, Purrlude offers to download it from this repository's `models-2` release (checked against its SHA-256). Unlike Purrlude, the model isn't under an open-source licence: it's built from Meta's Demucs weights, which Meta provides only for scientific purposes. `tools/models/export_demucs.py --weights` makes the same file from that release's weights. Everything else works without it.
 
 ## Licence
 
@@ -77,7 +77,7 @@ It also uses:
 - **[Verovio](https://www.verovio.org)** (LGPLv3) for score engraving
 - **[ONNX Runtime](https://onnxruntime.ai)** (MIT), with telemetry switched off
 - Spotify's **[basic-pitch](https://github.com/spotify/basic-pitch)** model (Apache 2.0)
-- Meta's **[Demucs](https://github.com/facebookresearch/demucs)** (MIT)
+- Meta's **[Demucs](https://github.com/facebookresearch/demucs)** (code MIT; its trained weights, which the separation model is built from, aren't MIT-licensed: Meta provides them only for scientific purposes, see [demucs#327](https://github.com/facebookresearch/demucs/issues/327))
 - **[TinySoundFont](https://github.com/schellingb/TinySoundFont)** (MIT) with the **GeneralUser GS** SoundFont
 - drum loops from Google Magenta's **[Groove MIDI Dataset](https://magenta.tensorflow.org/datasets/groove)** (CC BY 4.0)
 

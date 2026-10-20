@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Exports Demucs v4's six-instrument model ("htdemucs_6s", MIT) to ONNX for Purrlude.
+"""Exports Demucs v4's six-instrument model ("htdemucs_6s") to ONNX for Purrlude.
+
+Demucs's code is MIT, but its pretrained weights aren't: Meta provides them only for
+scientific purposes (github.com/facebookresearch/demucs/issues/327), and so does any model
+made from them.
 
 The network is exported without its spectrogram steps, which ONNX can't express; Purrlude
 does them itself (src/analysis/SourceSeparator.cpp). This uses sevagh/demucs.onnx's copy of

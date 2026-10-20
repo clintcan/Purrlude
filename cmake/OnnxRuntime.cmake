@@ -182,7 +182,8 @@ function(purrlude_bundle_model_licenses target)
     add_custom_command(TARGET ${target} POST_BUILD ${commands} COMMENT "Copying model licenses" VERBATIM)
 endfunction()
 
-# The instrument separation model (Demucs v4 "htdemucs_6s", MIT, fine-tuned by tools/training),
+# The instrument separation model (Demucs v4 "htdemucs_6s", fine-tuned by tools/training;
+# Demucs's code is MIT, its weights are for scientific use only: content/LICENSES.md),
 # exported to ONNX by tools/models/export_demucs.py --weights, and published as the models-2
 # release. At 115 MB it isn't compiled in: the app looks for it in the user's models folder, then
 # beside the app, and offers to download it. Development builds that have it in the cache also

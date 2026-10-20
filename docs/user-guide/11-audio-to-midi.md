@@ -74,6 +74,8 @@ It uses Meta's Demucs model, fine-tuned for Purrlude to tell piano, guitar, bass
 
 **The model** is a 115 MB file (`htdemucs_6s-purrlude-1.onnx`) that isn't included with Purrlude. The first time you separate instruments, Purrlude asks whether to download it from its GitHub page. Nothing else is sent or received, and your audio stays on your computer. If the download is cancelled or interrupted, the next one carries on from where it stopped, and the file is checked before it's used. If you had the earlier model (`htdemucs_6s.onnx`), Purrlude offers the new one the next time you separate, and deletes the old file once it's downloaded.
 
+**Its licence is different from Purrlude's.** The model is built from Meta's trained Demucs model, which Meta provides only for scientific purposes; it isn't open-source like Purrlude. Download and use it only if that fits what you're doing. Everything else in Purrlude works without it.
+
 It's kept in your models folder, where you can also put a copy yourself:
 - macOS: `~/Library/Application Support/Purrlude/Models/`
 - Windows: `%APPDATA%\Purrlude\Models\`

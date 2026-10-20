@@ -697,7 +697,10 @@ void MainComponent::downloadModelThenSeparate (tracktion::EditItemID audioClip, 
                        .withIconType (juce::MessageBoxIconType::QuestionIcon)
                        .withTitle ("Download the separation model?")
                        .withMessage ("Separating instruments needs a model that isn't installed yet: Demucs, by Meta, "
-                                     "fine-tuned for Purrlude (MIT licence), " + megabytes + " MB.\n\n"
+                                     "fine-tuned for Purrlude, " + megabytes + " MB.\n\n"
+                                     "Its licence differs from Purrlude's: it's built from Meta's trained model, which "
+                                     "Meta provides only for scientific purposes (github.com/facebookresearch/demucs/issues/327). "
+                                     "Download it only if that fits your use.\n\n"
                                      "Purrlude can download it from its GitHub page (github.com/clintcan/Purrlude) "
                                      "into " + getModelsFolder().getFullPathName() + ". Nothing else is sent or "
                                      "received, and your audio stays on this computer.")
