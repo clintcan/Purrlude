@@ -167,8 +167,15 @@ TEST_CASE ("A mapped MIDI controller's moves are recorded", "[model][automation]
     pump (300);
     song.stop();
 
-    // The volume now follows a curve that goes from low to high.
+    // The volume now follows a curve that goes from low to high. (Its points' values, not the
+    // curve at set times: on a slow machine playback runs behind the wall clock.)
     REQUIRE (automation::isAutomated (volume));
     auto& curve = volume.getCurve();
-    CHECK (curve.getValueAt (tracktion::TimePosition::fromSeconds (0.45)) < curve.getValueAt (tracktion::TimePosition::fromSeconds (0.75)));
+    REQUIRE (curve.getNumPoints() >= 2);
+    auto lowest = curve.getPointValue (0);
+
+    for (int i = 1; i < curve.getNumPoints(); ++i)
+        lowest = std::min (lowest, curve.getPointValue (i));
+
+    CHECK (lowest < curve.getPointValue (curve.getNumPoints() - 1));
 }

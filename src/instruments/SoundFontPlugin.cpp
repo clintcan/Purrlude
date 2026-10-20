@@ -496,7 +496,13 @@ void SoundFontPlugin::applyToBuffer (const tracktion::PluginRenderContext& fc)
 
 void SoundFontPlugin::restorePluginStateFromValueTree (const juce::ValueTree& v)
 {
-    tracktion::copyPropertiesToCachedValues (v, program, bank, soundFont);
+    tracktion::copyPropertiesToCachedValues (v, program, bank);
+
+    // Not with the others: Tracktion's String (var) is ambiguous for MSVC.
+    if (auto p = v.getPropertyPointer (soundFont.getPropertyID()))
+        soundFont = p->toString();
+    else
+        soundFont.resetToDefault();
     pendingProgram = pack (program.get(), bank.get());
 
     if (auto file = getSoundFont(); file != juce::File())
