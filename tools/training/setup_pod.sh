@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Sets up a rented GPU machine (a RunPod pod from its PyTorch image, Ubuntu, run as root) for
-# fine-tuning, with the data on a network volume so a pod can be swapped without downloading it
+# training, with the data on a network volume so a pod can be swapped without downloading it
 # again:
 #
 #     git clone https://github.com/clintcan/Purrlude.git && cd Purrlude
@@ -11,10 +11,18 @@
 #     cd tools/training && /workspace/data/venv/bin/python train.py /workspace/data/checkpoints \
 #         /workspace/data/slakh2100_flac_redux/train /workspace/data/gm-renders --workers 12
 #
+# or, from scratch (no Meta weights; see train.py), with the recordings datasets.py fetched:
+#
+#     ... train.py /workspace/data/scratch /workspace/data/slakh2100_flac_redux/train \
+#         /workspace/data/gm-renders --pools /workspace/data/pools/pools.json --from-scratch \
+#         --lr 3e-4 --warmup 5000 --steps 300000 --batch 8 --workers 12
+#
 # It installs FluidSynth and FluidR3_GM (MIT), Demucs (MIT) without letting pip replace the
 # image's PyTorch, downloads Slakh2100 (CC BY 4.0, 104 GB, checked against Zenodo's MD5) and
 # GeneralUser GS (Purrlude's own General MIDI sounds, the pinned file and SHA-256 the build uses),
-# and renders GM_SONGS (default 600) of Slakh's training songs through both sound sets.
+# renders GM_SONGS (default 600) of Slakh's training songs through both sound sets, and with
+# POOLS=1 downloads datasets.py's recordings (CC BY 4.0; about 120 GB, and E-GMD's 96 GB archive
+# needs as much again while it's unpacked), or only the ones named in DATASETS.
 # Slakh's validation and test songs are kept out of training. Each step is skipped when done,
 # so it can be run again after an interruption. The downloads and renders need no GPU: a cheap
 # CPU pod with the same volume can do them.
@@ -66,5 +74,11 @@ fluidr3=/usr/share/sounds/sf2/FluidR3_GM.sf2
 
 echo "== General MIDI renders ($gm_songs songs)"
 "$python" "$here/render_gm.py" "$data/slakh2100_flac_redux/train" "$data/gm-renders" "$generaluser" "$fluidr3" --limit "$gm_songs"
+
+if [[ "${POOLS:-0}" == 1 ]]; then
+    echo "== Openly licensed recordings"
+    # shellcheck disable=SC2086
+    "$python" "$here/datasets.py" "$data/pools" ${DATASETS:-}
+fi
 
 echo "Ready: $(du -sh "$data" | cut -f1) in $data"

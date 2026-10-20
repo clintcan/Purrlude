@@ -17,8 +17,9 @@ graph):
                          onnx dora-search openunmix diffq
     venv/bin/python tools/models/export_demucs.py .cpm-cache/demucs/htdemucs_6s.onnx
 
-With --weights checkpoints/weights.th it exports fine-tuned weights instead (from
-tools/training/train.py, a state dict of the same model). Purrlude's model is the models-2
+With --weights checkpoints/weights.th it exports trained weights instead (from
+tools/training/train.py, fine-tuned or from scratch: a state dict of the same network, built from
+tools/training/architecture.py without downloading Meta's weights). Purrlude's model is the models-2
 release's htdemucs_6s-purrlude-1-weights.th exported this way (htdemucs_6s-purrlude-1.onnx,
 SHA-256 96dda58d164ee5233df6d69a39fd2dadf1f0a64cad6033b7229586646476231b with PyTorch 2.5.1
 on macOS arm64).
@@ -80,19 +81,25 @@ def main():
         if torch.__version__.split("+")[0] != "2.5.1":
             print(f"Warning: PyTorch {torch.__version__}, not 2.5.1; the export may differ.")
 
-        bag = get_model("htdemucs_6s")
-        weights = work / "torch" / "hub" / "checkpoints" / WEIGHTS
-
-        if sha256(weights) != WEIGHTS_SHA256:
-            sys.exit(f"{WEIGHTS} doesn't match its SHA-256")
-
-        model = bag.models[0] if hasattr(bag, "models") else bag
-        assert isinstance(model, HTDemucs)
-
         if weights_file is not None:
-            # Fine-tuned weights: the same network's state dict (upstream Demucs's names).
+            # Trained weights (fine-tuned or from scratch): the same network's state dict
+            # (upstream Demucs's names), in a network built from its shape, without Meta's file.
+            sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "training"))
+            from architecture import ARCHITECTURE
+            model = HTDemucs(**ARCHITECTURE)
             model.load_state_dict(torch.load(weights_file, map_location="cpu"))
-            print(f"Using the fine-tuned weights in {weights_file} (SHA-256 {sha256(weights_file)})")
+            print(f"Using the weights in {weights_file} (SHA-256 {sha256(weights_file)})")
+        else:
+            bag = get_model("htdemucs_6s")
+            weights = work / "torch" / "hub" / "checkpoints" / WEIGHTS
+
+            if sha256(weights) != WEIGHTS_SHA256:
+                sys.exit(f"{WEIGHTS} doesn't match its SHA-256")
+
+            model = bag.models[0] if hasattr(bag, "models") else bag
+
+        assert isinstance(model, HTDemucs)
+        model.eval()
 
         assert model.sources == ["drums", "bass", "other", "vocals", "guitar", "piano"]
 
