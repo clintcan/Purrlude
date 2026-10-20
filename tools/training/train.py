@@ -38,6 +38,7 @@ import time
 from pathlib import Path, PosixPath, WindowsPath
 
 import numpy as np
+import soundfile as sf
 import torch
 import julius
 import torch.nn.functional as F
@@ -89,6 +90,26 @@ class Segments(torch.utils.data.IterableDataset):
                 parts[PARTS.index(p)] = augment(audio)
         return parts
 
+    def example(self, songs, rng, augment):
+        """One example's parts, before their gains."""
+        if self.pools is not None and (not songs or rng.random() < self.pool_mix):
+            parts = self.pooled(rng, augment)
+        else:
+            parts = self.read(rng.choice(songs), rng)
+
+            if self.pools is not None and rng.random() < self.vocals_over_songs:
+                vocals = self.pools.segment("vocals", self.frames, SAMPLE_RATE, rng)
+                if vocals is not None:
+                    parts[PARTS.index("vocals")] = augment(vocals)
+
+        # Now and then a part from another song instead (Demucs's "remix").
+        if self.remix > 0:
+            for p in range(len(PARTS)):
+                if rng.random() < self.remix:
+                    parts[p] = self.read(rng.choice(songs), rng)[p]
+
+        return parts
+
     def __iter__(self):
         info = torch.utils.data.get_worker_info()
         rng = random.Random(self.seed + (info.id if info else 0) + int(time.time()))
@@ -97,21 +118,13 @@ class Segments(torch.utils.data.IterableDataset):
         augment = Augment(rng)
 
         while True:
-            if self.pools is not None and (not songs or rng.random() < self.pool_mix):
-                parts = self.pooled(rng, augment)
-            else:
-                parts = self.read(rng.choice(songs), rng)
-
-                if self.pools is not None and rng.random() < self.vocals_over_songs:
-                    vocals = self.pools.segment("vocals", self.frames, SAMPLE_RATE, rng)
-                    if vocals is not None:
-                        parts[PARTS.index("vocals")] = augment(vocals)
-
-            # Now and then a part from another song instead (Demucs's "remix").
-            if self.remix > 0:
-                for p in range(len(PARTS)):
-                    if rng.random() < self.remix:
-                        parts[p] = self.read(rng.choice(songs), rng)[p]
+            # A read that fails (once in a 12-hour run, reading from a network volume) skips the
+            # example instead of ending the run.
+            try:
+                parts = self.example(songs, rng, augment)
+            except (sf.LibsndfileError, OSError, RuntimeError) as e:
+                print(f"Skipped an example: couldn't read its audio ({type(e).__name__})", flush=True)
+                continue
 
             gains = torch.tensor([rng.uniform(0.25, 1.25) for _ in PARTS]).view(-1, 1, 1)
             parts = parts * gains

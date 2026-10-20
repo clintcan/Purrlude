@@ -263,6 +263,8 @@ TEST_CASE ("Separation: the GPU gives the CPU's stems", "[.separate-gpu]")
 // new part against the old, dB) and the new one's level beside the old (dB, negative = quieter). For checking a
 // fine-tuned model on real songs without references, singing above all: fine-tuning on Slakh
 // leaves vocals out, so the vocals should stay close to the old model's and not get quieter.
+// With PURRLUDE_STEMS_OUT=<folder> it also writes both models' parts there for listening
+// (<Stem>-old.wav, <Stem>-new.wav).
 TEST_CASE ("Separation: a model compared with another on a song", "[.separate-compare]")
 {
     juce::File model (juce::SystemStats::getEnvironmentVariable ("PURRLUDE_SEPARATION_MODEL", {}));
@@ -296,6 +298,25 @@ TEST_CASE ("Separation: a model compared with another on a song", "[.separate-co
 
     auto old = separateWith (baseline);
     auto now = separateWith (model);
+
+    juce::File out (juce::SystemStats::getEnvironmentVariable ("PURRLUDE_STEMS_OUT", {}));
+
+    if (out != juce::File())
+    {
+        REQUIRE (out.createDirectory());
+
+        for (int s = 0; s < numStems; ++s)
+            for (auto [stems, suffix] : { std::pair { &old, "old" }, std::pair { &now, "new" } })
+            {
+                juce::AudioBuffer<float> part (stems->getArrayOfWritePointers() + 2 * s, 2, length);
+                auto stemFile = out.getChildFile (getStemName ((Stem) s) + "-" + suffix + ".wav");
+                stemFile.deleteFile();
+                juce::WavAudioFormat wav;
+                std::unique_ptr<juce::AudioFormatWriter> writer (wav.createWriterFor (stemFile.createOutputStream().release(), separationSampleRate, 2, 24, {}, 0));
+                REQUIRE (writer != nullptr);
+                REQUIRE (writer->writeFromAudioSampleBuffer (part, 0, length));
+            }
+    }
 
     for (int s = 0; s < numStems; ++s)
     {
