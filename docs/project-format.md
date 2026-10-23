@@ -10,7 +10,7 @@ The `EDIT` element's `purrludeFormat` attribute is the format version. Each save
 |---|---|---|
 | 1 | 1.0 | The format described here |
 | 2 | 1.1 | Drum kits besides the standard one (`purrludeProgram` and the SoundFont's `program` from 129 up), and SoundFont variations (`purrludeBank`, the SoundFont's `bank`). Version 1 songs need no conversion |
-| 3 | after 1.1.0 | A track's own SoundFont (`purrludeSoundFont`, the SoundFont plugin's `soundFont`). Version 2 songs need no conversion |
+| 3 | 1.2 | A track's own SoundFont (`purrludeSoundFont`, the SoundFont plugin's `soundFont`). Version 2 songs need no conversion |
 
 **From 1.0 on, the format is frozen:** a song saved by one version of Purrlude opens in every later one.
 - When the format changes, `project_format::currentVersion` (`src/model/ProjectFormat.h`) goes up, and `project_format::upgrade` gains a step that converts the older version as a song opens.

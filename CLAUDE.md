@@ -2,9 +2,9 @@
 
 Purrlude is a cross-platform digital audio workstation (DAW) for composing, recording, arranging and mixing music. It aims to be **easy for beginners and deep enough for power users**: a clean default UI that hides complexity until it's needed, with full control (automation, routing, keyboard-driven workflows) available underneath.
 
-> **Status: 1.0 on macOS and Windows; Linux tried, not in everyday use** (the README says the same; keep them in step). Linux: CI, and a first real run on an Ubuntu 24.04 ARM VM (import, score, the model download, separation and playback work; no Bluetooth MIDI backend yet). Version 1.1.0 (`project()` in `CMakeLists.txt`).
+> **Status: 1.0 on macOS and Windows; Linux tried, not in everyday use** (the README says the same; keep them in step). Linux: CI, and a first real run on an Ubuntu 24.04 ARM VM (import, score, the model download, separation and playback work; no Bluetooth MIDI backend yet). Version 1.2.0 (`project()` in `CMakeLists.txt`).
 > - **Works:** the signature features (score, audio to MIDI, separation, loops and accompaniment, devices) and recording, editing, mixing and export, in real use on macOS (Apple Silicon) and Windows.
-> - **The project format is frozen** (format 1 in 1.0; format 2 from 1.1, which added drum kits and variations; `docs/project-format.md`): every later change needs an upgrade step.
+> - **The project format is frozen** (format 1 in 1.0; format 2 from 1.1, which added drum kits and variations; format 3 from 1.2, a track's own SoundFont; `docs/project-format.md`): every later change needs an upgrade step.
 > - **Still to do:**
 >   - prebuilt releases for macOS (signed, notarised) and Windows (an installer can be made, `tools/packaging/make_windows_installer.py`, but isn't signed or published yet); Linux has an x86-64 AppImage since 1.0.1 (`appimage` workflow)
 >   - everyday use on Linux, and its Bluetooth MIDI backend (BlueZ)
