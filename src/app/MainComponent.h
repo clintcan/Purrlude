@@ -103,12 +103,32 @@ private:
 
     void convertToMidi (tracktion::EditItemID audioClip, audio_to_midi::Mode);
     void separateInstruments (tracktion::EditItemID audioClip, separation::Output);
-    void splitVocals (tracktion::EditItemID audioClip);
+    /** With the lead vocal model if it's installed (else it offers to download it), or roughly.
+        Without onGpu, on graphics built into the processor it first asks whether the model
+        should run on them or on the CPU (askWhereToFindLeadVocal); else on the GPU.
+    */
+    void splitVocals (tracktion::EditItemID audioClip, bool roughly = false, std::optional<bool> onGpu = {});
+
+    /** Warns that the lead vocal model's long runs on built-in graphics can make the screen
+        stutter, and splits the clip on the GPU or the CPU, as the user chooses.
+    */
+    void askWhereToFindLeadVocal (tracktion::EditItemID audioClip, const juce::String& gpuName);
 
     /** Asks whether to download the separation model, and downloads it if the user agrees,
         then separates the clip.
     */
     void downloadModelThenSeparate (tracktion::EditItemID audioClip, separation::Output);
+
+    /** Asks whether to download the lead vocal model (or split the clip roughly), and downloads
+        it if the user agrees, then splits the clip.
+    */
+    void downloadModelThenSplitVocals (tracktion::EditItemID audioClip, bool canSplitRoughly);
+
+    /** Downloads a model the user agreed to into the models folder, with progress, then calls
+        done on the message thread.
+    */
+    void downloadModel (const FileDownload::Source&, const juce::String& fileName, const juce::String& title,
+                        const juce::String& message, std::function<void()> done);
     /** The progress window for a conversion or separation; Cancel stops it. */
     void showConversionWindow (const juce::String& title, const juce::String& message);
     void stopMidiConversion();
@@ -169,7 +189,7 @@ private:
     std::unique_ptr<audio_to_midi::Conversion> midiConversion;
     std::unique_ptr<separation::Job> separationJob;
     std::unique_ptr<vocal_split::Job> vocalSplitJob;
-    std::unique_ptr<FileDownload> modelDownload;   ///< The separation model, before a separation
+    std::unique_ptr<FileDownload> modelDownload;   ///< A model, before the job that needs it
     std::unique_ptr<juce::AlertWindow> conversionWindow;
     double conversionProgress = 0.0;   ///< Read by the progress bar
     juce::TimedCallback conversionProgressTimer { [this]

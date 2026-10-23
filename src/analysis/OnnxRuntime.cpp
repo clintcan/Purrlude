@@ -8,6 +8,7 @@
 
  #if PURRLUDE_HAS_DIRECTML
   #include <dml_provider_factory.h>
+  #include <dxgi1_6.h>
  #endif
 
 namespace purrlude::analysis
@@ -133,6 +134,77 @@ Ort::SessionOptions makeSessionOptions (bool preferGpu, const juce::String& cach
    #else
     juce::ignoreUnused (preferGpu, cacheKey);
     return options;
+   #endif
+}
+
+#if PURRLUDE_HAS_DIRECTML
+// The adapter DirectML takes (HighPerformance: the first hardware one by that preference), and
+// whether it shares the computer's memory (D3D12's UMA): graphics built into the processor.
+// dxgi.dll and d3d12.dll are loaded here rather than linked, as onnxruntime.dll loads them anyway.
+static juce::String findBuiltInGpu()
+{
+    auto* dxgi = LoadLibraryW (L"dxgi.dll");
+    auto* d3d12 = LoadLibraryW (L"d3d12.dll");
+    juce::String name;
+
+    using CreateFactory = HRESULT (WINAPI*) (REFIID, void**);
+    auto createFactory = dxgi != nullptr ? reinterpret_cast<CreateFactory> (GetProcAddress (dxgi, "CreateDXGIFactory1")) : nullptr;
+    auto createDevice = d3d12 != nullptr ? reinterpret_cast<PFN_D3D12_CREATE_DEVICE> (GetProcAddress (d3d12, "D3D12CreateDevice")) : nullptr;
+    IDXGIFactory6* factory = nullptr;
+
+    if (createFactory != nullptr && createDevice != nullptr
+         && SUCCEEDED (createFactory (__uuidof (IDXGIFactory6), reinterpret_cast<void**> (&factory))))
+    {
+        IDXGIAdapter1* adapter = nullptr;
+
+        for (UINT i = 0; factory->EnumAdapterByGpuPreference (i, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, __uuidof (IDXGIAdapter1),
+                                                              reinterpret_cast<void**> (&adapter)) == S_OK; ++i)
+        {
+            DXGI_ADAPTER_DESC1 description {};
+            adapter->GetDesc1 (&description);
+
+            if ((description.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) != 0)
+            {
+                adapter->Release();
+                continue;
+            }
+
+            ID3D12Device* device = nullptr;
+
+            if (SUCCEEDED (createDevice (adapter, D3D_FEATURE_LEVEL_11_0, __uuidof (ID3D12Device), reinterpret_cast<void**> (&device))))
+            {
+                D3D12_FEATURE_DATA_ARCHITECTURE architecture {};
+
+                if (SUCCEEDED (device->CheckFeatureSupport (D3D12_FEATURE_ARCHITECTURE, &architecture, sizeof (architecture)))
+                     && architecture.UMA)
+                    name = juce::String (description.Description).trim();
+
+                device->Release();
+            }
+
+            adapter->Release();
+            break;
+        }
+
+        factory->Release();
+    }
+
+    if (d3d12 != nullptr)   FreeLibrary (d3d12);
+    if (dxgi != nullptr)    FreeLibrary (dxgi);
+    return name;
+}
+#endif
+
+juce::String getBuiltInGpuName()
+{
+   #if PURRLUDE_HAS_DIRECTML
+    if (juce::SystemStats::getEnvironmentVariable ("PURRLUDE_ONNX_DEVICE", {}) == "cpu")
+        return {};
+
+    static const juce::String name = findBuiltInGpu();
+    return name;
+   #else
+    return {};
    #endif
 }
 

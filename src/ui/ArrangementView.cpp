@@ -1840,10 +1840,12 @@ void ArrangementView::showClipMenu (tracktion::EditItemID clipID, bool isMidi, d
         menu.addItem (separateToMidi, "Separate Instruments to MIDI...", canSeparate);
         menu.addItem (separateToAudio, "Separate Instruments to Audio Tracks...", canSeparate);
 
-        // Lead and backing vocals by where they sit: only a stereo clip has sides.
+        // Lead and backing vocals: the model takes any clip, the rough split (by where they sit)
+        // only a stereo one.
         auto source = audio_to_midi::getSource (edit, clipID);
-        menu.addItem (splitVocals, "Split Lead and Backing Vocals (Rough)...",
-                      onSplitVocals != nullptr && source.has_value() && vocal_split::isStereo (edit.engine, *source));
+        menu.addItem (splitVocals, "Split Lead and Backing Vocals...",
+                      onSplitVocals != nullptr && source.has_value()
+                          && (vocal_split::canRunModel() || vocal_split::isStereo (edit.engine, *source)));
     }
 
     menu.addSeparator();

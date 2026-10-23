@@ -436,6 +436,8 @@ bool isSeparationAvailable()    { return false; }
 
 void setGpuCacheFolder (const juce::File&) {}
 
+juce::String getBuiltInGpuName()    { return {}; }
+
 demucs::Network loadDemucs (const juce::File&, juce::String& error, bool)
 {
     error = "Separating instruments isn't available in this build of Purrlude.";
@@ -444,22 +446,11 @@ demucs::Network loadDemucs (const juce::File&, juce::String& error, bool)
 
 #endif
 
-bool separateStems (const juce::AudioBuffer<float>& audio, double sampleRate, const juce::File& model,
-                    const StemReceiver& receiver, juce::String& error, const std::function<bool (float)>& keepGoing,
-                    bool useGpu)
+juce::AudioBuffer<float> toStereoAt (const juce::AudioBuffer<float>& audio, double sampleRate, double targetRate)
 {
-    if (audio.getNumSamples() == 0 || audio.getNumChannels() == 0 || sampleRate <= 0.0)
-        return true;
-
-    auto network = loadDemucs (model, error, useGpu);
-
-    if (network == nullptr)
-        return false;
-
-    // Stereo at 44.1 kHz.
     juce::AudioBuffer<float> stereo;
 
-    if (std::abs (sampleRate - separationSampleRate) < 1.0)
+    if (std::abs (sampleRate - targetRate) < 1.0)
     {
         stereo.setSize (2, audio.getNumSamples());
 
@@ -468,7 +459,7 @@ bool separateStems (const juce::AudioBuffer<float>& audio, double sampleRate, co
     }
     else
     {
-        auto ratio = sampleRate / separationSampleRate;
+        auto ratio = sampleRate / targetRate;
         stereo.setSize (2, (int) (audio.getNumSamples() / ratio));
         std::vector<float> source ((size_t) audio.getNumSamples());
 
@@ -482,7 +473,7 @@ bool separateStems (const juce::AudioBuffer<float>& audio, double sampleRate, co
                 for (int pass = 0; pass < 2; ++pass)
                 {
                     juce::IIRFilter lowPass;
-                    lowPass.setCoefficients (juce::IIRCoefficients::makeLowPass (sampleRate, separationSampleRate * 0.45));
+                    lowPass.setCoefficients (juce::IIRCoefficients::makeLowPass (sampleRate, targetRate * 0.45));
                     lowPass.processSamples (source.data(), (int) source.size());
                 }
 
@@ -491,7 +482,22 @@ bool separateStems (const juce::AudioBuffer<float>& audio, double sampleRate, co
         }
     }
 
-    return separate (stereo, network, receiver, error, keepGoing);
+    return stereo;
+}
+
+bool separateStems (const juce::AudioBuffer<float>& audio, double sampleRate, const juce::File& model,
+                    const StemReceiver& receiver, juce::String& error, const std::function<bool (float)>& keepGoing,
+                    bool useGpu)
+{
+    if (audio.getNumSamples() == 0 || audio.getNumChannels() == 0 || sampleRate <= 0.0)
+        return true;
+
+    auto network = loadDemucs (model, error, useGpu);
+
+    if (network == nullptr)
+        return false;
+
+    return separate (toStereoAt (audio, sampleRate, separationSampleRate), network, receiver, error, keepGoing);
 }
 
 } // namespace purrlude::analysis

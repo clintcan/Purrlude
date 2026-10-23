@@ -75,6 +75,14 @@ bool isSeparationAvailable();
 */
 void setGpuCacheFolder (const juce::File& folder);
 
+/** The name of the GPU models run on, if it's built into the processor and shares the computer's
+    memory (a laptop's integrated graphics), else empty. Such a GPU also draws the screen, so a
+    long run on it can make the screen stutter, and drivers may report a timeout (the lead vocal
+    model's runs take about a minute each on an AMD Radeon in a Ryzen 7 5700U). Windows only
+    (DirectML), where it's also empty with PURRLUDE_ONNX_DEVICE=cpu; empty elsewhere.
+*/
+juce::String getBuiltInGpuName();
+
 /** Demucs from its ONNX file; an empty function (and an error) if it can't be loaded.
 
     With useGpu, it runs on the GPU where it can (DirectML on Windows, Core ML on macOS
@@ -82,6 +90,11 @@ void setGpuCacheFolder (const juce::File& folder);
     if the GPU can't start it or fails mid-song (e.g. Windows resets a busy GPU).
 */
 demucs::Network loadDemucs (const juce::File& model, juce::String& error, bool useGpu = true);
+
+/** Audio as stereo at another rate: mono is doubled, and a different rate is resampled (low-passed
+    first when going down).
+*/
+juce::AudioBuffer<float> toStereoAt (const juce::AudioBuffer<float>&, double sampleRate, double targetRate);
 
 /** The whole job: any audio (mono is doubled, other rates are resampled), separated with
     the model in the file (on the GPU where it can, as loadDemucs). The stems come out at

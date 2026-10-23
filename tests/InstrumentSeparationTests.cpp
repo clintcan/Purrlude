@@ -883,7 +883,7 @@ TEST_CASE ("A stereo vocal splits into lead and backing tracks that sound like i
     auto audioFolder = song.folder.getChildFile ("Audio");
 
     {
-        purrlude::vocal_split::Job job (*song.engine, *source, audioFolder,
+        purrlude::vocal_split::Job job (*song.engine, *source, {}, {}, true, audioFolder,   // no model: the rough split
                                         [&] (purrlude::vocal_split::Result r, const juce::String& e) { result = r; error = e; });
 
         for (auto end = juce::Time::getMillisecondCounter() + 30000; ! result && juce::Time::getMillisecondCounter() < end;)
@@ -935,4 +935,61 @@ TEST_CASE ("A stereo vocal splits into lead and backing tracks that sound like i
     song.edit->getUndoManager().undo();   // the mute
     song.edit->getUndoManager().undo();
     CHECK (purrlude::getSongTracks (*song.edit).size() == tracksBefore);
+}
+
+// PURRLUDE_LEAD_VOCALS_MODEL=/path/lead-vocals-anvuew-1.onnx PURRLUDE_DEMUCS_MODEL=/path/htdemucs_6s-purrlude-1.onnx
+// PURRLUDE_AUDIO_FILE=/path/song.mp3 PurrludeTests "[.vocal-split-file]" -s splits a song (or a part of it:
+// PURRLUDE_FROM_SECONDS, PURRLUDE_SECONDS) as Split Lead and Backing Vocals does, and writes
+// "song - Lead Vocals.wav" and "song - Backing Vocals.wav" next to it. Without PURRLUDE_DEMUCS_MODEL the
+// backing is the clip less the lead.
+TEST_CASE ("Splitting a real song's lead and backing vocals", "[.vocal-split-file]")
+{
+    juce::File model (juce::SystemStats::getEnvironmentVariable ("PURRLUDE_LEAD_VOCALS_MODEL", {}));
+    juce::File separationModel (juce::SystemStats::getEnvironmentVariable ("PURRLUDE_DEMUCS_MODEL", {}));
+    juce::File file (juce::SystemStats::getEnvironmentVariable ("PURRLUDE_AUDIO_FILE", {}));
+    REQUIRE (model.existsAsFile());
+    REQUIRE (file.existsAsFile());
+
+    Song song;
+    auto source = song.addClip (file);
+    REQUIRE (source.has_value());
+
+    auto from = juce::SystemStats::getEnvironmentVariable ("PURRLUDE_FROM_SECONDS", "0").getDoubleValue();
+    auto seconds = juce::SystemStats::getEnvironmentVariable ("PURRLUDE_SECONDS", "0").getDoubleValue();
+
+    if (from > 0.0 || seconds > 0.0)
+    {
+        auto* clip = tracktion::findClipForID (*song.edit, source->clip);
+        REQUIRE (clip != nullptr);
+        clip->setOffset (tracktion::TimeDuration::fromSeconds (from));
+
+        if (seconds > 0.0)
+            clip->setLength (tracktion::TimeDuration::fromSeconds (seconds), true);
+
+        source = purrlude::audio_to_midi::getSource (*song.edit, source->clip);
+        REQUIRE (source.has_value());
+    }
+
+    std::optional<purrlude::vocal_split::Result> result;
+    juce::String error;
+    auto started = juce::Time::getMillisecondCounterHiRes();
+
+    {
+        purrlude::vocal_split::Job job (*song.engine, *source, model, separationModel, true, song.folder.getChildFile ("Audio"),
+                                        [&] (purrlude::vocal_split::Result r, const juce::String& e) { result = r; error = e; });
+
+        while (! result)
+            pump (200);
+    }
+
+    INFO (error);
+    REQUIRE (error.isEmpty());
+    std::cerr << "Split " << source->fileLength << " s in " << (juce::Time::getMillisecondCounterHiRes() - started) / 1000.0 << " s\n";
+
+    for (auto [part, name] : { std::pair (result->lead, "Lead Vocals"), std::pair (result->backing, "Backing Vocals") })
+    {
+        auto out = file.getSiblingFile (file.getFileNameWithoutExtension() + " - " + name + ".wav");
+        out.deleteFile();
+        REQUIRE (part.copyFileTo (out));
+    }
 }

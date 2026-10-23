@@ -651,7 +651,7 @@ void MainComponent::separateInstruments (tracktion::EditItemID audioClip, separa
     conversionProgressTimer.startTimerHz (10);
 }
 
-void MainComponent::splitVocals (tracktion::EditItemID audioClip)
+void MainComponent::splitVocals (tracktion::EditItemID audioClip, bool roughly, std::optional<bool> onGpu)
 {
     if (isBusyConverting())
         return;
@@ -665,12 +665,41 @@ void MainComponent::splitVocals (tracktion::EditItemID audioClip)
         return;
     }
 
+    auto model = roughly ? juce::File() : vocal_split::findModel (getModelsFolder());
+
+    if (! roughly && ! model.existsAsFile() && vocal_split::canRunModel())
+    {
+        downloadModelThenSplitVocals (audioClip, vocal_split::isStereo (engine, *source));
+        return;
+    }
+
+    if (model.existsAsFile() && ! onGpu.has_value())
+    {
+        if (auto gpuName = analysis::getBuiltInGpuName(); gpuName.isNotEmpty())
+        {
+            askWhereToFindLeadVocal (audioClip, gpuName);
+            return;
+        }
+    }
+
     showConversionWindow ("Splitting " + source->name,
-                          "Lead vocals from the centre, backing vocals from the sides. Backing vocals sung "
-                          "in the centre stay with the lead.");
+                          model.existsAsFile()
+                              ? juce::String ("Listening for the lead vocal; the backing vocals are the rest of the vocals. "
+                                              "This can take several times the clip's length without a fast GPU.")
+                              : juce::String ("Lead vocals from the centre and the lead's pitch, backing vocals from "
+                                              "the rest. A doubled lead stays with the lead."));
+
+   #if JUCE_MAC
+    // Core ML's compiled model: a cache, rebuilt if it's deleted.
+    analysis::setGpuCacheFolder (juce::File::getSpecialLocation (juce::File::userHomeDirectory)
+                                     .getChildFile ("Library/Caches/Purrlude/GPU Cache"));
+   #endif
 
     auto safe = juce::WeakReference<MainComponent> (this);
-    vocalSplitJob = std::make_unique<vocal_split::Job> (engine, *source, project->getAudioFolder(),
+    // The separation model (if it's there) takes a song's instruments out of the backing vocals.
+    auto separationModel = model.existsAsFile() ? separation::findModel (getModelsFolder()) : juce::File();
+
+    vocalSplitJob = std::make_unique<vocal_split::Job> (engine, *source, model, separationModel, onGpu.value_or (true), project->getAudioFolder(),
         [safe, src = *source, title] (vocal_split::Result result, const juce::String& error)
     {
         if (safe == nullptr)
@@ -687,10 +716,31 @@ void MainComponent::splitVocals (tracktion::EditItemID audioClip)
     conversionProgressTimer.startTimerHz (10);
 }
 
+void MainComponent::askWhereToFindLeadVocal (tracktion::EditItemID audioClip, const juce::String& gpuName)
+{
+    auto options = juce::MessageBoxOptions()
+                       .withIconType (juce::MessageBoxIconType::WarningIcon)
+                       .withTitle ("Use the built-in graphics?")
+                       .withMessage ("This computer's graphics (" + gpuName + ") are built into its processor, and also draw the "
+                                     "screen. Finding the lead vocal keeps them busy for up to a minute at a time, so the screen "
+                                     "may stutter, and the graphics driver may report a timeout (the split carries on).\n\n"
+                                     "The CPU keeps the screen smooth, but takes about twice as long.")
+                       .withButton ("Use the Graphics")
+                       .withButton ("Use the CPU")
+                       .withButton ("Cancel")
+                       .withAssociatedComponent (this);
+
+    juce::AlertWindow::showAsync (options, [safe = juce::WeakReference<MainComponent> (this), audioClip] (int result)
+    {
+        // Buttons are numbered from 1, except the last, which is 0.
+        if (safe != nullptr && result != 0)
+            safe->splitVocals (audioClip, false, result == 1);
+    });
+}
+
 void MainComponent::downloadModelThenSeparate (tracktion::EditItemID audioClip, separation::Output output)
 {
     auto source = separation::getModelDownload();
-    auto target = getModelsFolder().getChildFile (separation::modelFileName);
     const auto megabytes = juce::String (juce::roundToInt ((double) source.size / 1.0e6));
 
     auto options = juce::MessageBoxOptions()
@@ -708,40 +758,96 @@ void MainComponent::downloadModelThenSeparate (tracktion::EditItemID audioClip, 
                        .withButton ("Cancel")
                        .withAssociatedComponent (this);
 
-    juce::AlertWindow::showAsync (options, [safe = juce::WeakReference<MainComponent> (this), source, target, audioClip, output, megabytes] (int result)
+    juce::AlertWindow::showAsync (options, [safe = juce::WeakReference<MainComponent> (this), source, audioClip, output, megabytes] (int result)
     {
-        if (safe == nullptr || result != 1 || safe->modelDownload != nullptr)
+        if (safe == nullptr || result != 1)
             return;
 
-        safe->showConversionWindow ("Downloading the separation model",
-                                    "Downloading Demucs (" + megabytes + " MB). If it stops, it carries on from there next time.");
+        safe->downloadModel (source, separation::modelFileName, "Downloading the separation model",
+                             "Downloading Demucs (" + megabytes + " MB). If it stops, it carries on from there next time.",
+                             [safe, audioClip, output]
+        {
+            separation::removeOldModels (safe->getModelsFolder());   // the one it replaces
+            safe->separateInstruments (audioClip, output);
+        });
+    });
+}
 
-        safe->modelDownload = std::make_unique<FileDownload> (source, target, [safe, audioClip, output] (const juce::String& error)
+void MainComponent::downloadModelThenSplitVocals (tracktion::EditItemID audioClip, bool canSplitRoughly)
+{
+    auto source = vocal_split::getModelDownload();
+    const auto megabytes = juce::String (juce::roundToInt ((double) source.size / 1.0e6));
+    juce::String message ("Splitting lead and backing vocals works best with a model that isn't installed yet: a karaoke "
+                          "model by anvuew (huggingface.co/anvuew/karaoke_bs_roformer), " + megabytes + " MB, licensed "
+                          "GPL-3.0. It works best on the whole song, with the separation model installed too.\n\n"
+                          "Purrlude can download it from its GitHub page (github.com/clintcan/Purrlude) into "
+                          + getModelsFolder().getFullPathName() + ". Nothing else is sent or received, and your audio "
+                          "stays on this computer.");
+
+    if (canSplitRoughly)
+        message << "\n\nOr split it roughly now, without the model, by where the voices sit and the lead's pitch.";
+
+    auto options = juce::MessageBoxOptions()
+                       .withIconType (juce::MessageBoxIconType::QuestionIcon)
+                       .withTitle ("Download the lead vocal model?")
+                       .withMessage (message)
+                       .withButton ("Download");
+
+    if (canSplitRoughly)
+        options = options.withButton ("Split Roughly");
+
+    options = options.withButton ("Cancel").withAssociatedComponent (this);
+
+    juce::AlertWindow::showAsync (options, [safe = juce::WeakReference<MainComponent> (this), source, audioClip, canSplitRoughly, megabytes] (int result)
+    {
+        if (safe == nullptr)
+            return;
+
+        // Buttons are numbered from 1, except the last, which is 0.
+        if (canSplitRoughly && result == 2)
+        {
+            safe->splitVocals (audioClip, true);
+            return;
+        }
+
+        if (result != 1)
+            return;
+
+        safe->downloadModel (source, vocal_split::modelFileName, "Downloading the lead vocal model",
+                             "Downloading the lead vocal model (" + megabytes + " MB). If it stops, it carries on from there next time.",
+                             [safe, audioClip] { safe->splitVocals (audioClip); });
+    });
+}
+
+void MainComponent::downloadModel (const FileDownload::Source& source, const juce::String& fileName, const juce::String& title,
+                                   const juce::String& message, std::function<void()> done)
+{
+    if (modelDownload != nullptr)
+        return;
+
+    showConversionWindow (title, message);
+    auto safe = juce::WeakReference<MainComponent> (this);
+
+    modelDownload = std::make_unique<FileDownload> (source, getModelsFolder().getChildFile (fileName), [safe, done] (const juce::String& error)
+    {
+        if (safe == nullptr)
+            return;
+
+        juce::MessageManager::callAsync ([safe, error, done]
         {
             if (safe == nullptr)
                 return;
 
-            juce::MessageManager::callAsync ([safe, error, audioClip, output]
-            {
-                if (safe == nullptr)
-                    return;
+            safe->stopMidiConversion();
 
-                safe->stopMidiConversion();
-
-                if (error.isNotEmpty())
-                {
-                    safe->showError ("Couldn't download the separation model", error);
-                }
-                else
-                {
-                    separation::removeOldModels (safe->getModelsFolder());   // the one it replaces
-                    safe->separateInstruments (audioClip, output);
-                }
-            });
+            if (error.isNotEmpty())
+                safe->showError ("Couldn't download the model", error);
+            else if (done != nullptr)
+                done();
         });
-
-        safe->conversionProgressTimer.startTimerHz (10);
     });
+
+    conversionProgressTimer.startTimerHz (10);
 }
 
 namespace

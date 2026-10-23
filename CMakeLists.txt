@@ -159,6 +159,8 @@ target_sources(purrlude_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/SourceSeparator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/CentreSplit.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/CentreSplit.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/LeadVocalSeparator.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/analysis/LeadVocalSeparator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/AudioToMidi.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/AudioToMidi.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/model/BluetoothMidiInput.h

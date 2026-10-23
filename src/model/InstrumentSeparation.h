@@ -24,6 +24,11 @@ namespace separation
     /** Deletes earlier models from the user's models folder (115 MB each). */
     void removeOldModels (const juce::File& userModelsFolder);
 
+    /** The models folder beside the app (Contents/Resources/models on macOS, models/ next to the
+        executable elsewhere).
+    */
+    juce::File getBundledModelsFolder();
+
     /** The model: in the user's models folder, else beside the app, else (in development
         builds) where CMake found it. Empty if it isn't anywhere.
     */

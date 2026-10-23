@@ -6,7 +6,7 @@ Purrlude can listen to an audio clip and write down its notes as MIDI. You can t
 
 Everything runs on your computer. No audio is sent anywhere.
 
-<img src="images/clip-menu-audio.png" alt="An audio clip's right-click menu: Split at Playhead, Split Here, Cut, Copy, Duplicate, Convert Melody to MIDI..., Convert Notes and Chords to MIDI..., Convert Drums to MIDI..., Separate Instruments to MIDI..., Separate Instruments to Audio Tracks..., Split Lead and Backing Vocals (Rough)..., Loop This Clip, Delete" width="766">
+<img src="images/clip-menu-audio.png" alt="An audio clip's right-click menu: Split at Playhead, Split Here, Cut, Copy, Duplicate, Convert Melody to MIDI..., Convert Notes and Chords to MIDI..., Convert Drums to MIDI..., Separate Instruments to MIDI..., Separate Instruments to Audio Tracks..., Split Lead and Backing Vocals..., Loop This Clip, Delete" width="766">
 
 Right-click an audio clip and choose a command. A progress window shows while it works, and **Cancel** (or Esc) stops it. Only one conversion runs at a time.
 
@@ -81,13 +81,16 @@ It's kept in your models folder, where you can also put a copy yourself:
 - Windows: `%APPDATA%\Purrlude\Models\`
 - Linux: `~/.config/Purrlude/Models/`
 
+Developers can make it with `tools/models/export_demucs.py`.
+
 ## Splitting lead and backing vocals
 
-**Split Lead and Backing Vocals (Rough)...** in a stereo audio clip's menu splits a vocal recording in two: the lead vocal and the backing vocals. It's meant for the vocals part from **Separate Instruments to Audio Tracks**, but works on any stereo clip.
+**Split Lead and Backing Vocals...** in an audio clip's menu splits the vocals in two: the lead vocal and the backing vocals. Use it on the **whole song**: the lead vocal model was trained on songs, and finds far more of the lead there than in a vocals part on its own. It works on a vocals part too (from **Separate Instruments to Audio Tracks**), but leaves more of the lead in the backing vocals.
 
-- **How it tells them apart:** by where they sit. The lead is usually in the middle, and backing vocals are often spread to the sides. What's in the middle goes to *Lead Vocals*, the rest to *Backing Vocals*.
-- **What you get:** two audio tracks under the clip's track, playing in the same place. Together they sound exactly like the clip, so mute the clip's own track to use them. One undo step.
-- **Limits:** backing vocals sung in the middle (doubled or stacked under the lead) stay with the lead, and the lead's reverb, if it's wide, goes with the backing vocals. A mono clip has no sides, so the item is greyed out.
-- **Speed:** a few seconds for a song, and it doesn't need the separation model.
-
-Developers can make it with `tools/models/export_demucs.py`.
+- **The lead vocal model:** the first time, Purrlude offers to download a model that listens for the lead vocal: a karaoke model by anvuew, about 213 MB, licensed GPL-3.0, into the same models folder as the separation model (above). Developers can make it with `tools/models/export_lead_vocals.py`. Your audio stays on your computer.
+  - **How it tells them apart:** the model finds the lead singer in the song. The backing vocals are the rest of the song's vocals, which the separation model finds; so on a whole song, install that model too (**Separate Instruments** offers it). Without it, the backing vocals track is everything but the lead, instruments included.
+  - **Speed:** on a fast GPU, about the clip's length or less; on a laptop's built-in graphics or the CPU, several times the clip's length (a 4-minute song took over half an hour on one).
+  - **Built-in graphics (Windows):** they also draw the screen, so Purrlude asks first whether to use them or the CPU. With the graphics, the screen may stutter and the graphics driver may report a timeout, but the split carries on. The CPU keeps the screen smooth and takes about twice as long.
+  - **Limits:** some of the lead (often its reverb) is left in the backing vocals, sounding thin, and backing vocals sung with the lead can be heard faintly in it.
+- **Without the model** (choose **Split Roughly**, stereo clips only): Purrlude splits by where the voices sit and by the lead's pitch. The lead is usually in the middle, and backing vocals are often spread to the sides. Of what's in the middle, the strongest voice goes to *Lead Vocals*, and harmonies sung in the middle with it go to *Backing Vocals*. A doubled lead and harmonies where the lead rests stay with the lead, and the lead's reverb, if it's wide, goes with the backing vocals. It takes a few seconds.
+- **What you get:** two audio tracks under the clip's track, playing in the same place, one undo step. Split from a vocals part (or without the separation model), together they sound exactly like the clip, so mute the clip's own track to use them.

@@ -29,21 +29,20 @@ namespace
         return 0;
     }
 
-    juce::File getBundledModel()
-    {
-       #if JUCE_MAC
-        auto folder = juce::File::getSpecialLocation (juce::File::currentApplicationFile).getChildFile ("Contents/Resources/models");
-       #else
-        auto folder = juce::File::getSpecialLocation (juce::File::currentExecutableFile).getSiblingFile ("models");
-       #endif
+}
 
-        return folder.getChildFile (modelFileName);
-    }
+juce::File getBundledModelsFolder()
+{
+   #if JUCE_MAC
+    return juce::File::getSpecialLocation (juce::File::currentApplicationFile).getChildFile ("Contents/Resources/models");
+   #else
+    return juce::File::getSpecialLocation (juce::File::currentExecutableFile).getSiblingFile ("models");
+   #endif
 }
 
 juce::File findModel (const juce::File& userModelsFolder)
 {
-    juce::Array<juce::File> places { userModelsFolder.getChildFile (modelFileName), getBundledModel() };
+    juce::Array<juce::File> places { userModelsFolder.getChildFile (modelFileName), getBundledModelsFolder().getChildFile (modelFileName) };
 
    #ifdef PURRLUDE_DEMUCS_MODEL
     places.add (juce::File (PURRLUDE_DEMUCS_MODEL));   // development builds: where CMake found it
